@@ -1,5 +1,4 @@
-#include "TestUtils.h"
-#include "engine/SynthEngine.h"
+#include "EngineRig.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -7,96 +6,34 @@
 #include <cmath>
 #include <vector>
 
-using namespace scratchpad;
-using engine::EngineParams;
-using engine::SynthEngine;
-
-namespace
-{
-    constexpr double sampleRate = 48000.0;
-
-    EngineParams sineParams()
-    {
-        EngineParams p;
-        p.oscEnabled = true;
-        p.wave = dsp::Wave::sine;
-        p.oscLevelDb = 0.0f;
-        p.outputVolumeDb = 0.0f;
-        return p;
-    }
-
-    struct Rig
-    {
-        explicit Rig (EngineParams p = sineParams())
-        {
-            engine.setParams (p);
-            engine.prepare (sampleRate);
-            engine.setParams (p);
-        }
-
-        /** Renders in awkward block sizes, as hosts do. Returns the left channel. */
-        std::vector<float> run (int numSamples)
-        {
-            std::vector<float> left ((size_t) numSamples), right ((size_t) numSamples);
-            int done = 0;
-            int block = 37;
-            while (done < numSamples)
-            {
-                const int n = std::min (block, numSamples - done);
-                engine.render (left.data() + done, right.data() + done, n);
-                done += n;
-                block = block == 37 ? 101 : 37;
-            }
-            REQUIRE (left == right);
-            return left;
-        }
-
-        void midi (const juce::MidiMessage& m) { engine.handleMidi (m); }
-
-        SynthEngine engine;
-    };
-
-    float peak (const std::vector<float>& x)
-    {
-        float p = 0.0f;
-        for (float s : x)
-            p = std::max (p, std::abs (s));
-        return p;
-    }
-
-    float maxStep (const std::vector<float>& x)
-    {
-        float m = 0.0f;
-        for (size_t i = 1; i < x.size(); ++i)
-            m = std::max (m, std::abs (x[i] - x[i - 1]));
-        return m;
-    }
-
-    double measureHz (const std::vector<float>& x)
-    {
-        std::vector<double> crossings;
-        for (size_t i = 1; i < x.size(); ++i)
-            if (x[i - 1] < 0.0f && x[i] >= 0.0f)
-                crossings.push_back ((double) (i - 1) + (double) -x[i - 1] / (double) (x[i] - x[i - 1]));
-        REQUIRE (crossings.size() > 10);
-        return (double) (crossings.size() - 1) * sampleRate / (crossings.back() - crossings.front());
-    }
-}
+using namespace enginetest;
 
 TEST_CASE ("Notes are ignored until the patch has an oscillator", "[engine]")
 {
     EngineParams p = sineParams();
-    p.oscEnabled = false;
+    p.osc[0].enabled = false;
     Rig rig (p);
 
-    rig.midi (juce::MidiMessage::noteOn (1, 69, 1.0f));
+    rig.noteOn (69);
+    REQUIRE (peak (rig.run (4800)) == 0.0f);
+}
+
+TEST_CASE ("Notes are ignored while only a later oscillator is on", "[engine]")
+{
+    EngineParams p = sineParams();
+    p.osc[0].enabled = false;
+    p.osc[1].enabled = true;
+    p.osc[1].levelDb = 0.0f;
+    Rig rig (p);
+
+    rig.noteOn (69);
     REQUIRE (peak (rig.run (4800)) == 0.0f);
 }
 
 TEST_CASE ("Wave-picker previews sound even before the patch has an oscillator", "[engine]")
 {
     EngineParams p = sineParams();
-    p.oscEnabled = false;
+    p.osc[0].enabled = false;
     Rig rig (p);
 
     rig.engine.previewNoteOn (57, dsp::Wave::sine);
@@ -109,19 +46,43 @@ TEST_CASE ("Wave-picker previews sound even before the patch has an oscillator",
     REQUIRE (peak (rig.run (480)) == 0.0f);
 }
 
+TEST_CASE ("Previews ignore the filter, envelopes and other oscillators", "[engine]")
+{
+    EngineParams p = sineParams();
+    p.osc[0].enabled = false;
+    p.osc[1].enabled = true;
+    p.osc[1].levelDb = 0.0f;
+    p.noise.enabled = true;
+    p.noise.levelDb = 0.0f;
+    p.filter.enabled = true;
+    p.filter.cutoffHz = 100.0f;
+    p.ampEnv.enabled = true;
+    p.ampEnv.attack = 1.0f;
+    Rig rig (p);
+
+    rig.engine.previewNoteOn (69, dsp::Wave::sine);
+    rig.run (4800);
+    const auto out = rig.run (9600);
+
+    // A clean full-level sine at pitch: no noise, no second oscillator, no filter, no slow attack.
+    REQUIRE (peak (out) > 0.95f);
+    REQUIRE (peak (out) < 1.01f);
+    REQUIRE (std::abs (testutil::centsBetween (measureHz (out), 440.0)) < 0.5);
+}
+
 TEST_CASE ("A held note plays at pitch and falls silent after release", "[engine]")
 {
     Rig rig;
 
-    rig.midi (juce::MidiMessage::noteOn (1, 69, 1.0f));
+    rig.noteOn (69);
     const auto held = rig.run (24000);
     REQUIRE (std::abs (testutil::centsBetween (measureHz (held), 440.0)) < 0.5);
     REQUIRE (peak (held) > 0.95f);
 
-    rig.midi (juce::MidiMessage::noteOff (1, 69));
+    rig.noteOff (69);
     rig.run (200);
     REQUIRE (peak (rig.run (480)) == 0.0f);
-    REQUIRE (rig.engine.getAllocator().countActive() == 0);
+    REQUIRE (rig.activeVoices() == 0);
 }
 
 TEST_CASE ("Note on, note off and voice steal do not click", "[engine][clicks]")
@@ -131,18 +92,18 @@ TEST_CASE ("Note on, note off and voice steal do not click", "[engine][clicks]")
     constexpr float limit = 0.16f;
 
     EngineParams p = sineParams();
+    p.voicing.voices = 1;
     Rig rig (p);
-    rig.engine.getAllocator().setActiveVoices (1);
 
     std::vector<float> all;
     auto append = [&all] (const std::vector<float>& v) { all.insert (all.end(), v.begin(), v.end()); };
 
     append (rig.run (333));
-    rig.midi (juce::MidiMessage::noteOn (1, 83, 1.0f)); // ~987 Hz, mid-sample start
+    rig.noteOn (83); // ~987 Hz, mid-sample start
     append (rig.run (1777));
-    rig.midi (juce::MidiMessage::noteOn (1, 84, 1.0f)); // steals the only voice
+    rig.noteOn (84); // steals the only voice
     append (rig.run (1999));
-    rig.midi (juce::MidiMessage::noteOff (1, 84));
+    rig.noteOff (84);
     append (rig.run (999));
 
     REQUIRE (peak (all) > 0.9f);
@@ -157,16 +118,16 @@ TEST_CASE ("Switching the wave while a note is held crossfades over 10 ms", "[en
     constexpr int fadeSamples = 480;
 
     auto sawParams = sineParams();
-    sawParams.wave = dsp::Wave::saw;
+    sawParams.osc[0].wave = dsp::Wave::saw;
 
     Rig sine (sineParams()), saw (sawParams), switched (sineParams());
     for (auto* r : { &sine, &saw, &switched })
     {
-        r->midi (juce::MidiMessage::noteOn (1, 45, 1.0f));
+        r->noteOn (45);
         r->run (4800);
     }
 
-    switched.engine.setParams (sawParams);
+    switched.set (sawParams);
 
     const auto a = sine.run (1200);
     const auto b = saw.run (1200);
@@ -184,7 +145,7 @@ TEST_CASE ("Switching the wave while a note is held crossfades over 10 ms", "[en
 TEST_CASE ("Pitch bend moves the pitch by the bend range", "[engine]")
 {
     Rig rig;
-    rig.midi (juce::MidiMessage::noteOn (1, 69, 1.0f));
+    rig.noteOn (69);
     rig.run (2400);
 
     rig.midi (juce::MidiMessage::pitchWheel (1, 16383)); // fully up, default range +2 semitones
@@ -198,11 +159,40 @@ TEST_CASE ("Pitch bend moves the pitch by the bend range", "[engine]")
     REQUIRE (std::abs (testutil::centsBetween (measureHz (rig.run (24000)), 440.0)) < 0.5);
 }
 
+TEST_CASE ("Pitch bend range comes from the voicing parameters", "[engine]")
+{
+    auto p = sineParams();
+    p.voicing.bendRange = 12.0f;
+    Rig rig (p);
+
+    rig.noteOn (60);
+    rig.midi (juce::MidiMessage::pitchWheel (1, 0)); // fully down
+    rig.run (4800);
+    REQUIRE (std::abs (testutil::centsBetween (measureHz (rig.run (24000)), testutil::midiToHz (48.0))) < 0.5);
+}
+
+TEST_CASE ("Pitch bend applies to every oscillator", "[engine]")
+{
+    // Osc 2 alone, an octave up, bent a whole range up: 69 + 12 + 2 semitones.
+    auto p = silentParams();
+    p.osc[1].enabled = true;
+    p.osc[1].wave = dsp::Wave::sine;
+    p.osc[1].levelDb = 0.0f;
+    p.osc[1].octave = 1;
+    Rig rig (p);
+
+    rig.noteOn (69);
+    rig.midi (juce::MidiMessage::pitchWheel (1, 16383));
+    rig.run (4800);
+    const double hz = measureHz (rig.run (24000));
+    REQUIRE (std::abs (testutil::centsBetween (hz, testutil::midiToHz (81.0 + 2.0 * 8191.0 / 8192.0))) < 0.5);
+}
+
 TEST_CASE ("CC123 releases every held note", "[engine]")
 {
     Rig rig;
     for (int n : { 60, 64, 67 })
-        rig.midi (juce::MidiMessage::noteOn (1, n, 1.0f));
+        rig.noteOn (n);
     rig.run (2000);
 
     rig.midi (juce::MidiMessage::allNotesOff (1));
@@ -213,13 +203,13 @@ TEST_CASE ("CC123 releases every held note", "[engine]")
 TEST_CASE ("The sustain pedal (CC64) holds notes after key-up", "[engine]")
 {
     Rig rig;
-    rig.midi (juce::MidiMessage::controllerEvent (1, 64, 127));
-    rig.midi (juce::MidiMessage::noteOn (1, 69, 1.0f));
+    rig.pedal (true);
+    rig.noteOn (69);
     rig.run (2000);
-    rig.midi (juce::MidiMessage::noteOff (1, 69));
+    rig.noteOff (69);
     REQUIRE (peak (rig.run (2000)) > 0.9f);
 
-    rig.midi (juce::MidiMessage::controllerEvent (1, 64, 0));
+    rig.pedal (false);
     rig.run (200);
     REQUIRE (peak (rig.run (480)) == 0.0f);
 }
@@ -227,28 +217,62 @@ TEST_CASE ("The sustain pedal (CC64) holds notes after key-up", "[engine]")
 TEST_CASE ("Level and output volume are in dB, with the bottom of the range silent", "[engine]")
 {
     EngineParams p = sineParams();
-    p.oscLevelDb = -6.0f;
+    p.osc[0].levelDb = -6.0f;
     p.outputVolumeDb = 6.0f;
     Rig rig (p);
-    rig.midi (juce::MidiMessage::noteOn (1, 69, 1.0f));
+    rig.noteOn (69);
     rig.run (2400);
     REQUIRE (std::abs (peak (rig.run (4800)) - 1.0f) < 0.01f); // -6 dB + 6 dB
 
-    p.oscLevelDb = engine::minLevelDb;
-    rig.engine.setParams (p);
+    p.osc[0].levelDb = engine::minLevelDb;
+    rig.set (p);
     rig.run (4800); // let the 20 ms smoothing finish
     REQUIRE (peak (rig.run (480)) == 0.0f);
+}
+
+TEST_CASE ("Level changes ramp over 20 ms instead of stepping", "[engine][clicks]")
+{
+    EngineParams p = sineParams();
+    p.osc[0].levelDb = -20.0f;
+    Rig rig (p);
+    rig.noteOn (36); // 65 Hz, so the sine itself moves slowly
+    rig.run (4800);
+
+    p.osc[0].levelDb = 0.0f;
+    rig.set (p);
+    const auto out = rig.run (4800);
+
+    // A 65 Hz sine at full level moves at most 0.0085 per sample; a step from
+    // -20 dB to 0 dB would show up as a jump of up to 0.9.
+    REQUIRE (maxStep (out) < 0.02f);
+    REQUIRE (peakOf (out, 3000, 1800) > 0.95f);
 }
 
 TEST_CASE ("Losing the oscillator lets held notes fade out", "[engine]")
 {
     Rig rig;
-    rig.midi (juce::MidiMessage::noteOn (1, 69, 1.0f));
+    rig.noteOn (69);
     rig.run (2000);
 
     auto p = sineParams();
-    p.oscEnabled = false;
-    rig.engine.setParams (p);
+    p.osc[0].enabled = false;
+    rig.set (p);
     rig.run (200);
     REQUIRE (peak (rig.run (480)) == 0.0f);
+}
+
+TEST_CASE ("The output is the same in both channels, whatever the patch", "[engine]")
+{
+    // Rig::run requires left == right on every block; this exercises a busy patch.
+    auto p = sineParams();
+    p.osc[1].enabled = true;
+    p.osc[2].enabled = true;
+    p.noise.enabled = true;
+    p.filter.enabled = true;
+    p.ampEnv.enabled = true;
+    Rig rig (p);
+
+    rig.noteOn (48);
+    rig.noteOn (55);
+    REQUIRE (peak (rig.run (9600)) > 0.1f);
 }

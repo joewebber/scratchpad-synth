@@ -5,15 +5,24 @@
 namespace scratchpad::engine
 {
 
+namespace
+{
+    constexpr double smoothingSeconds = 0.020;
+}
+
 void SynthEngine::prepare (double sampleRate)
 {
     dsp::BlepTable::get(); // build the band-limiting table here, never on the audio thread
     allocator.prepare (sampleRate);
+    allocator.setVoicing (params.voicing);
 
-    oscGain.reset (sampleRate, 0.020);   // gain smoothing over 20 ms
-    outputGain.reset (sampleRate, 0.020);
-    oscGain.setCurrentAndTargetValue (dbToGain (params.oscLevelDb));
-    outputGain.setCurrentAndTargetValue (dbToGain (params.outputVolumeDb));
+    for (auto& s : oscGain)
+        s.reset (sampleRate, smoothingSeconds);
+
+    for (auto* s : { &noiseGain, &previewGain, &cutoffLog2, &resonance, &driveDb, &filterEnvAmount, &outputGain })
+        s->reset (sampleRate, smoothingSeconds);
+
+    updateTargets (true);
 
     pitchBend = 0.0f;
     modWheel = 0.0f;
@@ -23,31 +32,76 @@ void SynthEngine::prepare (double sampleRate)
 
 void SynthEngine::setParams (const EngineParams& p) noexcept
 {
-    // Losing the oscillator (New patch) lets held notes fade out rather than
+    // Losing oscillator 1 (New patch) lets held notes fade out rather than
     // hang around with nothing to play them.
-    if (params.oscEnabled && ! p.oscEnabled)
+    if (params.osc[0].enabled && ! p.osc[0].enabled)
         allocator.releaseAll (false);
 
     params = p;
+    allocator.setVoicing (p.voicing);
 
     if (prepared)
+        updateTargets (false);
+}
+
+void SynthEngine::updateTargets (bool jump) noexcept
+{
+    const auto target = BlockLevels::steady (params);
+
+    auto set = [jump] (Smoother& s, float value)
     {
-        oscGain.setTargetValue (dbToGain (p.oscLevelDb));
-        outputGain.setTargetValue (dbToGain (p.outputVolumeDb));
-    }
+        if (jump)
+            s.setCurrentAndTargetValue (value);
+        else
+            s.setTargetValue (value);
+    };
+
+    for (size_t i = 0; i < oscGain.size(); ++i)
+        set (oscGain[i], target.osc[i].end);
+
+    set (noiseGain, target.noise.end);
+    set (previewGain, target.preview.end);
+    set (cutoffLog2, target.cutoffLog2.end);
+    set (resonance, target.resonance.end);
+    set (driveDb, target.driveDb.end);
+    set (filterEnvAmount, target.filterEnvAmount.end);
+    set (outputGain, dbToGain (params.outputVolumeDb));
+}
+
+BlockLevels SynthEngine::advanceLevels (int numSamples) noexcept
+{
+    auto advance = [numSamples] (Smoother& s)
+    {
+        const float from = s.getCurrentValue();
+        const float to = s.skip (numSamples);
+        return Ramp { from, to };
+    };
+
+    BlockLevels levels;
+
+    for (size_t i = 0; i < oscGain.size(); ++i)
+        levels.osc[i] = advance (oscGain[i]);
+
+    levels.noise = advance (noiseGain);
+    levels.preview = advance (previewGain);
+    levels.cutoffLog2 = advance (cutoffLog2);
+    levels.resonance = advance (resonance);
+    levels.driveDb = advance (driveDb);
+    levels.filterEnvAmount = advance (filterEnvAmount);
+    return levels;
 }
 
 void SynthEngine::noteOn (int note, float velocity) noexcept
 {
-    if (! params.oscEnabled)
+    if (! params.osc[0].enabled)
         return;
 
-    allocator.noteOn (note, velocity, false, params.wave, bendSemitones());
+    allocator.noteOn (note, velocity);
 }
 
 void SynthEngine::previewNoteOn (int note, dsp::Wave wave) noexcept
 {
-    allocator.noteOn (note, 0.8f, true, wave, 0.0);
+    allocator.noteOn (note, 0.8f, true, wave);
 }
 
 void SynthEngine::previewNoteOff (int note) noexcept
@@ -107,14 +161,14 @@ void SynthEngine::render (float* left, float* right, int numSamples) noexcept
     while (done < numSamples)
     {
         const int n = std::min (subBlockSize, numSamples - done);
+        const BlockLevels levels = advanceLevels (n);
 
         std::fill_n (mono.begin(), n, 0.0f);
-        allocator.render (mono.data(), n, params.wave, bendSemitones());
+        allocator.render (mono.data(), n, params, levels, bendSemitones());
 
         for (int i = 0; i < n; ++i)
         {
-            const float g = oscGain.getNextValue() * outputGain.getNextValue();
-            const float s = mono[(size_t) i] * g;
+            const float s = mono[(size_t) i] * outputGain.getNextValue();
             left[done + i] = s;
             right[done + i] = s;
         }

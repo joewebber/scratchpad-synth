@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/BlockLevels.h"
+#include "engine/EngineParams.h"
 #include "engine/VoiceAllocator.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -9,30 +11,15 @@
 namespace scratchpad::engine
 {
 
-/** Plain values the engine needs from the parameter tree. The processor reads
-    its cached atomics once per block and hands this over, so the engine never
-    touches JUCE parameter objects. */
-struct EngineParams
-{
-    bool oscEnabled = false;
-    dsp::Wave wave = dsp::Wave::saw;
-    float oscLevelDb = -6.0f;
-    float outputVolumeDb = 0.0f;
-    float pitchBendRangeSemitones = 2.0f;
-};
+/** The whole sound engine: MIDI in, stereo audio out.
 
-/** Below this a level control means "off" (shown as -inf in the UI). */
-inline constexpr float minLevelDb = -60.0f;
+    Until the patch has oscillator 1 (`osc[0].enabled`), notes from MIDI or the
+    keyboard are ignored; only wave-picker preview notes sound. Every voice
+    renders mono; both output channels carry the same signal.
 
-inline float dbToGain (float db) noexcept
-{
-    return db <= minLevelDb ? 0.0f : juce::Decibels::decibelsToGain (db);
-}
-
-/** The whole sound engine for M1: MIDI in, stereo audio out.
-
-    Until the patch has an oscillator (`oscEnabled`), notes from MIDI or the
-    keyboard are ignored; only wave-picker preview notes sound. */
+    Patch-wide levels (oscillator, noise and output gains, filter cutoff,
+    resonance, drive, envelope amount) are smoothed here over 20 ms, so a knob
+    never steps, and handed to the voices a 32-sample sub-block at a time. */
 class SynthEngine
 {
 public:
@@ -54,16 +41,21 @@ public:
     float getAftertouch() const noexcept { return aftertouch; }
 
 private:
-    static constexpr int subBlockSize = 32;
+    using Smoother = juce::SmoothedValue<float>;
+
+    static constexpr int subBlockSize = Voice::blockSize;
 
     void noteOn (int note, float velocity) noexcept;
-    double bendSemitones() const noexcept { return (double) pitchBend * (double) params.pitchBendRangeSemitones; }
+    void updateTargets (bool jump) noexcept;
+    BlockLevels advanceLevels (int numSamples) noexcept;
+    double bendSemitones() const noexcept { return (double) pitchBend * (double) params.voicing.bendRange; }
 
     VoiceAllocator allocator;
     EngineParams params;
 
-    juce::SmoothedValue<float> oscGain;
-    juce::SmoothedValue<float> outputGain;
+    std::array<Smoother, 3> oscGain;
+    Smoother noiseGain, previewGain, cutoffLog2, resonance, driveDb, filterEnvAmount;
+    Smoother outputGain;
 
     std::array<float, subBlockSize> mono {};
 

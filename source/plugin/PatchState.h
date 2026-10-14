@@ -6,7 +6,7 @@ namespace scratchpad::patch
 {
 
 /** Bump when the saved XML changes shape, and add a step to `migrate`. */
-inline constexpr int currentSchemaVersion = 1;
+inline constexpr int currentSchemaVersion = 2;
 
 inline constexpr const char* schemaVersionAttribute = "schemaVersion";
 

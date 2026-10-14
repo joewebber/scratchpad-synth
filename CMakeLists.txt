@@ -48,43 +48,15 @@ juce_add_binary_data(ScratchpadFonts
         assets/fonts/Jost-400-Book.ttf
         assets/fonts/Jost-500-Medium.ttf)
 
-add_library(ScratchpadCore STATIC
-    source/dsp/Gate.h
-    source/dsp/Oscillator.h
-    source/engine/Voice.h
-    source/engine/VoiceAllocator.h
-    source/engine/VoiceAllocator.cpp
-    source/engine/SynthEngine.h
-    source/engine/SynthEngine.cpp
-    source/plugin/Parameters.h
-    source/plugin/Parameters.cpp
-    source/plugin/PatchState.h
-    source/plugin/PatchState.cpp
-    source/plugin/UiEventQueue.h
-    source/plugin/PluginProcessor.h
-    source/plugin/PluginProcessor.cpp
-    source/plugin/PluginEditor.h
-    source/plugin/PluginEditor.cpp
-    source/ui/Theme.h
-    source/ui/LookAndFeel.h
-    source/ui/LookAndFeel.cpp
-    source/ui/Typography.h
-    source/ui/Typography.cpp
-    source/ui/Neumorph.h
-    source/ui/Neumorph.cpp
-    source/ui/IconButton.h
-    source/ui/WaveGlyphs.h
-    source/ui/WaveGlyphs.cpp
-    source/ui/Knob.h
-    source/ui/Meter.h
-    source/ui/TopBar.h
-    source/ui/TopBar.cpp
-    source/ui/WavePicker.h
-    source/ui/WavePicker.cpp
-    source/ui/PatchView.h
-    source/ui/PatchView.cpp
-    source/ui/PerformanceBar.h
-    source/ui/PerformanceBar.cpp)
+# Sources are globbed so adding a file needs no CMake edit; CONFIGURE_DEPENDS
+# makes the build notice new files. The plugin entry point belongs to the
+# plugin target only.
+file(GLOB_RECURSE SCRATCHPAD_CORE_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp)
+list(REMOVE_ITEM SCRATCHPAD_CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/source/plugin/PluginEntry.cpp)
+
+add_library(ScratchpadCore STATIC ${SCRATCHPAD_CORE_SOURCES})
 
 target_include_directories(ScratchpadCore PUBLIC source)
 

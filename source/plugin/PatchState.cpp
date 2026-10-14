@@ -21,9 +21,10 @@ MigrationResult migrate (juce::XmlElement& xml, const juce::String& rootTag)
     if (version == currentSchemaVersion)
         return MigrationResult::upToDate;
 
-    // Version 0 is an unstamped tree. Its parameter IDs are the same as
-    // version 1, so the only change is the stamp. Later versions add their
-    // own `if (version < N)` steps here, in order.
+    // Version 0 is an unstamped tree and version 1 is M1's. Their parameter
+    // IDs are all still valid, and everything M2 added is absent, so it loads
+    // at its defaults with its module not present: only the stamp changes.
+    // Later versions add their own `if (version < N)` steps here, in order.
     stamp (xml);
     return MigrationResult::migrated;
 }

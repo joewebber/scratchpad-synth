@@ -171,8 +171,8 @@ void PerformanceBar::paint (juce::Graphics& g)
 
     g.setColour (p.mute);
     g.setFont (uiFont (12.0f));
-    g.drawText (juce::String (juce::CharPointer_UTF8 ("A\xe2\x80\x93K play notes \xc2\xb7 W E T Y U are the black keys \xc2\xb7 Z / X octave \xc2\xb7 C / V velocity")),
-                hintArea, juce::Justification::centredRight, true);
+    g.drawFittedText (juce::String (juce::CharPointer_UTF8 ("A\xe2\x80\x93K play notes \xc2\xb7 W E T Y U are the black keys \xc2\xb7 Z / X octave \xc2\xb7 C / V velocity")),
+                      hintArea, juce::Justification::centredLeft, 4);
 
     drawCaption (g, "Bend", bendCaptionArea.toFloat(), p.mute, juce::Justification::centred);
 }
@@ -181,24 +181,28 @@ void PerformanceBar::resized()
 {
     auto area = getLocalBounds().reduced (16, 12);
 
-    auto row = area.removeFromTop (30);
-    octaveDown.setBounds (row.removeFromLeft (30));
+    // Octave and velocity on the left, then the bend wheel, the keys, and the key hints.
+    auto left = area.removeFromLeft (150);
+    auto row = left.removeFromTop (28);
+    octaveDown.setBounds (row.removeFromLeft (28));
     row.removeFromLeft (6);
-    octaveUp.setBounds (row.removeFromLeft (30));
-    row.removeFromLeft (14);
-    octaveLabelArea = row.removeFromLeft (84);
-    velocityLabelArea = row.removeFromLeft (110);
-    hintArea = row;
+    octaveUp.setBounds (row.removeFromLeft (28));
+    row.removeFromLeft (10);
+    octaveLabelArea = row;
+    left.removeFromTop (10);
+    velocityLabelArea = left.removeFromTop (20);
 
-    area.removeFromTop (10);
-
+    area.removeFromLeft (12);
     auto bendArea = area.removeFromLeft (52);
     bendCaptionArea = bendArea.removeFromBottom (16);
     bendWheel.setBounds (bendArea);
     area.removeFromLeft (12);
 
+    hintArea = area.removeFromRight (200);
+    area.removeFromRight (12);
+
     keyboard.setKeyWidth ((float) area.getWidth() / (float) whiteKeysShown);
-    keyboard.setBounds (area.withTrimmedBottom (6));
+    keyboard.setBounds (area.withTrimmedBottom (4));
 }
 
 } // namespace scratchpad::ui

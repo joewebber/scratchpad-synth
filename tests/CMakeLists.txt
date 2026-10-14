@@ -1,11 +1,5 @@
-add_executable(ScratchpadTests
-    TestMain.cpp
-    TestUtils.h
-    OscillatorTests.cpp
-    GateTests.cpp
-    VoiceAllocatorTests.cpp
-    EngineTests.cpp
-    StateTests.cpp)
+file(GLOB SCRATCHPAD_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
+add_executable(ScratchpadTests ${SCRATCHPAD_TEST_SOURCES})
 
 target_link_libraries(ScratchpadTests
     PRIVATE

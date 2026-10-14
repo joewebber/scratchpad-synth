@@ -50,6 +50,12 @@ void ScratchpadLookAndFeel::applyColours()
     setColour (juce::TextEditor::focusedOutlineColourId, p.ink);
     setColour (juce::CaretComponent::caretColourId, p.ink);
 
+    setColour (juce::PopupMenu::backgroundColourId, p.surface);
+    setColour (juce::PopupMenu::textColourId, p.ink);
+    setColour (juce::PopupMenu::headerTextColourId, p.mute);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, p.accent);
+    setColour (juce::PopupMenu::highlightedTextColourId, p.onAccent);
+
     setColour (juce::MidiKeyboardComponent::whiteNoteColourId, p.surface);
     setColour (juce::MidiKeyboardComponent::blackNoteColourId, p.keyBlack);
     setColour (juce::MidiKeyboardComponent::keySeparatorLineColourId, juce::Colours::transparentBlack);
@@ -116,6 +122,9 @@ void ScratchpadLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, i
     const float angle = startAngle + sliderPos * (endAngle - startAngle);
     const bool active = slider.isMouseButtonDown();
 
+    if (! slider.isEnabled())
+        g.beginTransparencyLayer (0.45f);
+
     drawRaised (g, disc, discSize * 0.5f, p, active ? Elevation::lifted : Elevation::small, p.surface);
 
     juce::Path track;
@@ -139,6 +148,9 @@ void ScratchpadLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, i
 
     if (slider.hasKeyboardFocus (false))
         drawFocusRing (g, disc, discSize * 0.5f + ringGap, p.ink);
+
+    if (! slider.isEnabled())
+        g.endTransparencyLayer();
 }
 
 void ScratchpadLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -172,7 +184,7 @@ juce::Label* ScratchpadLookAndFeel::createSliderTextBox (juce::Slider& slider)
 {
     auto* l = LookAndFeel_V4::createSliderTextBox (slider);
     l->setJustificationType (juce::Justification::centred);
-    l->setBorderSize ({ 0, 4, 0, 4 });
+    l->setBorderSize ({ 0, 1, 0, 1 });
     return l;
 }
 
@@ -199,8 +211,10 @@ void ScratchpadLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
         return;
 
     g.setColour (label.findColour (juce::Label::textColourId).withMultipliedAlpha (label.isEnabled() ? 1.0f : 0.5f));
-    g.setFont (uiFont (12.0f));
-    g.drawText (label.getText(), label.getLocalBounds().reduced (4, 0), label.getJustificationType(), false);
+    // Knob value pills are narrower than a typical label, so they run a size smaller.
+    const bool pill = dynamic_cast<juce::Slider*> (label.getParentComponent()) != nullptr;
+    g.setFont (uiFont (pill ? 11.0f : 12.0f));
+    g.drawText (label.getText(), label.getLocalBounds().reduced (pill ? 1 : 4, 0), label.getJustificationType(), false);
 }
 
 } // namespace scratchpad::ui

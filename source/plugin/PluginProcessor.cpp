@@ -37,10 +37,42 @@ ScratchpadProcessor::ScratchpadProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, &undoManager, "ScratchpadSynth", params::createLayout())
 {
-    oscEnabled = apvts.getRawParameterValue (params::osc1Enabled);
-    oscWave    = apvts.getRawParameterValue (params::osc1Wave);
-    oscLevel   = apvts.getRawParameterValue (params::osc1Level);
-    outVolume  = apvts.getRawParameterValue (params::outVolume);
+    for (size_t i = 0; i < oscPointers.size(); ++i)
+    {
+        const auto& ids = params::osc[i];
+        oscPointers[i] = { findParam (ids.enabled), findParam (ids.wave), findParam (ids.octave), findParam (ids.semitone),
+                           findParam (ids.fine), findParam (ids.pulseWidth), findParam (ids.level), findParam (ids.phaseReset) };
+    }
+
+    ampPointers = { findParam (params::ampEnv.enabled), findParam (params::ampEnv.attack), findParam (params::ampEnv.decay),
+                    findParam (params::ampEnv.sustain), findParam (params::ampEnv.release) };
+    filterEnvPointers = { findParam (params::filterEnv.enabled), findParam (params::filterEnv.attack),
+                          findParam (params::filterEnv.decay), findParam (params::filterEnv.sustain),
+                          findParam (params::filterEnv.release) };
+
+    noiseEnabled = findParam (params::noiseEnabled);
+    noiseColour = findParam (params::noiseColour);
+    noiseLevel = findParam (params::noiseLevel);
+    filterEnabled = findParam (params::filterEnabled);
+    filterMode = findParam (params::filterMode);
+    filterCutoff = findParam (params::filterCutoff);
+    filterResonance = findParam (params::filterResonance);
+    filterKeyTrack = findParam (params::filterKeyTrack);
+    filterDrive = findParam (params::filterDrive);
+    ampVelocity = findParam (params::ampEnvVelocity);
+    filterEnvAmount = findParam (params::filterEnvAmount);
+    voicingMode = findParam (params::voicingMode);
+    voicingVoices = findParam (params::voicingVoices);
+    voicingGlide = findParam (params::voicingGlide);
+    voicingBendRange = findParam (params::voicingBendRange);
+    outVolume = findParam (params::outVolume);
+}
+
+std::atomic<float>* ScratchpadProcessor::findParam (const char* id) const
+{
+    auto* p = apvts.getRawParameterValue (id);
+    jassert (p != nullptr);
+    return p;
 }
 
 void ScratchpadProcessor::prepareToPlay (double sampleRate, int)
@@ -61,12 +93,62 @@ bool ScratchpadProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
 
 engine::EngineParams ScratchpadProcessor::readParams() const noexcept
 {
-    engine::EngineParams p;
-    p.oscEnabled = oscEnabled->load (std::memory_order_relaxed) >= 0.5f;
-    p.wave = (dsp::Wave) juce::jlimit (0, dsp::numWaves - 1, (int) (oscWave->load (std::memory_order_relaxed) + 0.5f));
-    p.oscLevelDb = oscLevel->load (std::memory_order_relaxed);
-    p.outputVolumeDb = outVolume->load (std::memory_order_relaxed);
-    return p;
+    const auto load = [] (const std::atomic<float>* p) noexcept { return p->load (std::memory_order_relaxed); };
+    const auto on = [&] (const std::atomic<float>* p) noexcept { return load (p) >= 0.5f; };
+    const auto index = [&] (const std::atomic<float>* p, int count) noexcept
+    {
+        return juce::jlimit (0, count - 1, (int) (load (p) + 0.5f));
+    };
+    const auto fraction = [&] (const std::atomic<float>* p) noexcept { return load (p) * 0.01f; };
+
+    engine::EngineParams e;
+
+    for (size_t i = 0; i < oscPointers.size(); ++i)
+    {
+        const auto& s = oscPointers[i];
+        auto& o = e.osc[i];
+        o.enabled = on (s.enabled);
+        o.wave = (dsp::Wave) index (s.wave, dsp::numWaves);
+        o.octave = juce::jlimit (-2, 2, juce::roundToInt (load (s.octave)));
+        o.semitone = juce::jlimit (-12, 12, juce::roundToInt (load (s.semitone)));
+        o.fineCents = load (s.fine);
+        o.pulseWidth = fraction (s.pulseWidth);
+        o.levelDb = load (s.level);
+        o.phaseReset = on (s.phaseReset);
+    }
+
+    e.noise.enabled = on (noiseEnabled);
+    e.noise.pink = index (noiseColour, 2) == 1;
+    e.noise.levelDb = load (noiseLevel);
+
+    e.filter.enabled = on (filterEnabled);
+    e.filter.mode = (dsp::FilterMode) index (filterMode, dsp::numFilterModes);
+    e.filter.cutoffHz = load (filterCutoff);
+    e.filter.resonance = fraction (filterResonance);
+    e.filter.keyTracking = fraction (filterKeyTrack);
+    e.filter.driveDb = load (filterDrive);
+
+    const auto readEnvelope = [&] (const EnvPointers& s, engine::EnvelopeParams& env)
+    {
+        env.enabled = on (s.enabled);
+        env.attack = load (s.attack);
+        env.decay = load (s.decay);
+        env.sustain = fraction (s.sustain);
+        env.release = load (s.release);
+    };
+
+    readEnvelope (ampPointers, e.ampEnv);
+    e.ampEnv.velocitySensitivity = fraction (ampVelocity);
+    readEnvelope (filterEnvPointers, e.filterEnv);
+    e.filterEnv.amount = fraction (filterEnvAmount);
+
+    e.voicing.mode = (engine::VoiceMode) index (voicingMode, 3);
+    e.voicing.voices = juce::jlimit (1, params::maxVoices, juce::roundToInt (load (voicingVoices)));
+    e.voicing.glideSeconds = load (voicingGlide);
+    e.voicing.bendRange = load (voicingBendRange);
+
+    e.outputVolumeDb = load (outVolume);
+    return e;
 }
 
 void ScratchpadProcessor::renderRange (juce::AudioBuffer<float>& buffer, int start, int count) noexcept
@@ -157,7 +239,7 @@ juce::AudioProcessorEditor* ScratchpadProcessor::createEditor()
 
 bool ScratchpadProcessor::isPatchStarted() const
 {
-    return oscEnabled->load (std::memory_order_relaxed) >= 0.5f;
+    return oscPointers[0].enabled->load (std::memory_order_relaxed) >= 0.5f;
 }
 
 void ScratchpadProcessor::pickWave (int waveIndex)
@@ -175,7 +257,7 @@ void ScratchpadProcessor::changeWave (int waveIndex)
 {
     const auto names = params::waveNames();
     const int next = juce::jlimit (0, names.size() - 1, waveIndex);
-    const int previous = juce::jlimit (0, names.size() - 1, (int) (oscWave->load (std::memory_order_relaxed) + 0.5f));
+    const int previous = juce::jlimit (0, names.size() - 1, (int) (oscPointers[0].wave->load (std::memory_order_relaxed) + 0.5f));
 
     if (next == previous)
         return;
@@ -191,10 +273,95 @@ void ScratchpadProcessor::newPatch()
     flushPendingChanges (apvts);
     undoManager.beginNewTransaction ("New patch");
 
-    setParamValue (apvts, params::osc1Enabled, 0.0f);
-    setParamValue (apvts, params::osc1Wave, defaultOf (apvts, params::osc1Wave));
-    setParamValue (apvts, params::osc1Level, defaultOf (apvts, params::osc1Level));
-    setParamValue (apvts, params::outVolume, defaultOf (apvts, params::outVolume));
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            setParamValue (apvts, ranged->paramID.toRawUTF8(), defaultOf (apvts, ranged->paramID.toRawUTF8()));
+}
+
+namespace
+{
+    /** Every parameter that belongs to `m`, including its `enabled` flag. */
+    std::vector<const char*> parametersOf (Module m)
+    {
+        const auto oscillator = [] (size_t i)
+        {
+            const auto& o = params::osc[i];
+            return std::vector<const char*> { o.enabled, o.wave, o.octave, o.semitone, o.fine, o.pulseWidth, o.level, o.phaseReset };
+        };
+
+        switch (m)
+        {
+            case Module::osc2:      return oscillator (1);
+            case Module::osc3:      return oscillator (2);
+            case Module::noise:     return { params::noiseEnabled, params::noiseColour, params::noiseLevel };
+            case Module::filter:    return { params::filterEnabled, params::filterMode, params::filterCutoff,
+                                             params::filterResonance, params::filterKeyTrack, params::filterDrive };
+            case Module::ampEnv:    return { params::ampEnv.enabled, params::ampEnv.attack, params::ampEnv.decay,
+                                             params::ampEnv.sustain, params::ampEnv.release, params::ampEnvVelocity };
+            case Module::filterEnv: return { params::filterEnv.enabled, params::filterEnv.attack, params::filterEnv.decay,
+                                             params::filterEnv.sustain, params::filterEnv.release, params::filterEnvAmount };
+        }
+        return {};
+    }
+
+    const char* enabledOf (Module m)
+    {
+        return parametersOf (m).front();
+    }
+}
+
+juce::String ScratchpadProcessor::moduleName (Module m)
+{
+    switch (m)
+    {
+        case Module::osc2:      return "Oscillator 2";
+        case Module::osc3:      return "Oscillator 3";
+        case Module::noise:     return "Noise";
+        case Module::filter:    return "Filter";
+        case Module::ampEnv:    return "Amp Envelope";
+        case Module::filterEnv: return "Filter Envelope";
+    }
+    return {};
+}
+
+bool ScratchpadProcessor::isModulePresent (Module m) const
+{
+    // The parameter's own value, not the cached atomic: a listener told that
+    // this parameter changed runs before the atomic is updated.
+    return apvts.getParameter (enabledOf (m))->getValue() >= 0.5f;
+}
+
+void ScratchpadProcessor::addModule (Module m)
+{
+    if (isModulePresent (m))
+        return;
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction ("Added " + moduleName (m));
+
+    for (const char* id : parametersOf (m))
+        setParamValue (apvts, id, defaultOf (apvts, id));
+
+    if (m == Module::osc2 || m == Module::osc3)
+    {
+        const auto& ids = params::osc[m == Module::osc2 ? 1u : 2u];
+        setParamValue (apvts, ids.wave, oscPointers[0].wave->load (std::memory_order_relaxed));
+        setParamValue (apvts, ids.fine, params::newOscillatorFineCents);
+    }
+
+    setParamValue (apvts, enabledOf (m), 1.0f);
+}
+
+void ScratchpadProcessor::removeModule (Module m)
+{
+    if (! isModulePresent (m))
+        return;
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction ("Removed " + moduleName (m));
+
+    for (const char* id : parametersOf (m))
+        setParamValue (apvts, id, defaultOf (apvts, id));
 }
 
 void ScratchpadProcessor::getStateInformation (juce::MemoryBlock& destData)
@@ -219,6 +386,11 @@ void ScratchpadProcessor::setStateInformation (const void* data, int sizeInBytes
 
     if (result == patch::MigrationResult::invalid || result == patch::MigrationResult::tooNew)
         return;
+
+    // Parameters the saved state does not mention (a patch saved by an older
+    // version) must come up at their defaults, not at whatever they were set to.
+    for (auto* parameter : getParameters())
+        parameter->setValueNotifyingHost (parameter->getDefaultValue());
 
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
 }

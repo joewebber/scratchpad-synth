@@ -1,16 +1,33 @@
 #pragma once
 
+#include "dsp/Envelope.h"
 #include "dsp/Gate.h"
+#include "dsp/MultimodeFilter.h"
+#include "dsp/Noise.h"
 #include "dsp/Oscillator.h"
+#include "engine/BlockLevels.h"
+#include "engine/EngineParams.h"
 
-#include <cmath>
+#include <array>
 #include <cstdint>
 
 namespace scratchpad::engine
 {
 
-/** One note of the per-voice chain. In M1 that is: oscillator -> declick gate.
-    Later milestones add the mixer, filter and amp envelope between the two. */
+/** One note of the per-voice chain:
+
+        osc 1 + osc 2 + osc 3 + noise -> filter -> amp (envelope, or the 2 ms gate)
+
+    The filter is bypassed (10 ms crossfade) unless `filter.enabled`. The amp
+    stage is the amp envelope if `ampEnv.enabled` (scaled by velocity), the
+    fixed declick gate otherwise; toggling it mid-note crossfades over 10 ms.
+    The filter envelope always runs; `filterEnv.enabled` only decides whether
+    its amount is applied.
+
+    A wave-picker preview voice is a different, fixed chain: one oscillator of
+    the wave it was started with, straight through the gate.
+
+    Everything is real-time safe: no allocation, locks or logging. */
 class Voice
 {
 public:
@@ -18,123 +35,52 @@ public:
     {
         idle,      // free, produces nothing
         held,      // key is down (or the sustain pedal is holding it)
-        releasing, // key is up, gate is fading out
-        stealing   // gate is fading out so `pending` can take over the voice
+        releasing, // key is up, amp stage is fading out
+        stealing   // fading out over 5 ms so `pending` can take over the voice
     };
 
+    /** A note to start: what `start`, `retrigger` and `steal` take. */
     struct Pending
     {
         int note = -1;
         float velocity = 0.0f;
         bool preview = false;
-        dsp::Wave wave = dsp::Wave::sine;
-        bool keyReleased = false; // note-off arrived while the fade was running
+        dsp::Wave wave = dsp::Wave::sine; // preview voices only; played notes use the patch's waves
+        bool keyReleased = false;         // note-off arrived while the fade was running
     };
 
+    static constexpr int blockSize = 32; // the longest block `render` is meant for
     static constexpr double waveSwitchSeconds = 0.010;
+    static constexpr double ampSwitchSeconds = 0.010;
+    static constexpr double filterBypassSeconds = 0.010;
+    static constexpr double velocitySlewSeconds = 0.005;
 
-    void prepare (double sr) noexcept
-    {
-        sampleRate = sr;
-        gate.setSampleRate (sr);
-        waveFadeLength = std::max (1, (int) (waveSwitchSeconds * sr));
-        kill();
-    }
+    void prepare (double sr, std::uint32_t noiseSeed) noexcept;
 
-    void kill() noexcept
-    {
-        state = State::idle;
-        hasPending = false;
-        sustainPending = false;
-        gate.reset();
-    }
+    /** Silences everything and forgets the last pitch. */
+    void kill() noexcept;
+
+    /** Seconds a new note takes to slide from this voice's last pitch. */
+    void setGlideSeconds (double seconds) noexcept { glideSeconds = seconds; }
 
     /** Starts `n` immediately. The voice must be idle. */
-    void start (int n, float vel, bool isPreview, dsp::Wave w, double bendSemitones, bool keyAlreadyReleased = false) noexcept
-    {
-        note = n;
-        velocity = vel;
-        preview = isPreview;
-        wave = w;
-        waveFadeRemaining = 0;
-        sustainPending = keyAlreadyReleased;
-        hasPending = false;
-        osc.reset (0.0); // phase reset on note, on by default in the brief
-        increment = incrementFor (bendSemitones);
-        osc.setIncrement (increment);
-        gate.open();
-        state = State::held;
-    }
+    void start (const Pending& n) noexcept;
 
-    /** Fades out then starts `p`; used when every voice is busy. */
-    void steal (const Pending& p) noexcept
-    {
-        pending = p;
-        hasPending = true;
-        gate.close (dsp::Gate::stealSeconds);
-        state = State::stealing;
-    }
+    /** A new note on a voice that is already sounding (mono and legato):
+        glides to the new pitch without touching the oscillator phase. With
+        `restartEnvelopes` the envelopes attack again from where they are. */
+    void retrigger (const Pending& n, bool restartEnvelopes) noexcept;
 
-    void release (std::uint64_t order) noexcept
-    {
-        sustainPending = false;
-        releaseOrder = order;
-        state = State::releasing;
-        gate.close();
-    }
+    /** Fades out over 5 ms, then starts `p`; used when every voice is busy.
+        Calling it again while the fade runs only replaces the pending note. */
+    void steal (const Pending& p) noexcept;
 
-    /** Adds this voice's output to `out`. `currentWave` is the patch's wave;
-        preview voices ignore it and keep the wave they were started with. */
-    void render (float* out, int numSamples, dsp::Wave currentWave, double bendSemitones) noexcept
-    {
-        if (state == State::idle)
-            return;
+    void release (std::uint64_t order) noexcept;
 
-        if (! preview && currentWave != wave)
-        {
-            waveFrom = wave;
-            wave = currentWave;
-            waveFadeRemaining = waveFadeLength;
-        }
-
-        const double targetIncrement = incrementFor (bendSemitones);
-        double incrementStep = (targetIncrement - increment) / (double) numSamples;
-
-        for (int i = 0; i < numSamples; ++i)
-        {
-            increment += incrementStep;
-            osc.setIncrement (increment);
-
-            float s;
-            if (waveFadeRemaining > 0)
-            {
-                const float x = 1.0f - (float) waveFadeRemaining / (float) waveFadeLength;
-                s = osc.process (waveFrom, wave, x);
-                --waveFadeRemaining;
-            }
-            else
-            {
-                s = osc.process (wave);
-            }
-
-            out[i] += s * gate.next();
-
-            if (gate.isClosedAndSilent() && (state == State::releasing || state == State::stealing))
-            {
-                if (hasPending)
-                {
-                    const Pending p = pending;
-                    start (p.note, p.velocity, p.preview, p.wave, bendSemitones, p.keyReleased);
-                    incrementStep = 0.0;
-                }
-                else
-                {
-                    state = State::idle;
-                    return;
-                }
-            }
-        }
-    }
+    /** Adds this voice's output to `out`. `levels` are valid for exactly this
+        block, which is meant to be at most `blockSize` samples. `bendSemitones`
+        is the pitch bend already scaled by its range. */
+    void render (float* out, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones) noexcept;
 
     bool isActive() const noexcept { return state != State::idle; }
 
@@ -148,21 +94,70 @@ public:
     bool hasPending = false;
     Pending pending;
 
-    dsp::Wave wave = dsp::Wave::sine;
-    dsp::Gate gate;
-
 private:
-    double incrementFor (double bendSemitones) const noexcept
+    struct OscState
     {
-        const double hz = 440.0 * std::pow (2.0, ((double) note - 69.0 + bendSemitones) / 12.0);
-        return hz / sampleRate;
-    }
+        dsp::Oscillator osc;
+        dsp::Wave wave = dsp::Wave::sine;
+        dsp::Wave waveFrom = dsp::Wave::sine;
+        int fadeRemaining = 0;
+        double increment = 0.0;
+        float pulseWidth = 0.5f;
+        bool running = false; // false while the oscillator is disabled, so it restarts cleanly
+    };
 
-    dsp::Oscillator osc;
-    dsp::Wave waveFrom = dsp::Wave::sine;
-    int waveFadeRemaining = 0;
+    struct EnvelopeCache
+    {
+        float attack = -1.0f, decay = -1.0f, sustain = -1.0f, release = -1.0f; // -1: never set
+    };
+
+    void init (const EngineParams& p) noexcept;
+    void finishSteal() noexcept;
+    void silence() noexcept;
+    void renderPlayed (float* out, int numSamples, const EngineParams& p, const BlockLevels& lv, double bend) noexcept;
+    void renderPreview (float* out, int numSamples, const BlockLevels& lv, double bend) noexcept;
+
+    void glideTo (double target) noexcept;
+    double advanceGlide (int numSamples) noexcept;
+    double incrementFor (const OscParams& o, double pitch, double bend) const noexcept;
+    float velocityGain (const EngineParams& p) const noexcept;
+    bool ampSilent() const noexcept;
+    void applyStealFade (float& amp) noexcept;
+    /** True once the voice has nothing more to output this block: it went idle, or its steal fade finished. */
+    bool ended() noexcept;
+
+    static void syncEnvelope (dsp::Envelope& env, EnvelopeCache& cache, const EnvelopeParams& e) noexcept;
+
+    std::array<OscState, 3> oscs;
+    dsp::Noise noise;
+    dsp::MultimodeFilter filter;
+    dsp::Envelope ampEnv, filterEnv;
+    dsp::Gate gate;
+    EnvelopeCache ampCache, filterCache;
+    dsp::Wave previewWave = dsp::Wave::sine;
+
+    // Glide runs in the semitone domain, from the last note this voice played.
+    double glidePitch = 60.0;
+    double glideTarget = 60.0;
+    double glideStep = 0.0;
+    double glideSeconds = 0.0;
+    int glideRemaining = 0;
+    bool hasPlayed = false;
+
+    float filterEnvLevel = 0.0f; // filter envelope at the end of the last block
+    float ampMix = 0.0f;         // 0 = gate shapes the note, 1 = amp envelope does
+    float filterWet = 0.0f;
+    float velocityNow = 1.0f;
+    float stealGain = 1.0f;
+    bool filterLive = false;     // the filter has been fed since it was last reset
+    bool needsInit = false;
+    int ampHold = 0;             // samples the amp stage still waits for the oscillators' own delay
+
     int waveFadeLength = 480;
-    double increment = 0.0;
+    float ampMixStep = 0.01f;
+    float filterWetStep = 0.01f;
+    float velocityStep = 0.01f;
+    float stealStep = 0.01f;
     double sampleRate = 48000.0;
 };
 

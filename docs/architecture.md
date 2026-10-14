@@ -1,11 +1,11 @@
-# Architecture notes (M1)
+# Architecture notes (M2)
 
 ## Shape
 
 ```
 MIDI in ──┐
           ├─> ScratchpadProcessor::processBlock ──> SynthEngine ──> VoiceAllocator ──> Voice[16]
-UI events ┘      (splits the block at MIDI timestamps)                                  oscillator -> gate
+UI events ┘      (splits the block at MIDI timestamps)       osc 1-3 + noise -> filter -> amp (envelope or gate)
 ```
 
 - `ScratchpadProcessor` owns the `AudioProcessorValueTreeState` and the `UndoManager`.
@@ -15,8 +15,9 @@ UI events ┘      (splits the block at MIDI timestamps)                        
   objects, so tests drive it directly.
 - `VoiceAllocator` is custom, not `juce::Synthesiser`. Steal order: released voices
   (oldest release first), then held voices (oldest note first). A stolen voice fades
-  over 5 ms before the new note starts on it. 8 voices are active in M1; 16 are
-  pre-allocated.
+  over 5 ms before the new note starts on it. `voicing.voices` (default 8) are active
+  in poly mode; 16 are pre-allocated. Mono and legato use one voice and a
+  last-note-priority stack instead.
 - `ScratchpadCore` (a static library) holds everything except `PluginEntry.cpp`, which
   is the only file in the plugin target. Tests link the same library.
 
@@ -50,6 +51,45 @@ Switching wave while a note is held crossfades the two shapes at the same phase 
 10 ms. A shape that was not running is primed from the phase history first, so the
 crossfade does not start with a gap.
 
+## Voice chain (M2)
+
+Per voice: up to three oscillators and a noise source are summed, then the filter, then
+the amp stage. `EngineParams` (plain values in the engine's units) is built once per
+block by the processor from cached parameter pointers.
+
+- **Smoothing.** The engine owns one 20 ms smoother per patch-wide value (oscillator
+  and noise gains, cutoff in log2, resonance, drive, filter-envelope amount, output
+  volume) so every voice follows the same curve. It hands each voice the value at the
+  start and end of every 32-sample sub-block (`BlockLevels`), and the voice
+  interpolates linearly per sample. Pitch is interpolated the same way. Disabling a
+  module ramps its gain to zero; it never steps.
+- **Filter.** Cutoff for a voice is `log2(cutoff) + keyTracking * (note - 60) / 12 +
+  filterEnvAmount * 6 * envelope`. LP 12, HP 12 and BP 12 are one TPT state-variable
+  filter; LP 24 is a four-pole TPT ladder with `tanh` in the feedback. Switching mode
+  crossfades the outgoing and incoming filters over 10 ms. Resonance 1.0 rings forever
+  by design: the ladder's feedback goes slightly past 4, and the SVF's damping goes
+  slightly negative with a term that grows with the band-pass level, so the ringing
+  settles at a steady level at every cutoff. Bypassing the filter is a 10 ms wet fade.
+- **Envelopes.** Exponential ADSR. Each segment aims a little past its destination
+  (`Envelope.h`) so it arrives in finite time: the attack reaches 1.0 after the attack
+  time, decay reaches sustain after the decay time, and release falls from full scale to
+  silence (below -80 dB) in the release time. Retriggering starts from the current level.
+  The amp and filter envelopes always run inside a voice; `enabled` decides whether the
+  amp stage uses the envelope (crossfaded with the gate over 10 ms) and whether the
+  filter envelope's amount is applied.
+- **Voicing.** Glide is a linear ramp in semitones over the glide time. Poly voices
+  glide from the last note they played; mono and legato glide from the sounding pitch.
+  Mono retriggers on every note and on returning to a held note; legato retriggers only
+  when no key was held. Changing voicing mode releases the played notes.
+- **Latency.** The oscillator runs 16 samples late, and a fresh voice holds its amp
+  stage closed for the same 16 samples so the attack is not eaten.
+- **Modules.** `plugin::Module` names the six things a user adds. `addModule` and
+  `removeModule` reset the module's parameters and flip its `enabled` flag in one named
+  undo step ("Added Filter"). `newPatch` resets every parameter.
+
+Measured: eight voices with every module on cost about 2% of one core at 48 kHz in
+256-sample blocks (the brief's target is under 15%).
+
 ## Gate
 
 Until an Amp Envelope exists, a fixed linear 2 ms ramp gates each voice. It can be
@@ -69,12 +109,14 @@ audio path.
 - `ParameterAttachment` callbacks use the value they are handed. JUCE calls listeners
   last-added-first, so the APVTS raw value can still be the old one inside a callback.
 - Saved state is the tree as XML with `schemaVersion`. `patch::migrate` upgrades older
-  versions in place and refuses newer ones.
+  versions in place and refuses newer ones. Schema 2 (M2) only adds parameters, so a
+  schema 1 state migrates by restamping; `setStateInformation` resets every parameter to
+  its default first, so parameters an older state does not mention come up at defaults.
 
-## Not in M1
+## Not in M2
 
-Filter, envelopes, LFOs and modulation, mod wheel and aftertouch destinations (both
+LFOs and modulation, oscillator sync, ring modulation, FM and unison, mod wheel and aftertouch destinations (both
 are parsed from MIDI but nothing listens yet), effects, the safety limiter, the
-Explain panel and scope, patch save and open, resizing, the light theme switch and
+Explain panel and scope, live module visualisations, patch save and open, resizing, the light theme switch and
 Steinberg validator in CI. With no limiter yet, eight voices at full level can exceed
 0 dBFS: the oscillator defaults to −6 dB and the output meter shows it.

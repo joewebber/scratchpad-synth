@@ -121,7 +121,7 @@ void ScratchpadEditor::resized()
 
     picker.setBounds (area);
 
-    constexpr int performanceHeight = 170;
+    constexpr int performanceHeight = 108;
     performanceBar.setBounds (area.removeFromBottom (performanceHeight));
     area.removeFromBottom (10);
     patchView.setBounds (area);

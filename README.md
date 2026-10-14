@@ -5,10 +5,12 @@ It ships as a standalone app and a VST3 plugin from one codebase, and it has no
 presets: every patch starts with the user picking a single waveform and grows
 only as they add modules.
 
-This repository is at **M1 (Skeleton)**: wave picker, one oscillator through a
-click-free gate, MIDI and computer-keyboard input, on-screen keyboard, tests and
-CI. Later milestones (filter, envelopes, modulation, the learning layer, effects)
-are described in the design and technical brief.
+This repository is at **M2 (Subtractive voice)**: the wave picker and one oscillator
+from M1, plus two more oscillators, noise, a multimode filter (LP 24, LP 12, HP 12,
+BP 12), amp and filter envelopes, and poly, mono and legato voicing with glide. Each
+module is added from the signal-chain view (a dashed slot, or "+ Add module") and
+removed again with its x. Later milestones (modulation, the learning layer, oscillator
+extras, effects) are described in the design and technical brief.
 
 ## Build
 
@@ -50,9 +52,10 @@ message is harmless: WSL has no MIDI.
 ctest --test-dir build --output-on-failure
 ```
 
-The Catch2 suite covers oscillator pitch and aliasing, the declick gate, voice
-allocation and stealing order, engine behaviour (MIDI, pitch bend, sustain,
-clicks), and state round-trip and migration.
+The Catch2 suite covers oscillator pitch and aliasing, the declick gate, noise,
+envelope timing, filter response and self-oscillation, voice allocation and stealing
+order, voicing modes and glide, the per-voice chain, a click-free bar for note on/off,
+stealing, mode and module changes, and state round-trip and migration.
 
 ### Plugin validation
 
@@ -79,9 +82,9 @@ audio device is open, the top bar says so.
 ```
 /CMakeLists.txt
 /source/plugin    PluginProcessor, PluginEditor, PluginEntry, parameters, state and migration
-/source/engine    SynthEngine, VoiceAllocator, Voice
-/source/dsp       Oscillator, BlepTable, Gate
-/source/ui        LookAndFeel, Theme, Typography, Neumorph (shadows), Knob, Meter, TopBar, WavePicker, PatchView, PerformanceBar
+/source/engine    SynthEngine, VoiceAllocator, Voice, EngineParams, BlockLevels
+/source/dsp       Oscillator, BlepTable, Gate, Noise, Envelope, SvfFilter, LadderFilter, MultimodeFilter
+/source/ui        LookAndFeel, Theme, Typography, Neumorph (shadows), Knob, Meter, TopBar, WavePicker, PatchView, ModuleCards, PerformanceBar
 /assets/fonts     Jost (Light, Book, Medium), SIL OFL 1.1, embedded in the binary
 /tests            Catch2 tests
 /tools            ParameterList: prints the parameter table
