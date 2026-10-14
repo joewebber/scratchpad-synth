@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Standalone, VST3, tests)
+        run: cmake --build build
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Parameter list is up to date
+        shell: bash
+        run: |
+          ./build/ScratchpadParameterList.exe > parameters.generated.md
+          diff -u --strip-trailing-cr <(tail -n +4 docs/parameters.md) parameters.generated.md
+
+      - name: Download pluginval
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+
+      - name: pluginval (strictness 5)
+        shell: pwsh
+        run: |
+          ./pluginval/pluginval.exe --strictness-level 5 --validate-in-process --skip-gui-tests `
+            "build/ScratchpadSynth_artefacts/Release/VST3/Scratchpad Synth.vst3"
+
+      - name: Upload standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScratchpadSynth-Standalone-Windows
+          path: build/ScratchpadSynth_artefacts/Release/Standalone/
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScratchpadSynth-VST3-Windows
+          path: build/ScratchpadSynth_artefacts/Release/VST3/
