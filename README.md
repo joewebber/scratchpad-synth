@@ -33,6 +33,17 @@ On Linux the code builds and the tests run, but only Windows is a supported targ
 for v1. JUCE needs `libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev
 libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev` there.
 
+### Sound under WSL
+
+JUCE on Linux only speaks ALSA, and WSL has no sound card, so ALSA's default device has to be routed to
+WSLg's PulseAudio. Without root: download `libasound2-plugins`, `libpulse0`, `libsndfile1`, `libasyncns0`,
+`libflac8`, `libvorbis0a`, `libvorbisenc2`, `libopus0` and `libogg0` with `apt-get download`, `dpkg -x` them,
+copy the resulting `usr/lib/x86_64-linux-gnu/*` into `~/.local/alsa-pulse`, and point `~/.asoundrc` at the
+two `alsa-lib/libasound_module_{pcm,ctl}_pulse.so` files (`pcm.!default { type pulse }`, same for `ctl`).
+Then start the app with `tools/run-wsl.sh`, which sets `LD_LIBRARY_PATH` for those libraries. With root,
+`sudo apt install libasound2-plugins` and a two-line `~/.asoundrc` is enough. The "no `/dev/snd/seq`"
+message is harmless: WSL has no MIDI.
+
 ### Tests
 
 ```
