@@ -1,4 +1,4 @@
-# Architecture notes (M3)
+# Architecture notes (M4)
 
 ## Shape
 
@@ -110,7 +110,7 @@ audio path.
 - `ParameterAttachment` callbacks use the value they are handed. JUCE calls listeners
   last-added-first, so the APVTS raw value can still be the old one inside a callback.
 - Saved state is the tree as XML with `schemaVersion`. `patch::migrate` upgrades older
-  versions in place and refuses newer ones. Schemas 2 (M2) and 3 (M3) only add parameters, so
+  versions in place and refuses newer ones. Schemas 2 (M2), 3 (M3) and 4 (M4) only add parameters, so
   an older state migrates by restamping; `setStateInformation` resets every parameter to
   its default first, so parameters an older state does not mention come up at defaults.
 
@@ -165,12 +165,41 @@ Knobs and dials that modulation can reach register with it as `ModTarget`s and d
 PatchView: it draws the cable and lights valid knobs during a drag, takes the click on a knob while a handle
 is armed, and owns the arcs at rest (drag one to change the amount, right-click to remove).
 
-## Not in M3
+## Learning layer (M4)
 
-Oscillator sync, ring modulation, FM and unison, effects, the safety limiter, tempo-synced LFO rates, the
-Explain panel and scope, live envelope and filter-curve visualisations, bypass and solo, the patch
-description, patch save and open, resizing, the light theme switch and Steinberg validator in CI.
-Aftertouch has no on-screen control; it arrives from MIDI channel pressure.
+- **Copy.** `source/content/explanations.json` (keyed by parameter ID and module key: `what`, `listenFor`,
+  `tryThis`, `glossaryTerms`, plus a concept paragraph per module) and `glossary.json` are embedded through
+  BinaryData and loaded once by `content::Content`. A test walks every parameter the processor registers and
+  fails if one has no copy, so adding a parameter without wording is a test failure; another fails on copy for
+  a parameter that does not exist or a glossary link that does not resolve.
+- **Explain panel.** Controls name themselves with an `explainId` component property. Hover or keyboard focus
+  shows that entry; a card's `?` pins the module's concept explainer until the pointer lands on a control.
+  Entries longer than the body scroll with the wheel (a fade marks more below). The glossary lists every term.
+- **Bypass and solo.** `<module>.bypass` for every module and `<module>.solo` for the four sources are
+  non-automatable parameters. The processor applies them when it builds the `EngineParams` for a block, so
+  the engine only sees what is audible: a bypassed or muted module is simply absent, and the filter bypass is
+  the same 10 ms fade as removing it. Soloing a source un-solos the others in the same undo step.
+- **Patch description.** `describe (EngineParams)` is a pure function of the audible patch; reference patches
+  are pinned in `PatchDescriptionTests`.
+- **Scope.** The engine writes the selected tap (after the oscillators, after the filter, after the amp) into
+  an 8,192-sample `AbstractFifo` once per sub-block; the amp tap is the final mix. The "FX" tap is the amp tap
+  until effects exist (M5). The editor drains it at 30 Hz and runs a 2,048-point Hann FFT on the message
+  thread. The tap is a view, saved nowhere. `ScopeTests` checks that the spectrum at the filter tap loses its
+  harmonics as the cutoff closes and that the oscillator tap does not.
+- **Visualisations.** The oscillator card draws its wave; `FilterCurve` is computed from the parameter
+  values, not measured; `EnvelopeDisplay` draws the ADSR with a dot for the newest note; the LFO card draws
+  its shape with a moving dot (all from `LiveModulation`).
+- **Suggested next module.** `plugin::suggestNext` walks the path amp envelope, oscillator 2, filter, filter
+  envelope, LFO 1, noise, oscillator 3, LFO 2 and returns the first module not yet present, with a sentence
+  of reason. The Add menu shows it first, in an accent block; its dashed slot on the canvas gets an accent
+  outline and the reason as tooltip. Nothing is locked.
+
+## Not in M4
+
+Oscillator sync, ring modulation, FM and unison, the anti-aliasing switch, effects (so the scope's FX tap
+repeats the amp tap), the safety limiter, tempo-synced LFO rates, patch save and open, resizing, the light
+theme switch, the reduced-motion setting and Steinberg validator in CI. Aftertouch has no on-screen control; it
+arrives from MIDI channel pressure.
 
 With no limiter yet, eight voices at full level can exceed 0 dBFS: the oscillator defaults to −6 dB and the
 output meter shows it.

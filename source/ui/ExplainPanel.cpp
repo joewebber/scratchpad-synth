@@ -12,7 +12,7 @@ namespace
 {
     constexpr int pad = 14;
     constexpr int patchHeight = 112;
-    constexpr int scopeHeight = 232;
+    constexpr int scopeHeight = 262;
     constexpr float lineHeight = 16.0f;
 
     bool isModuleKey (const juce::String& id) { return ! id.containsChar ('.'); }
@@ -109,6 +109,9 @@ void ExplainPanel::show (const juce::String& id, bool pin)
 
     if (content.param (id) == nullptr && content.module (id) == nullptr)
         return;
+
+    if (id != shownId)
+        entryScroll = 0.0f;
 
     shownId = id;
     pinned = pin;
@@ -253,6 +256,7 @@ void ExplainPanel::paintEntry (juce::Graphics& g, juce::Rectangle<int> bounds)
     const auto moduleKey = isModule ? shownId : entry->module;
     const auto* module = content.module (moduleKey);
     auto area = bounds.toFloat();
+    const auto top = area.getY();
 
     // Kicker: a dot in the module's family colour, then where this sits.
     auto kicker = area.removeFromTop (16.0f);
@@ -273,6 +277,13 @@ void ExplainPanel::paintEntry (juce::Graphics& g, juce::Rectangle<int> bounds)
     g.setFont (uiFont (isModule ? 22.0f : 20.0f, Weight::light));
     g.drawText (entry->title, area.removeFromTop (28.0f), juce::Justification::centredLeft, true);
     area.removeFromTop (8.0f);
+    const auto headerHeight = area.getY() - top;
+
+    // Long entries scroll inside the body rather than running into the patch sentence below.
+    g.saveState();
+    g.reduceClipRegion (bounds.withTrimmedTop ((int) headerHeight).expanded (4, 0));
+    area.translate (0.0f, -entryScroll);
+    const float contentTop = area.getY();
 
     if (isModule && entry->explainer.isNotEmpty())
         drawParagraph (g, {}, entry->explainer, area, p.ink2);
@@ -281,6 +292,18 @@ void ExplainPanel::paintEntry (juce::Graphics& g, juce::Rectangle<int> bounds)
     drawParagraph (g, "Listen for", entry->listenFor, area, p.ink);
     drawParagraph (g, "Try this", entry->tryThis, area, p.ink);
     drawLinks (g, entry->glossaryTerms, area);
+    entryMaxScroll = std::max (0.0f, area.getY() - contentTop - ((float) bounds.getHeight() - headerHeight));
+
+    // More below: fade the last lines out so it reads as scrollable.
+    if (entryScroll < entryMaxScroll - 1.0f)
+    {
+        const auto fade = bounds.toFloat().removeFromBottom (28.0f).expanded (4.0f, 0.0f);
+        g.setGradientFill (juce::ColourGradient (p.surface.withAlpha (0.0f), fade.getX(), fade.getY(),
+                                                 p.surface, fade.getX(), fade.getBottom(), false));
+        g.fillRect (fade);
+    }
+
+    g.restoreState();
 }
 
 void ExplainPanel::paintGlossary (juce::Graphics& g, juce::Rectangle<int> bounds)
@@ -416,7 +439,7 @@ void ExplainPanel::mouseDown (const juce::MouseEvent& e)
     }
 
     for (const auto& l : links)
-        if (l.area.contains (e.getPosition()))
+        if (l.area.contains (e.getPosition()) && (glossaryOpen || bodyArea.contains (e.getPosition())))
         {
             showGlossary (l.glossaryId);
             return;
@@ -425,11 +448,19 @@ void ExplainPanel::mouseDown (const juce::MouseEvent& e)
 
 void ExplainPanel::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
 {
-    if (! glossaryOpen || glossaryTerm.isNotEmpty())
+    if (glossaryOpen && glossaryTerm.isNotEmpty())
         return;
 
-    const float visible = (float) (bodyArea.withBottom (patchArea.getBottom()).getHeight() - 22);
-    glossaryScroll = juce::jlimit (0.0f, std::max (0.0f, glossaryContentHeight - visible), glossaryScroll - wheel.deltaY * 140.0f);
+    if (glossaryOpen)
+    {
+        const float visible = (float) (bodyArea.withBottom (patchArea.getBottom()).getHeight() - 22);
+        glossaryScroll = juce::jlimit (0.0f, std::max (0.0f, glossaryContentHeight - visible), glossaryScroll - wheel.deltaY * 140.0f);
+    }
+    else
+    {
+        entryScroll = juce::jlimit (0.0f, entryMaxScroll, entryScroll - wheel.deltaY * 140.0f);
+    }
+
     repaint();
 }
 

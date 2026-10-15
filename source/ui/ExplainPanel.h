@@ -75,6 +75,7 @@ private:
     juce::String glossaryTerm; // empty: the list
     float glossaryScroll = 0.0f;
     float glossaryContentHeight = 0.0f;
+    float entryScroll = 0.0f, entryMaxScroll = 0.0f;
     juce::String patchText;
 
     std::vector<Link> links;

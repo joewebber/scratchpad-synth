@@ -5,12 +5,14 @@ It ships as a standalone app and a VST3 plugin from one codebase, and it has no
 presets: every patch starts with the user picking a single waveform and grows
 only as they add modules.
 
-This repository is at **M3 (Modulation and real UI)**: the wave picker and one oscillator
-from M1, two more oscillators, noise, a multimode filter (LP 24, LP 12, HP 12, BP 12), amp
-and filter envelopes and poly, mono and legato voicing with glide from M2, and now two LFOs
-and eight modulation connections. Each module is added from the signal-chain view (a dashed
-slot, or "+ Add module") and removed again with its x. Later milestones (the learning layer,
-oscillator extras, effects) are described in the design and technical brief.
+This repository is at **M4 (Learning layer)**: everything from M1 to M3 (wave picker, three
+oscillators, noise, multimode filter, envelopes, poly, mono and legato voicing with glide, two LFOs
+and eight modulation connections), plus the Explain panel with a glossary, a signal scope with
+tap points, live pictures on the oscillators, filter, envelopes and LFOs, bypass and solo on every
+module, a plain-English description of the patch, and a suggested next module in the Add menu.
+Each module is added from the signal-chain view (a dashed slot, or "+ Add module") and removed
+again with its x. Later milestones (oscillator extras, effects, saving) are described in the design
+and technical brief.
 
 ## Build
 
@@ -56,7 +58,8 @@ The Catch2 suite covers oscillator pitch and aliasing, the declick gate, noise,
 envelope timing, filter response and self-oscillation, voice allocation and stealing
 order, voicing modes and glide, the per-voice chain, a click-free bar for note on/off,
 stealing, mode and module changes, LFO shapes and rates, every modulation destination
-and source, and state round-trip and migration, including the connection slots.
+and source, copy for every parameter, `describe()` on reference patches, the next-module
+suggestion, the scope taps, and state round-trip and migration, including the connection slots.
 
 ### Plugin validation
 
@@ -79,6 +82,10 @@ CI runs this on every push.
    Drag the arc up or down to change the amount, right-click it to remove the connection.
    Dropping on a **Fine** knob asks whether to move that oscillator or all of them (vibrato).
    The strip at the bottom lists all eight slots; drag a row sideways to change its amount.
+5. Hover or tab to any control and the Explain panel says what it does, what to listen for and
+   something to try. Words in its **Words used** row open the glossary. Use **B** and **S** on a
+   card to bypass or solo it, and pick where the scope listens (Osc, Filter, Amp) to watch the
+   harmonics fall as you close the cutoff. The Add menu puts the suggested next module first.
 
 In the standalone app, **Settings** opens the audio and MIDI device dialog. If no
 audio device is open, the top bar says so.
@@ -87,11 +94,13 @@ audio device is open, the top bar says so.
 
 ```
 /CMakeLists.txt
-/source/plugin    PluginProcessor, PluginEditor, PluginEntry, parameters, state and migration
+/source/plugin    PluginProcessor, PluginEditor, PluginEntry, parameters, state and migration, PatchDescription, Suggestion
 /source/engine    SynthEngine, VoiceAllocator, Voice, EngineParams, BlockLevels, Modulation
+/source/content   explanations.json and glossary.json (the copy), loaded through BinaryData
 /source/dsp       Oscillator, BlepTable, Gate, Noise, Envelope, Lfo, SvfFilter, LadderFilter, MultimodeFilter
 /source/ui        LookAndFeel, Theme, Typography, Neumorph (shadows), Knob, ModDial, Meter, TopBar, WavePicker, PatchView,
-                  ModuleCards, ModulationStrip (LFO cards, handles, slots), ModulationModel, ModArcs, ModOverlay, PerformanceBar
+                  ModuleCards, ModulationStrip (LFO cards, handles, slots), ModulationModel, ModArcs, ModOverlay, PerformanceBar,
+                  ExplainPanel, Scope, Visualisers (filter curve, envelope display)
 /assets/fonts     Jost (Light, Book, Medium), SIL OFL 1.1, embedded in the binary
 /tests            Catch2 tests
 /tools            ParameterList: prints the parameter table

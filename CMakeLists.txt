@@ -123,6 +123,3 @@ if(SCRATCHPAD_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-add_executable(ScratchpadSnapshot tools/Snapshot.cpp)
-target_compile_definitions(ScratchpadSnapshot PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
-target_link_libraries(ScratchpadSnapshot PRIVATE ScratchpadCore juce::juce_recommended_config_flags)

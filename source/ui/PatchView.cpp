@@ -1,6 +1,7 @@
 #include "ui/PatchView.h"
 
 #include "plugin/Parameters.h"
+#include "plugin/Suggestion.h"
 
 #include <cmath>
 
@@ -64,6 +65,43 @@ namespace
         }
         return params::osc[1].enabled;
     }
+
+    /** The suggested module in the Add menu: its name over the one-sentence reason. */
+    class SuggestedMenuItem final : public juce::PopupMenu::CustomComponent
+    {
+    public:
+        SuggestedMenuItem (juce::String nameText, juce::String reasonText)
+            : CustomComponent (true), name (std::move (nameText)), reason (std::move (reasonText)) {}
+
+        void getIdealSize (int& width, int& height) override
+        {
+            width = 280;
+            juce::AttributedString text;
+            text.append (reason, uiFont (12.0f));
+            juce::TextLayout layout;
+            layout.createLayout (text, (float) width - 24.0f);
+            height = 30 + (int) std::ceil (layout.getHeight());
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            const auto& p = paletteOf (*this);
+            auto area = getLocalBounds().toFloat().reduced (4.0f, 2.0f);
+            g.setColour (isItemHighlighted() ? p.accent : p.accentSoft);
+            g.fillRoundedRectangle (area, 8.0f);
+
+            const auto ink = isItemHighlighted() ? p.onAccent : p.ink;
+            area = area.reduced (10.0f, 4.0f);
+            g.setColour (ink);
+            g.setFont (uiFont (13.0f, Weight::medium));
+            g.drawText (name, area.removeFromTop (20.0f), juce::Justification::centredLeft, true);
+            g.setFont (uiFont (12.0f));
+            g.drawFittedText (reason, area.toNearestInt(), juce::Justification::topLeft, 4);
+        }
+
+    private:
+        juce::String name, reason;
+    };
 }
 
 //==============================================================================
@@ -162,9 +200,36 @@ juce::String PatchView::listenHint() const
 void PatchView::showAddMenu()
 {
     juce::PopupMenu menu;
-    for (size_t i = 0; i < plugin::allModules.size(); ++i)
-        if (! present (plugin::allModules[i]))
-            menu.addItem ((int) i + 1, plugin::ScratchpadProcessor::moduleName (plugin::allModules[i]));
+    const auto suggestion = plugin::suggestNext (presence());
+
+    if (suggestion)
+    {
+        const auto index = (int) suggestion->module;
+        menu.addSectionHeader ("Suggested next");
+        menu.addCustomItem (index + 1, std::make_unique<SuggestedMenuItem> (plugin::ScratchpadProcessor::moduleName (suggestion->module),
+                                                                           suggestion->reason));
+    }
+
+    const struct { const char* heading; std::initializer_list<Module> modules; } groups[] = {
+        { "Sources", { Module::osc2, Module::osc3, Module::noise } },
+        { "Shape", { Module::filter, Module::ampEnv, Module::filterEnv } },
+        { "Movement", { Module::lfo1, Module::lfo2 } }
+    };
+
+    for (const auto& group : groups)
+    {
+        bool headed = false;
+        for (const auto m : group.modules)
+        {
+            if (present (m) || (suggestion && suggestion->module == m))
+                continue;
+
+            if (! std::exchange (headed, true))
+                menu.addSectionHeader (group.heading);
+
+            menu.addItem ((int) m + 1, plugin::ScratchpadProcessor::moduleName (m));
+        }
+    }
 
     juce::Component::SafePointer<PatchView> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton).withMinimumWidth (addButton.getWidth()),
@@ -173,6 +238,14 @@ void PatchView::showAddMenu()
                             if (safe != nullptr && result >= 1 && result <= (int) plugin::allModules.size())
                                 safe->processor.addModule (plugin::allModules[(size_t) result - 1]);
                         });
+}
+
+plugin::Presence PatchView::presence() const
+{
+    plugin::Presence result {};
+    for (const auto m : plugin::allModules)
+        result[(size_t) m] = present (m);
+    return result;
 }
 
 void PatchView::refreshModules()
@@ -197,6 +270,16 @@ void PatchView::refreshModules()
     lfo1Slot.setVisible (! hasLfo1);
     lfo2Card.setVisible (hasLfo2);
     lfo2Slot.setVisible (! hasLfo2);
+
+    // The palette's advice: the dashed slot of the suggested module, if it has one on screen.
+    const auto suggestion = plugin::suggestNext (presence());
+    const struct { SlotButton* slot; Module which; } suggestable[] = {
+        { &osc2Slot, Module::osc2 }, { &osc3Slot, Module::osc3 }, { &noiseSlot, Module::noise },
+        { &filterSlot, Module::filter }, { &filterEnvSlot, Module::filterEnv }, { &ampEnvSlot, Module::ampEnv },
+        { &lfo1Slot, Module::lfo1 }, { &lfo2Slot, Module::lfo2 }
+    };
+    for (const auto& s : suggestable)
+        s.slot->setSuggested (suggestion && suggestion->module == s.which, suggestion ? suggestion->reason : "");
 
     sourcesPanel.refreshPresence();
 

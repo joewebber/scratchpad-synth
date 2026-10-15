@@ -1,6 +1,7 @@
 #pragma once
 
 #include "plugin/PluginProcessor.h"
+#include "plugin/Suggestion.h"
 #include "ui/ChoiceSegments.h"
 #include "ui/Knob.h"
 #include "ui/ModOverlay.h"
@@ -46,6 +47,7 @@ private:
     void showAddMenu();
     juce::String listenHint() const;
     bool present (plugin::Module m) const { return processor.isModulePresent (m); }
+    plugin::Presence presence() const;
     void statusChanged() override { repaint (listenPill); }
     void modulationChanged() override { repaint (listenPill); }
 

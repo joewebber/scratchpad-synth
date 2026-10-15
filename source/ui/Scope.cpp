@@ -143,11 +143,11 @@ juce::Colour Scope::tapColour (const Palette& p) const
 void Scope::resized()
 {
     auto area = getLocalBounds();
-    auto header = area.removeFromTop (24);
-    tapButtons.setBounds (header.removeFromLeft (170));
-    modeButtons.setBounds (header.removeFromRight (120));
+    tapButtons.setBounds (area.removeFromTop (24));
+    area.removeFromTop (4);
+    modeButtons.setBounds (area.removeFromTop (24).removeFromLeft (150));
     area.removeFromTop (6);
-    captionArea = area.removeFromBottom (32);
+    captionArea = area.removeFromBottom (48);
     area.removeFromBottom (4);
     display = area;
 }

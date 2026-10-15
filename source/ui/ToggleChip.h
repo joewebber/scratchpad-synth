@@ -76,6 +76,21 @@ public:
         setPaintingIsUnclipped (true);
     }
 
+    /** Marks this slot as the palette's suggested next module: an accent outline, with the reason as its
+        tooltip and accessible description. */
+    void setSuggested (bool shouldSuggest, const juce::String& reason = {})
+    {
+        if (suggested == shouldSuggest && getTooltip() == (shouldSuggest ? reason : juce::String()))
+            return;
+
+        suggested = shouldSuggest;
+        setTooltip (shouldSuggest ? reason : juce::String());
+        setDescription (shouldSuggest ? "Suggested next. " + reason : juce::String());
+        repaint();
+    }
+
+    bool isSuggested() const noexcept { return suggested; }
+
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
         const auto& p = paletteOf (*this);
@@ -93,12 +108,13 @@ public:
         juce::Path dashed;
         const float dashes[] = { 4.0f, 3.0f };
         juce::PathStrokeType (1.5f).createDashedStroke (dashed, outline, dashes, 2);
-        g.setColour (p.dash);
+        g.setColour (suggested ? p.accent : p.dash);
         g.fillPath (dashed);
 
+        const auto labelColour = suggested ? p.accent : p.mute;
         if (style == Style::chip)
         {
-            g.setColour (p.mute);
+            g.setColour (labelColour);
             g.setFont (uiFont (12.0f));
             g.drawText ("+ " + caption, bounds, juce::Justification::centred, true);
         }
@@ -108,7 +124,7 @@ public:
             const float top = bounds.getCentreY() - blockHeight * 0.5f;
             const auto disc = juce::Rectangle<float> (34.0f, 34.0f).withPosition (bounds.getCentreX() - 17.0f, top);
             drawRaised (g, disc, 17.0f, p, Elevation::small, p.surface);
-            g.setColour (p.mute);
+            g.setColour (labelColour);
             g.setFont (uiFont (18.0f));
             g.drawText ("+", disc, juce::Justification::centred, false);
 
@@ -128,6 +144,7 @@ public:
 private:
     juce::String caption, hint;
     Style style;
+    bool suggested = false;
 };
 
 } // namespace scratchpad::ui

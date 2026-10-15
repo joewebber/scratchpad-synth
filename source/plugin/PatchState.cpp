@@ -21,10 +21,10 @@ MigrationResult migrate (juce::XmlElement& xml, const juce::String& rootTag)
     if (version == currentSchemaVersion)
         return MigrationResult::upToDate;
 
-    // Version 0 is an unstamped tree, version 1 is M1's and version 2 is M2's.
+    // Version 0 is an unstamped tree, version 1 is M1's, 2 is M2's and 3 is M3's.
     // Their parameter IDs are all still valid, and everything added since is
-    // absent, so it loads at its defaults (LFOs not present, no connections):
-    // only the stamp changes.
+    // absent, so it loads at its defaults (LFOs not present, no connections,
+    // nothing bypassed or soloed): only the stamp changes.
     // Later versions add their own `if (version < N)` steps here, in order.
     stamp (xml);
     return MigrationResult::migrated;
