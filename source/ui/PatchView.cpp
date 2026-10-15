@@ -12,21 +12,24 @@ using plugin::Module;
 namespace
 {
     constexpr int panelPad = 14;
-    constexpr int cardGap = 6;
+    constexpr int cardGap = 5;
     constexpr int chevronWidth = 14;
     constexpr int wellPad = 10;
     constexpr int chipHeight = 28;
-    constexpr int voicingHeight = 86;
     constexpr int panelGap = 10;
-    constexpr int titleRowTop = 12, titleRowHeight = 24;
-    constexpr int wellTop = 44;
-    constexpr int perVoiceCaptionHeight = 14;
+    constexpr int titleRowTop = 10, titleRowHeight = 22;
+    constexpr int wellTop = 36;
+    constexpr int wellBottomMargin = 8;
+    constexpr int perVoiceCaptionTop = 6, perVoiceCaptionHeight = 14;
+    constexpr int stripPad = 8, stripSidePad = 12, stripGap = 10;
 
     constexpr int sourcesWidth = OscillatorCard::width;
     constexpr int filterWidth = FilterCard::width;
     constexpr int ampWidth = AmpCard::width;
     constexpr int wellWidth = wellPad + sourcesWidth + chevronWidth + filterWidth + chevronWidth + ampWidth + wellPad;
     constexpr int rowWidth = wellWidth + chevronWidth + OutputCard::width;
+
+    constexpr int stripHeight = LfoCard::height + 2 * stripPad;
 
     void drawChevron (juce::Graphics& g, const Palette& p, juce::Rectangle<int> link)
     {
@@ -45,6 +48,22 @@ namespace
         font.setExtraKerningFactor (0.22f);
         return font;
     }
+
+    const char* presenceId (Module which)
+    {
+        switch (which)
+        {
+            case Module::osc2:      return params::osc[1].enabled;
+            case Module::osc3:      return params::osc[2].enabled;
+            case Module::noise:     return params::noiseEnabled;
+            case Module::filter:    return params::filterEnabled;
+            case Module::ampEnv:    return params::ampEnv.enabled;
+            case Module::filterEnv: return params::filterEnv.enabled;
+            case Module::lfo1:      return params::lfo[0].enabled;
+            case Module::lfo2:      return params::lfo[1].enabled;
+        }
+        return params::osc[1].enabled;
+    }
 }
 
 //==============================================================================
@@ -56,17 +75,8 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
       filterSlot ("Add Filter", "Filter", SlotButton::Style::slot, "Cut or boost parts of the sound"),
       filterEnvSlot ("Add Filter Envelope", "Filter Env", SlotButton::Style::slot, "Open and close the filter over each note"),
       ampEnvSlot ("Add Amp Envelope", "Amp Env", SlotButton::Style::slot, "Shape how each note starts and ends"),
-      voiceMode (p.apvts, params::voicingMode, "Voice mode", p.undoManager, &Palette::perf),
-      voices (p.apvts, params::voicingVoices, "Voices", p.undoManager, "Voices"),
-      glide (p.apvts, params::voicingGlide, "Glide", p.undoManager, "Glide time"),
-      bendRange (p.apvts, params::voicingBendRange, "Bend", p.undoManager, "Pitch bend range"),
-      voiceModeWatcher (*p.apvts.getParameter (params::voicingMode),
-                        [this] (float v)
-                        {
-                            voiceModeIndex = (int) std::lround (v);
-                            voices.setEnabled (voiceModeIndex == 0); // mono and legato are one voice
-                            repaint (voicingText);
-                        })
+      lfo1Slot ("Add LFO 1", "LFO 1", SlotButton::Style::slot, "A slow wobble for vibrato and sweeps"),
+      lfo2Slot ("Add LFO 2", "LFO 2", SlotButton::Style::slot, "A second, independent wobble")
 {
     setTitle ("Signal chain");
     setPaintingIsUnclipped (true);
@@ -79,7 +89,8 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
 
     const struct { SlotButton* slot; Module which; } slots[] = {
         { &osc2Slot, Module::osc2 }, { &osc3Slot, Module::osc3 }, { &noiseSlot, Module::noise },
-        { &filterSlot, Module::filter }, { &filterEnvSlot, Module::filterEnv }, { &ampEnvSlot, Module::ampEnv }
+        { &filterSlot, Module::filter }, { &filterEnvSlot, Module::filterEnv }, { &ampEnvSlot, Module::ampEnv },
+        { &lfo1Slot, Module::lfo1 }, { &lfo2Slot, Module::lfo2 }
     };
     for (const auto& s : slots)
     {
@@ -89,42 +100,53 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     }
 
     for (auto* c : std::initializer_list<juce::Component*> { &osc1Card, &osc2Card, &osc3Card, &noiseCard, &filterCard,
-                                                              &filterEnvCard, &ampCard, &ampEnvCard, &outputCard })
+                                                              &filterEnvCard, &ampCard, &ampEnvCard, &voicingCard, &outputCard,
+                                                              &lfo1Card, &lfo2Card })
         addChildComponent (c);
 
     osc1Card.setVisible (true);
     ampCard.setVisible (true);
+    voicingCard.setVisible (true);
     outputCard.setVisible (true);
 
     addAndMakeVisible (addButton);
-    addAndMakeVisible (voiceMode);
-    for (auto* k : { &voices, &glide, &bendRange })
-    {
-        k->setFamilyColour (paletteOf (*this).perfInk);
-        addAndMakeVisible (k);
-    }
+    addAndMakeVisible (sourcesPanel);
+    addAndMakeVisible (connectionsPanel);
+    addAndMakeVisible (overlay); // last, so it is on top
 
     for (size_t i = 0; i < plugin::allModules.size(); ++i)
-    {
-        const auto which = plugin::allModules[i];
-        const auto* id = which == Module::osc2 ? params::osc[1].enabled
-                       : which == Module::osc3 ? params::osc[2].enabled
-                       : which == Module::noise ? params::noiseEnabled
-                       : which == Module::filter ? params::filterEnabled
-                       : which == Module::ampEnv ? params::ampEnv.enabled
-                                                  : params::filterEnv.enabled;
         presenceWatchers[i] = std::make_unique<juce::ParameterAttachment> (
-            *p.apvts.getParameter (id), [this] (float) { refreshModules(); });
-    }
+            *p.apvts.getParameter (presenceId (plugin::allModules[i])), [this] (float) { refreshModules(); });
 
-    voiceModeWatcher.sendInitialUpdate();
+    model.addListener (this);
     refreshModules();
 }
 
-PatchView::~PatchView() = default;
+PatchView::~PatchView()
+{
+    model.removeListener (this);
+}
+
+void PatchView::visibilityChanged()
+{
+    model.setActive (isVisible());
+}
+
+bool PatchView::cancelConnecting()
+{
+    if (! model.isConnecting())
+        return false;
+
+    model.cancelConnecting();
+    return true;
+}
 
 juce::String PatchView::listenHint() const
 {
+    if (model.countConnections() > 0)
+        return "Hold a key. The arc around a knob is how far it can move; the dot is where it is now.";
+    if (present (Module::lfo1) || present (Module::lfo2))
+        return "Drag the round handle of an LFO onto a knob, or click the handle and then a knob.";
     if (present (Module::filterEnv))
         return "Hold a key. The filter opens and closes as the envelope moves.";
     if (present (Module::filter))
@@ -157,7 +179,7 @@ void PatchView::refreshModules()
 {
     const bool hasOsc2 = present (Module::osc2), hasOsc3 = present (Module::osc3), hasNoise = present (Module::noise);
     const bool hasFilter = present (Module::filter), hasFilterEnv = present (Module::filterEnv),
-               hasAmpEnv = present (Module::ampEnv);
+               hasAmpEnv = present (Module::ampEnv), hasLfo1 = present (Module::lfo1), hasLfo2 = present (Module::lfo2);
 
     osc2Card.setVisible (hasOsc2);
     osc2Slot.setVisible (! hasOsc2);
@@ -171,8 +193,21 @@ void PatchView::refreshModules()
     filterEnvSlot.setVisible (! hasFilterEnv);
     ampEnvCard.setVisible (hasAmpEnv);
     ampEnvSlot.setVisible (! hasAmpEnv);
+    lfo1Card.setVisible (hasLfo1);
+    lfo1Slot.setVisible (! hasLfo1);
+    lfo2Card.setVisible (hasLfo2);
+    lfo2Slot.setVisible (! hasLfo2);
 
-    addButton.setEnabled (! (hasOsc2 && hasOsc3 && hasNoise && hasFilter && hasFilterEnv && hasAmpEnv));
+    sourcesPanel.refreshPresence();
+
+    // A handle that was armed may belong to a module that has just gone.
+    if (model.isConnecting() && ! processor.isModSourcePresent (model.getConnectingSource()))
+        model.cancelConnecting();
+
+    bool everything = true;
+    for (const auto m : plugin::allModules)
+        everything = everything && present (m);
+    addButton.setEnabled (! everything);
 
     resized();
 
@@ -193,9 +228,9 @@ void PatchView::paint (juce::Graphics& g)
     const auto& p = paletteOf (*this);
 
     drawRaised (g, chainPanel.toFloat(), 18.0f, p, Elevation::raised, p.surface);
-    drawRaised (g, voicingPanel.toFloat(), 18.0f, p, Elevation::raised, p.surface);
+    drawRaised (g, stripPanel.toFloat(), 18.0f, p, Elevation::raised, p.surface);
 
-    // Title row: "SIGNAL CHAIN" and the one-line "listen for" prompt.
+    // Title row: "SIGNAL CHAIN" and the one-line prompt.
     g.setFont (titleFont());
     g.setColour (p.ink);
     g.drawText ("SIGNAL CHAIN", juce::Rectangle<float> ((float) titleRow.getX(), (float) titleRow.getY(), chainTitleRight - (float) titleRow.getX(), (float) titleRow.getHeight()),
@@ -203,24 +238,30 @@ void PatchView::paint (juce::Graphics& g)
 
     if (listenPill.getWidth() > 60)
     {
+        const bool hasStatus = model.getStatus().isNotEmpty();
         const auto pill = listenPill.toFloat();
-        g.setColour (p.accentSoft);
-        g.fillRoundedRectangle (pill, 12.0f);
+        g.setColour (hasStatus ? p.accent.withAlpha (0.9f) : p.accentSoft);
+        g.fillRoundedRectangle (pill, 11.0f);
 
         auto text = pill.reduced (10.0f, 0.0f);
-        auto captionFont = uiFont (11.0f);
-        captionFont.setExtraKerningFactor (0.14f);
-        drawCaption (g, "Listen for", text.removeFromLeft (textWidth (captionFont, "LISTEN FOR") + 2.0f), p.ink2);
-        text.removeFromLeft (8.0f);
-        g.setColour (p.ink);
+
+        if (! hasStatus)
+        {
+            auto captionFont = uiFont (11.0f);
+            captionFont.setExtraKerningFactor (0.14f);
+            drawCaption (g, "Listen for", text.removeFromLeft (textWidth (captionFont, "LISTEN FOR") + 2.0f), p.ink2);
+            text.removeFromLeft (8.0f);
+        }
+
+        g.setColour (hasStatus ? p.onAccent : p.ink);
         g.setFont (uiFont (12.0f));
-        g.drawText (listenHint(), text, juce::Justification::centredLeft, true);
+        g.drawText (hasStatus ? model.getStatus() : listenHint(), text, juce::Justification::centredLeft, true);
     }
 
     // The well the per-voice modules sit in.
     drawInset (g, well.toFloat(), 14.0f, p, p.well);
     {
-        auto row = juce::Rectangle<float> ((float) well.getX() + (float) wellPad, (float) well.getY() + 8.0f,
+        auto row = juce::Rectangle<float> ((float) well.getX() + (float) wellPad, (float) well.getY() + (float) perVoiceCaptionTop,
                                            (float) well.getWidth() - 2.0f * (float) wellPad, (float) perVoiceCaptionHeight);
         auto captionFont = uiFont (11.0f);
         captionFont.setExtraKerningFactor (0.14f);
@@ -233,31 +274,15 @@ void PatchView::paint (juce::Graphics& g)
 
     for (const auto& c : chevrons)
         drawChevron (g, p, c);
-
-    // Voicing panel.
-    g.setFont (titleFont());
-    g.setColour (p.ink);
-    g.drawText ("VOICING", juce::Rectangle<int> (voicingPanel.getX() + panelPad, voicingPanel.getY(),
-                                                  voicingTitleRight - voicingPanel.getX() - panelPad, voicingPanel.getHeight()),
-                juce::Justification::centredLeft, false);
-
-    const char* text = voiceModeIndex == 0
-        ? "Poly: every key you hold gets its own voice, up to the Voices limit. Glide slides each voice from the last note it played."
-        : voiceModeIndex == 1
-            ? "Mono: one voice, newest key wins. Every key restarts the envelopes, and the pitch glides from the note before."
-            : "Legato: one voice. Play a key while holding another and the pitch glides without restarting the envelopes.";
-    const auto font = uiFont (12.0f);
-    g.setFont (font);
-    g.setColour (p.mute);
-    drawLines (g, wrapLines (font, text, (float) voicingText.getWidth()), voicingText.getPosition().toFloat(),
-               (float) voicingText.getWidth(), 16.0f);
 }
 
 void PatchView::resized()
 {
-    const int chainHeight = getHeight() - voicingHeight - panelGap;
+    overlay.setBounds (getLocalBounds());
+
+    const int chainHeight = getHeight() - stripHeight - panelGap;
     chainPanel = { 0, 0, getWidth(), chainHeight };
-    voicingPanel = { 0, chainHeight + panelGap, getWidth(), voicingHeight };
+    stripPanel = { 0, chainHeight + panelGap, getWidth(), stripHeight };
 
     // Title row.
     const auto font = titleFont();
@@ -271,8 +296,8 @@ void PatchView::resized()
 
     // The row of stages, centred in the panel.
     const int x0 = panelPad + (getWidth() - 2 * panelPad - rowWidth) / 2;
-    well = { x0, wellTop, wellWidth, chainHeight - wellTop - 12 };
-    const int cardsTop = well.getY() + 8 + perVoiceCaptionHeight + 6;
+    well = { x0, wellTop, wellWidth, chainHeight - wellTop - wellBottomMargin };
+    const int cardsTop = well.getY() + perVoiceCaptionTop + perVoiceCaptionHeight + 4;
 
     // Sources: the cards that are present, then one row of dashed chips for the ones that are not.
     const int sourcesX = well.getX() + wellPad;
@@ -329,6 +354,8 @@ void PatchView::resized()
     ampEnvCard.setBounds (ampEnvRect);
     ampEnvSlot.setBounds (ampEnvRect);
 
+    voicingCard.setBounds (ampX, ampEnvRect.getBottom() + cardGap, VoicingCard::width, VoicingCard::height);
+
     outputCard.setBounds (well.getRight() + chevronWidth, cardsTop, OutputCard::width, OutputCard::height);
 
     const int chevronY = cardsTop + OscillatorCard::height / 2 - 10;
@@ -336,20 +363,24 @@ void PatchView::resized()
     chevrons[1] = { filterX + filterWidth, chevronY, chevronWidth, 20 };
     chevrons[2] = { well.getRight(), chevronY, chevronWidth, 20 };
 
-    // Voicing panel: title, mode, knobs, then the sentence about the chosen mode.
-    voicingTitleRight = voicingPanel.getX() + panelPad + (int) std::ceil (textWidth (font, "VOICING"));
-    int x = voicingTitleRight + 18;
-    voiceMode.setBounds (x, voicingPanel.getCentreY() - 13, 200, 26);
-    x += 200 + 28;
+    // Modulation strip: LFO 1, LFO 2, the other sources, then the eight slots.
+    int x = stripPanel.getX() + stripSidePad;
+    const int stripY = stripPanel.getY() + stripPad;
 
-    for (auto* k : { &voices, &glide, &bendRange })
-    {
-        k->setBounds (x, voicingPanel.getCentreY() - Knob::knobHeight / 2, Knob::knobWidth, Knob::knobHeight);
-        x += Knob::knobWidth + 16;
-    }
+    const juce::Rectangle<int> lfo1Rect (x, stripY, LfoCard::width, LfoCard::height);
+    lfo1Card.setBounds (lfo1Rect);
+    lfo1Slot.setBounds (lfo1Rect);
+    x += LfoCard::width + stripGap;
 
-    x += 16;
-    voicingText = { x, voicingPanel.getY() + 16, voicingPanel.getRight() - panelPad - x, voicingPanel.getHeight() - 32 };
+    const juce::Rectangle<int> lfo2Rect (x, stripY, LfoCard::width, LfoCard::height);
+    lfo2Card.setBounds (lfo2Rect);
+    lfo2Slot.setBounds (lfo2Rect);
+    x += LfoCard::width + stripGap;
+
+    sourcesPanel.setBounds (x, stripY, SourcesPanel::width, SourcesPanel::height);
+    x += SourcesPanel::width + stripGap;
+
+    connectionsPanel.setBounds (x, stripY, stripPanel.getRight() - stripSidePad - x, ConnectionsPanel::height);
 }
 
 } // namespace scratchpad::ui

@@ -19,13 +19,14 @@ struct UiEvent
         previewOn,  // wave-picker preview note; `wave` is the wave index
         previewOff,
         pitchBend,  // `value` in -1..+1
+        modWheel,   // `value` in 0..1
         allNotesOff
     };
 
     Type type = Type::noteOn;
     std::uint8_t note = 0;
     std::uint8_t wave = 0;
-    float value = 0.0f; // velocity (0..1) or bend (-1..+1)
+    float value = 0.0f; // velocity (0..1), bend (-1..+1) or mod wheel (0..1)
 };
 
 /** Single-producer (message thread), single-consumer (audio thread) queue.

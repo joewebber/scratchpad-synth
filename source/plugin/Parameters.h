@@ -9,9 +9,11 @@
 namespace scratchpad::params
 {
 
-/** Version hints: M1 parameters are 1, M2's are 2. */
+/** Version hints: M1 parameters are 1, M2's are 2, M3's are 3. */
 inline constexpr int versionHint = 1;
 inline constexpr int versionHintM2 = 2;
+inline constexpr int versionHintM3 = 3;
+inline constexpr int versionHintM4 = 4;
 
 inline constexpr int numOscillators = 3;
 
@@ -55,6 +57,42 @@ inline constexpr EnvIds filterEnv { "filterEnv.enabled", "filterEnv.attack", "fi
 inline constexpr const char* ampEnvVelocity    = "ampEnv.velocitySens";
 inline constexpr const char* filterEnvAmount   = "filterEnv.amount";
 
+/** Modules that can be bypassed, by the prefix of their parameter IDs: `<key>.bypass`.
+    The first four are sources and can also be soloed: `<key>.solo`. */
+inline constexpr int numBypassable = 9;
+inline constexpr int numSoloable = 4;
+inline constexpr std::array<const char*, numBypassable> bypassKeys {
+    "osc1", "osc2", "osc3", "noise", "filter", "ampEnv", "filterEnv", "lfo1", "lfo2"
+};
+
+inline constexpr int numLfos = 2;
+
+/** IDs of one LFO's parameters. `lfo[0]` is LFO 1. */
+struct LfoIds
+{
+    const char *enabled, *shape, *rate, *retrigger, *fade;
+};
+
+inline constexpr std::array<LfoIds, numLfos> lfo {{
+    { "lfo1.enabled", "lfo1.shape", "lfo1.rate", "lfo1.retrigger", "lfo1.fade" },
+    { "lfo2.enabled", "lfo2.shape", "lfo2.rate", "lfo2.retrigger", "lfo2.fade" }
+}};
+
+/** The eight modulation connection slots. A slot is unused while its source or destination is "None". */
+inline constexpr int numModSlots = 8;
+
+struct ModIds
+{
+    const char *source, *dest, *amount;
+};
+
+inline constexpr std::array<ModIds, numModSlots> mod {{
+    { "mod1.source", "mod1.dest", "mod1.amount" }, { "mod2.source", "mod2.dest", "mod2.amount" },
+    { "mod3.source", "mod3.dest", "mod3.amount" }, { "mod4.source", "mod4.dest", "mod4.amount" },
+    { "mod5.source", "mod5.dest", "mod5.amount" }, { "mod6.source", "mod6.dest", "mod6.amount" },
+    { "mod7.source", "mod7.dest", "mod7.amount" }, { "mod8.source", "mod8.dest", "mod8.amount" }
+}};
+
 inline constexpr const char* voicingMode      = "voicing.mode";
 inline constexpr const char* voicingVoices    = "voicing.voices";
 inline constexpr const char* voicingGlide     = "voicing.glide";
@@ -80,6 +118,12 @@ inline constexpr float envTimeMinSeconds = 0.001f;
 inline constexpr float envTimeMaxSeconds = 10.0f;
 inline constexpr float releaseMaxSeconds = 20.0f;
 
+inline constexpr float lfoRateMinHz = 0.01f, lfoRateMaxHz = 50.0f, lfoRateDefaultHz = 2.0f;
+inline constexpr float lfoFadeMaxSeconds = 5.0f;
+
+/** The amount a new connection starts at, in percent. */
+inline constexpr float modAmountDefault = 50.0f;
+
 inline constexpr float glideMaxSeconds = 2.0f;
 inline constexpr int maxVoices = 16;
 inline constexpr int defaultVoices = 8;
@@ -95,6 +139,15 @@ juce::StringArray filterModeNames();
 juce::StringArray voiceModeNames();
 
 juce::StringArray noiseColourNames();
+
+/** Choice order matches `scratchpad::dsp::LfoShape`. */
+juce::StringArray lfoShapeNames();
+
+/** Choice order matches `scratchpad::engine::ModSource`; index 0 is "None". */
+juce::StringArray modSourceNames();
+
+/** Choice order matches `scratchpad::engine::ModDest`; index 0 is "None". */
+juce::StringArray modDestNames();
 
 /** Formats a level in dB for display: "-6.0 dB", or "-inf" at the bottom of the range. */
 juce::String levelText (float db, float minDb);

@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <utility>
 #include <cmath>
 #include <vector>
 
@@ -66,6 +67,20 @@ struct Rig
         }
         REQUIRE (left == right);
         return left;
+    }
+
+    /** The same, keeping both channels (`first` left, `second` right), for pan. */
+    std::pair<std::vector<float>, std::vector<float>> runStereo (int numSamples)
+    {
+        std::vector<float> left ((size_t) numSamples), right ((size_t) numSamples);
+        int done = 0;
+        while (done < numSamples)
+        {
+            const int n = std::min (64, numSamples - done);
+            engine.render (left.data() + done, right.data() + done, n);
+            done += n;
+        }
+        return { std::move (left), std::move (right) };
     }
 
     void midi (const juce::MidiMessage& m) { engine.handleMidi (m); }

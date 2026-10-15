@@ -48,6 +48,14 @@ juce_add_binary_data(ScratchpadFonts
         assets/fonts/Jost-400-Book.ttf
         assets/fonts/Jost-500-Medium.ttf)
 
+# The copy (Explain panel text and glossary) as data, so wording can change without touching code.
+juce_add_binary_data(ScratchpadContent
+    HEADER_NAME ContentData.h
+    NAMESPACE   contentdata
+    SOURCES
+        source/content/explanations.json
+        source/content/glossary.json)
+
 # Sources are globbed so adding a file needs no CMake edit; CONFIGURE_DEPENDS
 # makes the build notice new files. The plugin entry point belongs to the
 # plugin target only.
@@ -71,9 +79,11 @@ target_link_libraries(ScratchpadCore
         juce::juce_audio_basics
         juce::juce_audio_processors
         juce::juce_audio_utils
+        juce::juce_dsp
         juce::juce_gui_basics
     PRIVATE
         ScratchpadFonts
+        ScratchpadContent
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 
@@ -112,3 +122,7 @@ if(SCRATCHPAD_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+add_executable(ScratchpadSnapshot tools/Snapshot.cpp)
+target_compile_definitions(ScratchpadSnapshot PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(ScratchpadSnapshot PRIVATE ScratchpadCore juce::juce_recommended_config_flags)

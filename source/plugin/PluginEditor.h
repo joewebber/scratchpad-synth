@@ -1,6 +1,7 @@
 #pragma once
 
 #include "plugin/PluginProcessor.h"
+#include "ui/ExplainPanel.h"
 #include "ui/LookAndFeel.h"
 #include "ui/PatchView.h"
 #include "ui/PerformanceBar.h"
@@ -12,7 +13,7 @@
 namespace scratchpad::plugin
 {
 
-/** One window, 1200 x 760. Until a wave is picked the whole window below the
+/** One window, 1500 x 840: the design's 1200 x 760 plus room for the Explain panel and the wider cards. Until a wave is picked the whole window below the
     top bar is the wave picker; after that it is the signal chain over the
     keyboard. Which one shows follows the `osc1.enabled` parameter, so New
     patch, undo and loading a session all land in the right place. */
@@ -20,8 +21,8 @@ class ScratchpadEditor final : public juce::AudioProcessorEditor,
                                private juce::FocusChangeListener
 {
 public:
-    static constexpr int baseWidth = 1200;
-    static constexpr int baseHeight = 760;
+    static constexpr int baseWidth = 1500;
+    static constexpr int baseHeight = 840;
 
     explicit ScratchpadEditor (ScratchpadProcessor&);
     ~ScratchpadEditor() override;
@@ -44,6 +45,7 @@ private:
     ui::WavePicker picker;
     ui::PatchView patchView;
     ui::PerformanceBar performanceBar;
+    ui::ExplainPanel explainPanel;
 
     juce::ParameterAttachment presenceAttachment;
     int previewingWave = -1;

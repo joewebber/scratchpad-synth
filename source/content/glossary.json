@@ -1,0 +1,399 @@
+{
+  "harmonic": {
+    "term": "Harmonic",
+    "definition": "One of the pure sine waves stacked up to make a note. Harmonics sit at whole-number multiples of the fundamental, and their mix decides the tone.",
+    "seeAlso": [
+      "fundamental",
+      "spectrum",
+      "tone"
+    ]
+  },
+  "frequency": {
+    "term": "Frequency",
+    "definition": "How many times a wave repeats each second, measured in hertz (Hz). Higher frequency sounds higher in pitch.",
+    "seeAlso": [
+      "pitch"
+    ]
+  },
+  "pitch": {
+    "term": "Pitch",
+    "definition": "How high or low a note sounds. It follows the frequency of the fundamental.",
+    "seeAlso": [
+      "frequency",
+      "semitone",
+      "octave"
+    ]
+  },
+  "tone": {
+    "term": "Tone",
+    "definition": "The character of a sound apart from its pitch or volume: bright, dull, buzzy, hollow. It comes mostly from the mix of harmonics.",
+    "seeAlso": [
+      "harmonic",
+      "spectrum"
+    ]
+  },
+  "fundamental": {
+    "term": "Fundamental",
+    "definition": "The lowest and usually strongest harmonic in a note. Its frequency is the pitch you hear.",
+    "seeAlso": [
+      "harmonic",
+      "pitch"
+    ]
+  },
+  "spectrum": {
+    "term": "Spectrum",
+    "definition": "A picture of how much of each frequency is in a sound. Bright sounds have energy far to the right; dark sounds do not.",
+    "seeAlso": [
+      "harmonic",
+      "frequency"
+    ]
+  },
+  "aliasing": {
+    "term": "Aliasing",
+    "definition": "Harsh, out-of-tune whistles that appear when a digital sound contains frequencies too high to represent. It is most noticeable on high notes.",
+    "seeAlso": [
+      "frequency",
+      "harmonic"
+    ]
+  },
+  "cutoff": {
+    "term": "Cutoff",
+    "definition": "The frequency where a filter starts to turn the sound down. Above it (for a low-pass) harmonics fade away.",
+    "seeAlso": [
+      "filter",
+      "low-pass",
+      "resonance"
+    ]
+  },
+  "resonance": {
+    "term": "Resonance",
+    "definition": "A boost at the cutoff frequency that adds a peak. High settings give a whistling, vocal edge and can make the filter ring.",
+    "seeAlso": [
+      "cutoff",
+      "filter"
+    ]
+  },
+  "low-pass": {
+    "term": "Low-pass",
+    "definition": "A filter that lets low frequencies through and turns high ones down. It makes sound darker.",
+    "seeAlso": [
+      "filter",
+      "cutoff",
+      "high-pass",
+      "band-pass"
+    ]
+  },
+  "high-pass": {
+    "term": "High-pass",
+    "definition": "A filter that lets high frequencies through and turns low ones down. It makes sound thinner.",
+    "seeAlso": [
+      "filter",
+      "cutoff",
+      "low-pass",
+      "band-pass"
+    ]
+  },
+  "band-pass": {
+    "term": "Band-pass",
+    "definition": "A filter that keeps a band of frequencies around the cutoff and turns down everything above and below. It sounds narrow, like a phone.",
+    "seeAlso": [
+      "filter",
+      "cutoff",
+      "low-pass",
+      "high-pass"
+    ]
+  },
+  "envelope": {
+    "term": "Envelope",
+    "definition": "A shape that changes over the life of one note: it starts when you press a key and finishes after you let go. It has attack, decay, sustain and release stages.",
+    "seeAlso": [
+      "attack",
+      "decay",
+      "sustain",
+      "release"
+    ]
+  },
+  "attack": {
+    "term": "Attack",
+    "definition": "The time an envelope takes to rise from nothing to its peak after a key goes down.",
+    "seeAlso": [
+      "envelope",
+      "decay"
+    ]
+  },
+  "decay": {
+    "term": "Decay",
+    "definition": "The time an envelope takes to fall from its peak to the sustain level.",
+    "seeAlso": [
+      "envelope",
+      "sustain"
+    ]
+  },
+  "sustain": {
+    "term": "Sustain",
+    "definition": "The level an envelope holds while a key stays down. It is a level, not a time.",
+    "seeAlso": [
+      "envelope",
+      "decay",
+      "release"
+    ]
+  },
+  "release": {
+    "term": "Release",
+    "definition": "The time an envelope takes to fall to nothing after you let go of the key.",
+    "seeAlso": [
+      "envelope",
+      "sustain"
+    ]
+  },
+  "velocity": {
+    "term": "Velocity",
+    "definition": "How hard you hit a key. Harder presses give higher velocity values, which can make notes louder or brighter.",
+    "seeAlso": [
+      "modulation"
+    ]
+  },
+  "lfo": {
+    "term": "LFO",
+    "definition": "A low frequency oscillator: a wave too slow to hear as a note (0.01 to 50 Hz), used to move other controls up and down automatically.",
+    "seeAlso": [
+      "modulation",
+      "oscillator",
+      "vibrato"
+    ]
+  },
+  "modulation": {
+    "term": "Modulation",
+    "definition": "One control changing another over time. A source (such as an LFO) moves a destination (such as cutoff) by an amount.",
+    "seeAlso": [
+      "lfo",
+      "envelope"
+    ]
+  },
+  "vibrato": {
+    "term": "Vibrato",
+    "definition": "A gentle, regular wobble in pitch. You get it by sending a slow LFO to pitch.",
+    "seeAlso": [
+      "lfo",
+      "pitch",
+      "cents"
+    ]
+  },
+  "detune": {
+    "term": "Detune",
+    "definition": "Setting two oscillators very slightly apart in pitch. The small difference makes a slow, shimmering beat that thickens the sound.",
+    "seeAlso": [
+      "cents",
+      "oscillator"
+    ]
+  },
+  "cents": {
+    "term": "Cents",
+    "definition": "A tiny pitch unit: 100 cents make one semitone, and 1,200 make an octave.",
+    "seeAlso": [
+      "semitone",
+      "octave",
+      "detune"
+    ]
+  },
+  "semitone": {
+    "term": "Semitone",
+    "definition": "The smallest step on a piano, from one key to the next. Twelve semitones make an octave.",
+    "seeAlso": [
+      "octave",
+      "cents",
+      "pitch"
+    ]
+  },
+  "octave": {
+    "term": "Octave",
+    "definition": "A doubling of frequency. Notes an octave apart sound like the same note, higher or lower.",
+    "seeAlso": [
+      "semitone",
+      "frequency"
+    ]
+  },
+  "pulse-width": {
+    "term": "Pulse width",
+    "definition": "On a pulse wave, the share of each cycle spent high. 50% is a hollow square wave; narrower settings sound thinner and nasal.",
+    "seeAlso": [
+      "harmonic",
+      "oscillator"
+    ]
+  },
+  "white-noise": {
+    "term": "White noise",
+    "definition": "Random hiss with equal energy at every frequency, so it sounds bright, like static.",
+    "seeAlso": [
+      "pink-noise",
+      "spectrum"
+    ]
+  },
+  "pink-noise": {
+    "term": "Pink noise",
+    "definition": "Random hiss with less energy in the highs than white noise, so it sounds softer, like rain or a waterfall.",
+    "seeAlso": [
+      "white-noise",
+      "spectrum"
+    ]
+  },
+  "gate": {
+    "term": "Gate",
+    "definition": "The on/off signal from the keyboard: on while a key is down, off when you let go. Envelopes start from it.",
+    "seeAlso": [
+      "envelope"
+    ]
+  },
+  "polyphony": {
+    "term": "Polyphony",
+    "definition": "The ability to play several notes at once. Each note uses one voice.",
+    "seeAlso": [
+      "mono",
+      "voice-stealing"
+    ]
+  },
+  "mono": {
+    "term": "Mono",
+    "definition": "A mode where only one note plays at a time. A new key replaces the old one.",
+    "seeAlso": [
+      "polyphony",
+      "legato"
+    ]
+  },
+  "legato": {
+    "term": "Legato",
+    "definition": "Playing notes joined together. In Legato mode, a note played while another is held changes pitch without restarting the envelopes.",
+    "seeAlso": [
+      "mono",
+      "glide",
+      "retrigger"
+    ]
+  },
+  "glide": {
+    "term": "Glide",
+    "definition": "A smooth slide in pitch from one note to the next, instead of jumping.",
+    "seeAlso": [
+      "pitch",
+      "legato"
+    ]
+  },
+  "pitch-bend": {
+    "term": "Pitch bend",
+    "definition": "A controller, usually a wheel or lever, that slides the pitch of all held notes up or down within a set range.",
+    "seeAlso": [
+      "semitone",
+      "pitch"
+    ]
+  },
+  "mod-wheel": {
+    "term": "Mod wheel",
+    "definition": "A wheel on most keyboards that you move by hand. It does nothing until you connect it to a destination.",
+    "seeAlso": [
+      "modulation"
+    ]
+  },
+  "aftertouch": {
+    "term": "Aftertouch",
+    "definition": "Pressure you add by pushing harder on a key after it is down. It does nothing until you connect it to a destination.",
+    "seeAlso": [
+      "modulation",
+      "velocity"
+    ]
+  },
+  "key-tracking": {
+    "term": "Key tracking",
+    "definition": "Making a setting follow the note you play. With filter key tracking, higher notes open the cutoff so they stay as bright as lower ones.",
+    "seeAlso": [
+      "cutoff",
+      "pitch"
+    ]
+  },
+  "drive": {
+    "term": "Drive",
+    "definition": "Pushing a signal harder into the filter so it distorts a little. It adds warmth and extra harmonics.",
+    "seeAlso": [
+      "decibel",
+      "harmonic",
+      "filter"
+    ]
+  },
+  "decibel": {
+    "term": "Decibel (dB)",
+    "definition": "A unit of loudness. 0 dB is the loudest setting here; every 6 dB lower is about half the amplitude. Minus infinity is silence.",
+    "seeAlso": [
+      "amp"
+    ]
+  },
+  "oscillator": {
+    "term": "Oscillator",
+    "definition": "A sound source that repeats a wave shape over and over. How fast it repeats sets the pitch, and the shape sets the tone.",
+    "seeAlso": [
+      "frequency",
+      "harmonic",
+      "pitch"
+    ]
+  },
+  "filter": {
+    "term": "Filter",
+    "definition": "A circuit that turns some frequencies down and lets others through, changing the tone.",
+    "seeAlso": [
+      "cutoff",
+      "resonance",
+      "low-pass",
+      "high-pass",
+      "band-pass"
+    ]
+  },
+  "amp": {
+    "term": "Amp",
+    "definition": "Short for amplifier: the stage that sets how loud the sound is.",
+    "seeAlso": [
+      "decibel",
+      "envelope"
+    ]
+  },
+  "per-voice": {
+    "term": "Per-voice",
+    "definition": "Applied separately to each note you play, so every note has its own envelope, filter and LFO position.",
+    "seeAlso": [
+      "polyphony"
+    ]
+  },
+  "retrigger": {
+    "term": "Retrigger",
+    "definition": "Restarting something from the beginning each time you press a key, such as an LFO cycle or an envelope.",
+    "seeAlso": [
+      "gate",
+      "lfo"
+    ]
+  },
+  "sample-and-hold": {
+    "term": "Sample and hold",
+    "definition": "An LFO shape that picks a new random value at each step and holds it until the next. It gives stepped, random changes.",
+    "seeAlso": [
+      "lfo",
+      "modulation"
+    ]
+  },
+  "bypass": {
+    "term": "Bypass",
+    "definition": "Passing the signal through a module untouched, as if it were switched off, so you can compare with and without it.",
+    "seeAlso": [
+      "solo"
+    ]
+  },
+  "solo": {
+    "term": "Solo",
+    "definition": "Muting every other source so you can hear just one on its own.",
+    "seeAlso": [
+      "bypass"
+    ]
+  },
+  "voice-stealing": {
+    "term": "Voice stealing",
+    "definition": "When all voices are in use and you play another note, the synth cuts off an older note to free a voice.",
+    "seeAlso": [
+      "polyphony"
+    ]
+  }
+}

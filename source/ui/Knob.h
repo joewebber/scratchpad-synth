@@ -1,12 +1,16 @@
 #pragma once
 
 #include "ui/LookAndFeel.h"
+#include "ui/ModArcs.h"
+#include "ui/ModulationModel.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 namespace scratchpad::ui
 {
@@ -17,8 +21,13 @@ namespace scratchpad::ui
     Vertical drag, Shift for fine adjustment (both built into juce::Slider),
     double-click to reset, scroll wheel, and click the value to type one.
     One drag is one undo step, named "<name> <old> -> <new>", where the name is
-    the accessible name if given (it tells Osc 2's Level from Osc 1's), else the caption. */
-class Knob final : public juce::Component
+    the accessible name if given (it tells Osc 2's Level from Osc 1's), else the caption.
+
+    A knob that modulation can reach calls `setModulation`: it then shows an arc for each
+    connection that moves it, and is somewhere a handle can be dropped. */
+class Knob final : public juce::Component,
+                   public ModTarget,
+                   private ModulationModel::Listener
 {
 public:
     Knob (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
@@ -30,6 +39,7 @@ public:
         jassert (param != nullptr);
 
         setPaintingIsUnclipped (true);
+        getProperties().set ("explainId", paramID);
 
         slider.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
@@ -61,13 +71,62 @@ public:
         };
     }
 
+    ~Knob() override
+    {
+        if (model != nullptr)
+        {
+            model->removeListener (this);
+            model->unregisterTarget (this);
+        }
+    }
+
     void setFamilyColour (juce::Colour c)
     {
         slider.setColour (juce::Slider::rotarySliderFillColourId, c);
     }
 
+    /** Makes this knob a destination for `dests` (the first is the default for a drop). With
+        `hardWiredFilterEnvAmount`, the filter envelope's own amount shows as one more arc. */
+    void setModulation (ModulationModel& m, std::vector<engine::ModDest> dests,
+                        juce::RangedAudioParameter* hardWiredFilterEnvAmount = nullptr)
+    {
+        jassert (model == nullptr);
+        model = &m;
+        destinations = std::move (dests);
+        filterEnvAmount = hardWiredFilterEnvAmount;
+        model->registerTarget (this);
+        model->addListener (this);
+    }
+
+    // ModTarget
+    std::span<const engine::ModDest> getDestinations() const override { return destinations; }
+    juce::Component& getComponent() override { return *this; }
+    juce::Point<float> getRingCentre() const override { return { knobWidth * 0.5f, (float) (knobHeight - pillHeight - captionHeight) * 0.5f }; }
+    float getDiscRadius() const override { return 14.75f; }
+
+    std::vector<ModArc> getArcs() const override
+    {
+        if (model == nullptr)
+            return {};
+
+        std::optional<float> wired;
+        if (filterEnvAmount != nullptr)
+            wired = filterEnvAmount->convertFrom0to1 (filterEnvAmount->getValue()) * 0.01f;
+
+        return model->arcsFor (destinations, param->convertFrom0to1 (param->getValue()),
+                               [this] (float v) { return param->convertTo0to1 (v); }, wired);
+    }
+
     void paint (juce::Graphics& g) override
     {
+        if (model != nullptr)
+        {
+            const auto arcs = getArcs();
+            if (! arcs.empty())
+                drawModArcs (g, paletteOf (*this), getRingCentre(), juce::MathConstants<float>::pi * 1.25f,
+                             juce::MathConstants<float>::pi * 2.75f, arcs);
+        }
+
         // A caption may run a little wider than the knob; neighbours are far enough apart for that.
         drawCaption (g, caption, getLocalBounds().removeFromBottom (captionHeight).expanded (captionOverhang, 0).toFloat(),
                      isEnabled() ? paletteOf (*this).mute : paletteOf (*this).mute.withMultipliedAlpha (0.5f),
@@ -88,6 +147,28 @@ public:
     static constexpr int knobHeight = 43 + pillHeight + captionHeight;
 
 private:
+    void modulationChanged() override { repaint(); }
+    void liveUpdated() override { if (hasArcs()) repaint(); }
+
+    void connectingChanged() override
+    {
+        // While a handle is being dragged, the knobs it can reach stay lit and the rest fade back.
+        const bool dim = model->isConnecting() && ! model->isValidTarget (*this, model->getConnectingSource());
+        setAlpha (dim ? 0.3f : 1.0f);
+    }
+
+    bool hasArcs() const
+    {
+        if (filterEnvAmount != nullptr && model->getProcessor().isModulePresent (plugin::Module::filterEnv))
+            return true;
+
+        for (const auto& c : model->getConnections())
+            if (c.active() && std::find (destinations.begin(), destinations.end(), c.dest) != destinations.end())
+                return true;
+
+        return false;
+    }
+
     /** Understands what the parameter prints: "-inf", "Off", "2.0 kHz", "300 ms", "+7 c", "50%".
         A bare number is read in the unit the current text is shown in. */
     double parseTyped (const juce::String& text) const
@@ -117,6 +198,10 @@ private:
     juce::Slider slider;
     std::unique_ptr<juce::SliderParameterAttachment> attachment;
     double valueAtDragStart = 0.0;
+
+    ModulationModel* model = nullptr;
+    std::vector<engine::ModDest> destinations;
+    juce::RangedAudioParameter* filterEnvAmount = nullptr;
 };
 
 } // namespace scratchpad::ui

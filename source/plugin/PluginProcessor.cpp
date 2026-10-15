@@ -1,6 +1,7 @@
 #include "plugin/PluginProcessor.h"
 
 #include "plugin/Parameters.h"
+#include "plugin/PatchDescription.h"
 #include "plugin/PatchState.h"
 #include "plugin/PluginEditor.h"
 
@@ -66,6 +67,36 @@ ScratchpadProcessor::ScratchpadProcessor()
     voicingGlide = findParam (params::voicingGlide);
     voicingBendRange = findParam (params::voicingBendRange);
     outVolume = findParam (params::outVolume);
+
+    static_assert (params::numModSlots == engine::numModSlots);
+
+    for (size_t i = 0; i < bypassPointers.size(); ++i)
+        bypassPointers[i] = findParam ((juce::String (params::bypassKeys[i]) + ".bypass").toRawUTF8());
+
+    for (size_t i = 0; i < soloPointers.size(); ++i)
+        soloPointers[i] = findParam ((juce::String (params::bypassKeys[i]) + ".solo").toRawUTF8());
+
+    for (size_t i = 0; i < lfoPointers.size(); ++i)
+    {
+        const auto& ids = params::lfo[i];
+        lfoPointers[i] = { findParam (ids.enabled), findParam (ids.shape), findParam (ids.rate),
+                           findParam (ids.retrigger), findParam (ids.fade) };
+    }
+
+    const auto changed = [this] (float) { modulationBroadcaster.sendChangeMessage(); };
+
+    for (size_t i = 0; i < modPointers.size(); ++i)
+    {
+        const auto& ids = params::mod[i];
+        modPointers[i] = { findParam (ids.source), findParam (ids.dest), findParam (ids.amount) };
+        modParams[i] = { dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (ids.source)),
+                         dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (ids.dest)),
+                         apvts.getParameter (ids.amount) };
+
+        amountAttachments[i] = std::make_unique<juce::ParameterAttachment> (*apvts.getParameter (ids.amount), changed, &undoManager);
+        choiceWatchers[2 * i] = std::make_unique<juce::ParameterAttachment> (*apvts.getParameter (ids.source), changed);
+        choiceWatchers[2 * i + 1] = std::make_unique<juce::ParameterAttachment> (*apvts.getParameter (ids.dest), changed);
+    }
 }
 
 std::atomic<float>* ScratchpadProcessor::findParam (const char* id) const
@@ -77,6 +108,7 @@ std::atomic<float>* ScratchpadProcessor::findParam (const char* id) const
 
 void ScratchpadProcessor::prepareToPlay (double sampleRate, int)
 {
+    currentSampleRate.store (sampleRate);
     synthEngine.prepare (sampleRate);
     synthEngine.setParams (readParams());
 
@@ -142,12 +174,53 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
     readEnvelope (filterEnvPointers, e.filterEnv);
     e.filterEnv.amount = fraction (filterEnvAmount);
 
+    for (size_t i = 0; i < lfoPointers.size(); ++i)
+    {
+        const auto& s = lfoPointers[i];
+        auto& l = e.lfo[i];
+        l.enabled = on (s.enabled);
+        l.shape = (dsp::LfoShape) index (s.shape, dsp::numLfoShapes);
+        l.rateHz = load (s.rate);
+        l.retrigger = on (s.retrigger);
+        l.fadeSeconds = load (s.fade);
+    }
+
+    for (size_t i = 0; i < modPointers.size(); ++i)
+    {
+        const auto& s = modPointers[i];
+        e.mod[i] = { (engine::ModSource) index (s.source, engine::numModSources),
+                     (engine::ModDest) index (s.dest, engine::numModDests),
+                     juce::jlimit (-1.0f, 1.0f, fraction (s.amount)) };
+    }
+
     e.voicing.mode = (engine::VoiceMode) index (voicingMode, 3);
     e.voicing.voices = juce::jlimit (1, params::maxVoices, juce::roundToInt (load (voicingVoices)));
     e.voicing.glideSeconds = load (voicingGlide);
     e.voicing.bendRange = load (voicingBendRange);
 
     e.outputVolumeDb = load (outVolume);
+
+    // Bypass and solo are applied here, so the engine only ever sees what is audible. A muted source keeps
+    // its `enabled` flag: losing oscillator 1 would release the held notes.
+    const auto bypassed = [&] (size_t i) noexcept { return on (bypassPointers[i]); };
+    bool anySolo = false;
+    for (const auto* s : soloPointers)
+        anySolo = anySolo || on (s);
+
+    const auto muted = [&] (size_t i) noexcept { return bypassed (i) || (anySolo && ! on (soloPointers[i])); };
+
+    for (size_t i = 0; i < e.osc.size(); ++i)
+        if (muted (i))
+            e.osc[i].levelDb = engine::minLevelDb;
+
+    if (muted (3))
+        e.noise.levelDb = engine::minLevelDb;
+
+    e.filter.enabled = e.filter.enabled && ! bypassed (4);
+    e.ampEnv.enabled = e.ampEnv.enabled && ! bypassed (5);
+    e.filterEnv.enabled = e.filterEnv.enabled && ! bypassed (6);
+    e.lfo[0].enabled = e.lfo[0].enabled && ! bypassed (7);
+    e.lfo[1].enabled = e.lfo[1].enabled && ! bypassed (8);
     return e;
 }
 
@@ -201,6 +274,9 @@ void ScratchpadProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                 break;
             case UiEvent::Type::pitchBend:
                 synthEngine.setPitchBend (e.value);
+                break;
+            case UiEvent::Type::modWheel:
+                synthEngine.setModWheel (e.value);
                 break;
             case UiEvent::Type::allNotesOff:
                 synthEngine.allNotesOff();
@@ -300,6 +376,28 @@ namespace
                                              params::ampEnv.sustain, params::ampEnv.release, params::ampEnvVelocity };
             case Module::filterEnv: return { params::filterEnv.enabled, params::filterEnv.attack, params::filterEnv.decay,
                                              params::filterEnv.sustain, params::filterEnv.release, params::filterEnvAmount };
+            case Module::lfo1:
+            case Module::lfo2:
+            {
+                const auto& l = params::lfo[m == Module::lfo1 ? 0u : 1u];
+                return { l.enabled, l.shape, l.rate, l.retrigger, l.fade };
+            }
+        }
+        return {};
+    }
+
+    juce::String moduleKey (Module m)
+    {
+        switch (m)
+        {
+            case Module::osc2:      return "osc2";
+            case Module::osc3:      return "osc3";
+            case Module::noise:     return "noise";
+            case Module::filter:    return "filter";
+            case Module::ampEnv:    return "ampEnv";
+            case Module::filterEnv: return "filterEnv";
+            case Module::lfo1:      return "lfo1";
+            case Module::lfo2:      return "lfo2";
         }
         return {};
     }
@@ -320,6 +418,8 @@ juce::String ScratchpadProcessor::moduleName (Module m)
         case Module::filter:    return "Filter";
         case Module::ampEnv:    return "Amp Envelope";
         case Module::filterEnv: return "Filter Envelope";
+        case Module::lfo1:      return "LFO 1";
+        case Module::lfo2:      return "LFO 2";
     }
     return {};
 }
@@ -362,6 +462,203 @@ void ScratchpadProcessor::removeModule (Module m)
 
     for (const char* id : parametersOf (m))
         setParamValue (apvts, id, defaultOf (apvts, id));
+
+    for (const auto& suffix : { ".bypass", ".solo" })
+    {
+        const auto id = moduleKey (m) + suffix;
+
+        if (apvts.getParameter (id) != nullptr)
+            setParamValue (apvts, id.toRawUTF8(), 0.0f);
+    }
+
+    // Connections that start or end at the module have nothing left to talk to.
+    const auto connections = getModConnections();
+
+    for (size_t i = 0; i < connections.size(); ++i)
+        if (modulation::moduleOf (connections[i].source) == m || modulation::moduleOf (connections[i].dest) == m)
+            clearModSlot ((int) i);
+}
+
+//==============================================================================
+engine::ModConnections ScratchpadProcessor::getModConnections() const
+{
+    engine::ModConnections out;
+
+    for (size_t i = 0; i < out.size(); ++i)
+    {
+        const auto& p = modParams[i];
+        out[i] = { (engine::ModSource) juce::jlimit (0, engine::numModSources - 1, p.source->getIndex()),
+                   (engine::ModDest) juce::jlimit (0, engine::numModDests - 1, p.dest->getIndex()),
+                   p.amount->convertFrom0to1 (p.amount->getValue()) * 0.01f };
+    }
+
+    return out;
+}
+
+bool ScratchpadProcessor::isModSourcePresent (engine::ModSource s) const
+{
+    if (s == engine::ModSource::none)
+        return false;
+
+    const auto owner = modulation::moduleOf (s);
+    return ! owner.has_value() || isModulePresent (*owner);
+}
+
+bool ScratchpadProcessor::isModDestinationPresent (engine::ModDest d) const
+{
+    if (d == engine::ModDest::none)
+        return false;
+
+    const auto owner = modulation::moduleOf (d);
+    return owner.has_value() ? isModulePresent (*owner) : isPatchStarted();
+}
+
+ScratchpadProcessor::ConnectResult ScratchpadProcessor::connectMod (engine::ModSource source, engine::ModDest destination)
+{
+    const bool selfRate = (source == engine::ModSource::lfo1 && destination == engine::ModDest::lfo1Rate)
+                       || (source == engine::ModSource::lfo2 && destination == engine::ModDest::lfo2Rate);
+
+    if (selfRate || ! isModSourcePresent (source) || ! isModDestinationPresent (destination))
+        return ConnectResult::unavailable;
+
+    const auto connections = getModConnections();
+    int freeSlot = -1;
+
+    for (size_t i = 0; i < connections.size(); ++i)
+    {
+        if (connections[i].source == source && connections[i].dest == destination)
+            return ConnectResult::alreadyConnected;
+
+        if (freeSlot < 0 && ! connections[i].active())
+            freeSlot = (int) i;
+    }
+
+    if (freeSlot < 0)
+        return ConnectResult::noFreeSlot;
+
+    const auto& ids = params::mod[(size_t) freeSlot];
+    engine::ModConnection created { source, destination, params::modAmountDefault * 0.01f };
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction ("Connected " + modulation::connectionText (created));
+    setParamValue (apvts, ids.source, (float) (int) source);
+    setParamValue (apvts, ids.dest, (float) (int) destination);
+    setParamValue (apvts, ids.amount, params::modAmountDefault);
+    return ConnectResult::created;
+}
+
+void ScratchpadProcessor::clearModSlot (int slot)
+{
+    const auto& ids = params::mod[(size_t) slot];
+    setParamValue (apvts, ids.source, 0.0f);
+    setParamValue (apvts, ids.dest, 0.0f);
+    setParamValue (apvts, ids.amount, defaultOf (apvts, ids.amount));
+}
+
+void ScratchpadProcessor::disconnectMod (int slot)
+{
+    if (slot < 0 || slot >= params::numModSlots)
+        return;
+
+    const auto connection = getModConnections()[(size_t) slot];
+
+    if (! connection.active())
+        return;
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction ("Removed " + modulation::connectionText (connection));
+    clearModSlot (slot);
+}
+
+void ScratchpadProcessor::beginModAmountEdit (int slot)
+{
+    if (slot < 0 || slot >= params::numModSlots)
+        return;
+
+    amountAtEditStart[(size_t) slot] = getModConnections()[(size_t) slot].amount;
+    flushPendingChanges (apvts);
+    amountAttachments[(size_t) slot]->beginGesture();
+}
+
+void ScratchpadProcessor::setModAmount (int slot, float percent)
+{
+    if (slot >= 0 && slot < params::numModSlots)
+        amountAttachments[(size_t) slot]->setValueAsPartOfGesture (juce::jlimit (-100.0f, 100.0f, percent));
+}
+
+void ScratchpadProcessor::endModAmountEdit (int slot)
+{
+    if (slot < 0 || slot >= params::numModSlots)
+        return;
+
+    amountAttachments[(size_t) slot]->endGesture();
+
+    auto connection = getModConnections()[(size_t) slot];
+    const float before = amountAtEditStart[(size_t) slot];
+
+    if (std::abs (connection.amount - before) > 1.0e-4f)
+    {
+        connection.amount = before;
+        undoManager.setCurrentTransactionName (modulation::connectionText (connection)
+                                               + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 "))
+                                               + modulation::amountText (getModConnections()[(size_t) slot].amount));
+    }
+}
+
+//==============================================================================
+juce::String ScratchpadProcessor::describePatch() const
+{
+    return describe (readParams());
+}
+
+bool ScratchpadProcessor::isBypassed (const juce::String& key) const
+{
+    return apvts.getParameter (key + ".bypass")->getValue() >= 0.5f;
+}
+
+bool ScratchpadProcessor::isSoloed (const juce::String& key) const
+{
+    auto* p = apvts.getParameter (key + ".solo");
+    return p != nullptr && p->getValue() >= 0.5f;
+}
+
+namespace
+{
+    juce::String moduleLabel (const juce::String& key)
+    {
+        if (key.startsWith ("osc"))  return "Osc " + key.substring (3);
+        if (key == "noise")          return "Noise";
+        if (key == "filter")         return "Filter";
+        if (key == "ampEnv")         return "Amp Envelope";
+        if (key == "filterEnv")      return "Filter Envelope";
+        return "LFO " + key.substring (3);
+    }
+}
+
+void ScratchpadProcessor::setBypassed (const juce::String& key, bool shouldBypass)
+{
+    if (isBypassed (key) == shouldBypass)
+        return;
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction ((shouldBypass ? "Bypassed " : "Un-bypassed ") + moduleLabel (key));
+    setParamValue (apvts, (key + ".bypass").toRawUTF8(), shouldBypass ? 1.0f : 0.0f);
+}
+
+void ScratchpadProcessor::setSoloed (const juce::String& key, bool shouldSolo)
+{
+    if (isSoloed (key) == shouldSolo)
+        return;
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction ((shouldSolo ? "Soloed " : "Un-soloed ") + moduleLabel (key));
+
+    if (shouldSolo)
+        for (int i = 0; i < params::numSoloable; ++i)
+            if (juce::String (params::bypassKeys[(size_t) i]) != key && isSoloed (params::bypassKeys[(size_t) i]))
+                setParamValue (apvts, (juce::String (params::bypassKeys[(size_t) i]) + ".solo").toRawUTF8(), 0.0f);
+
+    setParamValue (apvts, (key + ".solo").toRawUTF8(), shouldSolo ? 1.0f : 0.0f);
 }
 
 void ScratchpadProcessor::getStateInformation (juce::MemoryBlock& destData)

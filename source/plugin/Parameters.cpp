@@ -9,6 +9,20 @@ juce::StringArray waveNames()        { return { "Sine", "Triangle", "Saw", "Puls
 juce::StringArray filterModeNames()  { return { "LP 24", "LP 12", "HP 12", "BP 12" }; }
 juce::StringArray voiceModeNames()   { return { "Poly", "Mono", "Legato" }; }
 juce::StringArray noiseColourNames() { return { "White", "Pink" }; }
+juce::StringArray lfoShapeNames()    { return { "Sine", "Triangle", "Saw up", "Saw down", "Square", "Sample & hold" }; }
+
+juce::StringArray modSourceNames()
+{
+    return { "None", "LFO 1", "LFO 2", "Amp Envelope", "Filter Envelope", "Velocity", "Mod wheel", "Aftertouch", "Key" };
+}
+
+juce::StringArray modDestNames()
+{
+    return { "None", "Pitch (all oscillators)", "Osc 1 pitch", "Osc 2 pitch", "Osc 3 pitch",
+             "Osc 1 pulse width", "Osc 2 pulse width", "Osc 3 pulse width",
+             "Osc 1 level", "Osc 2 level", "Osc 3 level", "Noise level",
+             "Filter cutoff", "Filter resonance", "Amp level", "Pan", "LFO 1 rate", "LFO 2 rate" };
+}
 
 juce::String levelText (float db, float minDb)
 {
@@ -182,6 +196,57 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 
     addEnvelope (layout, filterEnv, "Filter envelope", 0.005f, 0.5f, 0.0f, 0.3f);
     addPercent (layout, filterEnvAmount, "Filter envelope amount", -100.0f, 100.0f, 50.0f);
+
+    // LFOs.
+    for (int i = 0; i < numLfos; ++i)
+    {
+        const auto& ids = lfo[(size_t) i];
+        const auto name = "LFO " + juce::String (i + 1);
+
+        addPresence (layout, ids.enabled, name + " present", versionHintM3);
+        addChoice (layout, ids.shape, name + " shape", lfoShapeNames(), 0, versionHintM3);
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { ids.rate, versionHintM3 }, name + " rate", logRange (lfoRateMinHz, lfoRateMaxHz), lfoRateDefaultHz,
+            AudioParameterFloatAttributes()
+                .withLabel ("Hz")
+                .withStringFromValueFunction ([] (float v, int) { return juce::String (v, v < 10.0f ? 2 : 1) + " Hz"; })));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids.retrigger, versionHintM3 }, name + " retrigger on note", false,
+                                                          AudioParameterBoolAttributes().withAutomatable (false)));
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { ids.fade, versionHintM3 }, name + " fade-in", juce::NormalisableRange<float> (0.0f, lfoFadeMaxSeconds, 0.01f, 0.5f), 0.0f,
+            AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float v, int) { return v < 0.005f ? juce::String ("Off") : timeText (v); })));
+    }
+
+    // Modulation connections: eight fixed slots.
+    for (int i = 0; i < numModSlots; ++i)
+    {
+        const auto& ids = mod[(size_t) i];
+        const auto name = "Modulation " + juce::String (i + 1);
+
+        addChoice (layout, ids.source, name + " source", modSourceNames(), 0, versionHintM3);
+        addChoice (layout, ids.dest, name + " destination", modDestNames(), 0, versionHintM3);
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { ids.amount, versionHintM3 }, name + " amount", juce::NormalisableRange<float> (-100.0f, 100.0f, 1.0f), modAmountDefault,
+            AudioParameterFloatAttributes()
+                .withLabel ("%")
+                .withStringFromValueFunction ([] (float v, int) { return (v > 0.0f ? "+" : "") + percentText (v); })));
+    }
+
+    // Bypass for every module, solo for the sources. Neither is automatable: they are a way of listening, not of playing.
+    for (int i = 0; i < numBypassable; ++i)
+    {
+        const juce::String key = bypassKeys[(size_t) i];
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { key + ".bypass", versionHintM4 }, key + " bypass", false,
+                                                          AudioParameterBoolAttributes().withAutomatable (false)));
+    }
+
+    for (int i = 0; i < numSoloable; ++i)
+    {
+        const juce::String key = bypassKeys[(size_t) i];
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { key + ".solo", versionHintM4 }, key + " solo", false,
+                                                          AudioParameterBoolAttributes().withAutomatable (false)));
+    }
 
     // Voicing: always present, not a module.
     addChoice (layout, voicingMode, "Voice mode", voiceModeNames(), 0, versionHintM2);

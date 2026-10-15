@@ -44,8 +44,16 @@ public:
     /** Releases every voice. Preview voices are included only if asked. */
     void releaseAll (bool includePreview) noexcept;
 
-    /** Adds all voices into `out`; `levels` cover exactly this block (at most `Voice::blockSize` samples). */
-    void render (float* out, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones) noexcept;
+    /** Adds all voices into `left` and `right`; `levels` cover exactly this block (at most `Voice::blockSize` samples). */
+    void render (float* left, float* right, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones, const Voice::Taps& taps) noexcept;
+
+    void render (float* left, float* right, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones) noexcept
+    {
+        render (left, right, numSamples, params, levels, bendSemitones, Voice::Taps {});
+    }
+
+    /** The sounding played voice that started most recently, or null. The editor's live modulation dots follow it. */
+    const Voice* newestPlayedVoice() const noexcept;
 
     int countActive() const noexcept;
     int getActiveVoiceLimit() const noexcept { return activeVoices; }

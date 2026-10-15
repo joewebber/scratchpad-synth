@@ -34,6 +34,7 @@ public:
         setPaintingIsUnclipped (true);
         setWantsKeyboardFocus (true);
         setTitle (caption);
+        getProperties().set ("explainId", paramID);
 
         const auto count = (int) std::round (param->getNormalisableRange().end) + 1;
         for (int i = 0; i < count; ++i)

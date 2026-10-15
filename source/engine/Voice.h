@@ -2,6 +2,7 @@
 
 #include "dsp/Envelope.h"
 #include "dsp/Gate.h"
+#include "dsp/Lfo.h"
 #include "dsp/MultimodeFilter.h"
 #include "dsp/Noise.h"
 #include "dsp/Oscillator.h"
@@ -49,6 +50,13 @@ public:
         bool keyReleased = false;         // note-off arrived while the fade was running
     };
 
+    /** Where the scope listens: each voice adds its signal for the block into these, when set. */
+    struct Taps
+    {
+        float* afterOscillators = nullptr; // the summed sources, before the filter
+        float* afterFilter = nullptr;      // after the filter, before the amp stage
+    };
+
     static constexpr int blockSize = 32; // the longest block `render` is meant for
     static constexpr double waveSwitchSeconds = 0.010;
     static constexpr double ampSwitchSeconds = 0.010;
@@ -77,12 +85,27 @@ public:
 
     void release (std::uint64_t order) noexcept;
 
-    /** Adds this voice's output to `out`. `levels` are valid for exactly this
-        block, which is meant to be at most `blockSize` samples. `bendSemitones`
-        is the pitch bend already scaled by its range. */
-    void render (float* out, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones) noexcept;
+    /** Adds this voice's output to `left` and `right` (pan is applied here).
+        `levels` are valid for exactly this block, which is meant to be at most
+        `blockSize` samples. `bendSemitones` is the pitch bend already scaled by its range. */
+    void render (float* left, float* right, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones, const Taps& taps) noexcept;
+
+    void render (float* left, float* right, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones) noexcept
+    {
+        render (left, right, numSamples, params, levels, bendSemitones, Taps {});
+    }
 
     bool isActive() const noexcept { return state != State::idle; }
+
+    /** The modulation sources as this voice last saw them (for the editor's live dots). */
+    const ModSourceValues& getModSources() const noexcept { return sources; }
+
+    /** The envelopes' stages, as `dsp::Envelope::Stage` values, for the editor's playheads. */
+    int getAmpEnvStage() const noexcept { return (int) ampEnv.getStage(); }
+    int getFilterEnvStage() const noexcept { return (int) filterEnv.getStage(); }
+
+    /** Phase of this voice's own LFO; it only moves while that LFO retriggers. */
+    double getLfoPhase (size_t lfo) const noexcept { return lfos[lfo].getPhase(); }
 
     State state = State::idle;
     int note = -1;
@@ -114,8 +137,9 @@ private:
     void init (const EngineParams& p) noexcept;
     void finishSteal() noexcept;
     void silence() noexcept;
-    void renderPlayed (float* out, int numSamples, const EngineParams& p, const BlockLevels& lv, double bend) noexcept;
-    void renderPreview (float* out, int numSamples, const BlockLevels& lv, double bend) noexcept;
+    void renderPlayed (float* left, float* right, int numSamples, const EngineParams& p, const BlockLevels& lv, double bend, const Taps& taps) noexcept;
+    void renderPreview (float* left, float* right, int numSamples, const BlockLevels& lv, double bend) noexcept;
+    void computeModulation (const EngineParams& p, const BlockLevels& lv, int numSamples, float filterEnvEnd) noexcept;
 
     void glideTo (double target) noexcept;
     double advanceGlide (int numSamples) noexcept;
@@ -152,6 +176,14 @@ private:
     bool filterLive = false;     // the filter has been fed since it was last reset
     bool needsInit = false;
     int ampHold = 0;             // samples the amp stage still waits for the oscillators' own delay
+
+    // Modulation. The LFOs here are the voice's own, used while an LFO retriggers.
+    std::array<dsp::Lfo, 2> lfos;
+    ModSourceValues sources {};  // as of the end of the last block
+    ModSums modEnd {};           // connection sums at the end of the last block
+    bool modPrimed = false;      // `modEnd` holds a block this voice has rendered
+    bool restartLfos = false;
+    double age = 0.0;            // seconds since the note started, for the LFO fade-in
 
     int waveFadeLength = 480;
     float ampMixStep = 0.01f;

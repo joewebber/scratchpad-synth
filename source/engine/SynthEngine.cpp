@@ -8,6 +8,7 @@ namespace scratchpad::engine
 namespace
 {
     constexpr double smoothingSeconds = 0.020;
+    constexpr double wheelSmoothingSeconds = 0.010;
 }
 
 void SynthEngine::prepare (double sampleRate)
@@ -22,11 +23,26 @@ void SynthEngine::prepare (double sampleRate)
     for (auto* s : { &noiseGain, &previewGain, &cutoffLog2, &resonance, &driveDb, &filterEnvAmount, &outputGain })
         s->reset (sampleRate, smoothingSeconds);
 
+    // A wheel moves in 128 steps; smooth them so modulating with it never zippers.
+    modWheelSmoother.reset (sampleRate, wheelSmoothingSeconds);
+    aftertouchSmoother.reset (sampleRate, wheelSmoothingSeconds);
+
+    for (size_t i = 0; i < sharedLfo.size(); ++i)
+    {
+        sharedLfo[i].setSampleRate (sampleRate);
+        sharedLfo[i].seed ((std::uint32_t) (0x51ed270bu + i * 7919u));
+        sharedLfo[i].reset (0.0);
+    }
+
+    lfoValue = {};
+
     updateTargets (true);
 
     pitchBend = 0.0f;
     modWheel = 0.0f;
     aftertouch = 0.0f;
+    modWheelSmoother.setCurrentAndTargetValue (0.0f);
+    aftertouchSmoother.setCurrentAndTargetValue (0.0f);
     prepared = true;
 }
 
@@ -36,6 +52,11 @@ void SynthEngine::setParams (const EngineParams& p) noexcept
     // hang around with nothing to play them.
     if (params.osc[0].enabled && ! p.osc[0].enabled)
         allocator.releaseAll (false);
+
+    // A free-running LFO that has just been added starts its cycle from the top.
+    for (size_t i = 0; i < sharedLfo.size(); ++i)
+        if (! params.lfo[i].enabled && p.lfo[i].enabled)
+            sharedLfo[i].reset (0.0);
 
     params = p;
     allocator.setVoicing (p.voicing);
@@ -88,6 +109,36 @@ BlockLevels SynthEngine::advanceLevels (int numSamples) noexcept
     levels.resonance = advance (resonance);
     levels.driveDb = advance (driveDb);
     levels.filterEnvAmount = advance (filterEnvAmount);
+
+    levels.modWheel = modWheelSmoother.skip (numSamples);
+    levels.aftertouch = aftertouchSmoother.skip (numSamples);
+
+    // The shared LFOs. Their rate can only follow sources every voice agrees on:
+    // the LFOs themselves (as of the last block), the mod wheel and aftertouch.
+    ModSourceValues global {};
+    global[index (ModSource::lfo1)] = lfoValue[0];
+    global[index (ModSource::lfo2)] = lfoValue[1];
+    global[index (ModSource::modWheel)] = levels.modWheel;
+    global[index (ModSource::aftertouch)] = levels.aftertouch;
+    const auto sums = accumulate (params.mod, global);
+
+    for (size_t i = 0; i < sharedLfo.size(); ++i)
+    {
+        const auto& lp = params.lfo[i];
+
+        if (lp.enabled)
+        {
+            sharedLfo[i].setShape (lp.shape);
+            sharedLfo[i].setRate (modulatedLfoRate (lp.rateHz, sums[index (lfoRateDest (i))]));
+            lfoValue[i] = sharedLfo[i].advance (numSamples);
+        }
+        else
+        {
+            lfoValue[i] = 0.0f;
+        }
+    }
+
+    levels.lfo = lfoValue;
     return levels;
 }
 
@@ -114,6 +165,12 @@ void SynthEngine::setPitchBend (float normalised) noexcept
     pitchBend = std::clamp (normalised, -1.0f, 1.0f);
 }
 
+void SynthEngine::setModWheel (float normalised) noexcept
+{
+    modWheel = std::clamp (normalised, 0.0f, 1.0f);
+    modWheelSmoother.setTargetValue (modWheel);
+}
+
 void SynthEngine::allNotesOff() noexcept
 {
     allocator.releaseAll (false);
@@ -136,12 +193,13 @@ void SynthEngine::handleMidi (const juce::MidiMessage& m) noexcept
     else if (m.isChannelPressure())
     {
         aftertouch = (float) m.getChannelPressureValue() / 127.0f;
+        aftertouchSmoother.setTargetValue (aftertouch);
     }
     else if (m.isController())
     {
         switch (m.getControllerNumber())
         {
-            case 1:   modWheel = (float) m.getControllerValue() / 127.0f; break;
+            case 1:   setModWheel ((float) m.getControllerValue() / 127.0f); break;
             case 64:  allocator.setSustain (m.getControllerValue() >= 64); break;
             case 120: // all sound off
             case 123: allocator.releaseAll (false); break;
@@ -163,17 +221,91 @@ void SynthEngine::render (float* left, float* right, int numSamples) noexcept
         const int n = std::min (subBlockSize, numSamples - done);
         const BlockLevels levels = advanceLevels (n);
 
-        std::fill_n (mono.begin(), n, 0.0f);
-        allocator.render (mono.data(), n, params, levels, bendSemitones());
+        std::fill_n (monoLeft.begin(), n, 0.0f);
+        std::fill_n (monoRight.begin(), n, 0.0f);
+
+        const auto tap = (ScopeTap) scopeTap.load (std::memory_order_relaxed);
+        Voice::Taps taps;
+
+        if (tap == ScopeTap::oscillators)
+        {
+            std::fill_n (tapOsc.begin(), n, 0.0f);
+            taps.afterOscillators = tapOsc.data();
+        }
+        else if (tap == ScopeTap::filter)
+        {
+            std::fill_n (tapFilter.begin(), n, 0.0f);
+            taps.afterFilter = tapFilter.data();
+        }
+
+        allocator.render (monoLeft.data(), monoRight.data(), n, params, levels, bendSemitones(), taps);
+
+        {
+            const auto write = scopeFifo.write (n);
+            const float* source = tap == ScopeTap::oscillators ? tapOsc.data() : tap == ScopeTap::filter ? tapFilter.data() : nullptr;
+
+            for (int i = 0; i < write.blockSize1 + write.blockSize2; ++i)
+            {
+                const int slot = i < write.blockSize1 ? write.startIndex1 + i : write.startIndex2 + i - write.blockSize1;
+                scopeData[(size_t) slot] = source != nullptr ? source[i]
+                                                             : 0.5f * (monoLeft[(size_t) i] + monoRight[(size_t) i]) * outputGain.getTargetValue();
+            }
+        }
 
         for (int i = 0; i < n; ++i)
         {
-            const float s = mono[(size_t) i] * outputGain.getNextValue();
-            left[done + i] = s;
-            right[done + i] = s;
+            const float gain = outputGain.getNextValue();
+            left[done + i] = monoLeft[(size_t) i] * gain;
+            right[done + i] = monoRight[(size_t) i] * gain;
         }
 
         done += n;
+    }
+
+    publishLive();
+}
+
+int SynthEngine::readScope (float* dest, int maxSamples) noexcept
+{
+    const auto read = scopeFifo.read (std::min (maxSamples, scopeFifo.getNumReady()));
+
+    for (int i = 0; i < read.blockSize1; ++i)
+        dest[i] = scopeData[(size_t) (read.startIndex1 + i)];
+
+    for (int i = 0; i < read.blockSize2; ++i)
+        dest[read.blockSize1 + i] = scopeData[(size_t) (read.startIndex2 + i)];
+
+    return read.blockSize1 + read.blockSize2;
+}
+
+void SynthEngine::publishLive() noexcept
+{
+    const auto* voice = allocator.newestPlayedVoice();
+
+    ModSourceValues values {};
+
+    if (voice != nullptr)
+    {
+        values = voice->getModSources();
+    }
+    else
+    {
+        values[index (ModSource::lfo1)] = lfoValue[0];
+        values[index (ModSource::lfo2)] = lfoValue[1];
+        values[index (ModSource::modWheel)] = modWheelSmoother.getCurrentValue();
+        values[index (ModSource::aftertouch)] = aftertouchSmoother.getCurrentValue();
+    }
+
+    for (size_t i = 0; i < values.size(); ++i)
+        live.source[i].store (values[i], std::memory_order_relaxed);
+
+    live.envStage[0].store (voice != nullptr ? voice->getAmpEnvStage() : 0, std::memory_order_relaxed);
+    live.envStage[1].store (voice != nullptr ? voice->getFilterEnvStage() : 0, std::memory_order_relaxed);
+
+    for (size_t i = 0; i < sharedLfo.size(); ++i)
+    {
+        const double phase = voice != nullptr && params.lfo[i].retrigger ? voice->getLfoPhase (i) : sharedLfo[i].getPhase();
+        live.lfoPhase[i].store ((float) phase, std::memory_order_relaxed);
     }
 }
 

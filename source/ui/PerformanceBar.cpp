@@ -72,6 +72,17 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     };
     addAndMakeVisible (bendWheel);
 
+    // The mod wheel stays where it is left, like a real one.
+    modWheel.setSliderStyle (juce::Slider::LinearVertical);
+    modWheel.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    modWheel.setRange (0.0, 1.0, 0.0);
+    modWheel.setValue (0.0, juce::dontSendNotification);
+    modWheel.setDoubleClickReturnValue (true, 0.0);
+    modWheel.setTitle ("Mod wheel");
+    modWheel.setMouseDragSensitivity (80);
+    modWheel.onValueChange = [this] { sendModWheel ((float) modWheel.getValue()); };
+    addAndMakeVisible (modWheel);
+
     setOctave (octave);
 }
 
@@ -102,6 +113,14 @@ void PerformanceBar::sendBend (float value)
 {
     plugin::UiEvent e;
     e.type = plugin::UiEvent::Type::pitchBend;
+    e.value = value;
+    processor.getUiEvents().push (e);
+}
+
+void PerformanceBar::sendModWheel (float value)
+{
+    plugin::UiEvent e;
+    e.type = plugin::UiEvent::Type::modWheel;
     e.value = value;
     processor.getUiEvents().push (e);
 }
@@ -175,6 +194,7 @@ void PerformanceBar::paint (juce::Graphics& g)
                       hintArea, juce::Justification::centredLeft, 4);
 
     drawCaption (g, "Bend", bendCaptionArea.toFloat(), p.mute, juce::Justification::centred);
+    drawCaption (g, "Mod", modCaptionArea.toFloat(), p.mute, juce::Justification::centred);
 }
 
 void PerformanceBar::resized()
@@ -193,9 +213,13 @@ void PerformanceBar::resized()
     velocityLabelArea = left.removeFromTop (20);
 
     area.removeFromLeft (12);
-    auto bendArea = area.removeFromLeft (52);
+    auto wheels = area.removeFromLeft (76);
+    auto bendArea = wheels.removeFromLeft (38);
+    auto modArea = wheels;
     bendCaptionArea = bendArea.removeFromBottom (16);
+    modCaptionArea = modArea.removeFromBottom (16);
     bendWheel.setBounds (bendArea);
+    modWheel.setBounds (modArea);
     area.removeFromLeft (12);
 
     hintArea = area.removeFromRight (200);

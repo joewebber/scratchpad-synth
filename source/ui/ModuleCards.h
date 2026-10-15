@@ -3,8 +3,12 @@
 #include "plugin/Modules.h"
 #include "plugin/PluginProcessor.h"
 #include "ui/ChoiceSegments.h"
+#include "ui/HeaderButtons.h"
 #include "ui/IconButton.h"
 #include "ui/Knob.h"
+#include "ui/ModDial.h"
+#include "ui/ModulationModel.h"
+#include "ui/Visualisers.h"
 #include "ui/ToggleChip.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -27,11 +31,24 @@ public:
 
     void paint (juce::Graphics&) override;
 
+    /** Names the module for the Explain panel: hovering anywhere on the card explains it, and the "?" button asks. */
+    void setExplainKey (const juce::String& moduleKey);
+
 protected:
     void makeRemovable (const juce::String& accessibleName, std::function<void()> onRemove);
 
-    /** Puts the remove button (if any) at the right end of `headerRow`. */
+    /** Adds "?" and, for modules that have them, "B" (bypass) and "S" (solo, sources only) for the module
+        whose parameters start with `key`. A bypassed card, or a source muted by another's solo, is dimmed. */
+    void makeControllable (plugin::ScratchpadProcessor&, const juce::String& key, bool soloable, bool bypassable = true);
+
+    /** Puts the header buttons that exist at the right end of `headerRow`, right to left: remove, "?", then
+        (unless `bypassSoloElsewhere`) "S" and "B". */
     void placeRemoveButton (juce::Rectangle<int> headerRow);
+
+    /** Where "B" and "S" go on a card whose header has no room for them. */
+    void placeBypassSolo (juce::Point<int> topLeft);
+
+    bool bypassSoloElsewhere = false;
 
     /** Family-coloured dot with a stroked 12 x 10 glyph, then the module name. */
     static void drawHeader (juce::Graphics&, const Palette&, juce::Rectangle<float> row,
@@ -41,7 +58,14 @@ protected:
     static constexpr int headerHeight = 22;
 
 private:
+    void refreshState();
+
+    plugin::ScratchpadProcessor* controlled = nullptr;
+    juce::String controlKey;
+    bool isSoloable = false;
     std::unique_ptr<IconButton> removeButton;
+    std::unique_ptr<HeaderToggle> explainButton, bypassButton, soloButton;
+    std::vector<std::unique_ptr<juce::ParameterAttachment>> stateWatchers;
 };
 
 /** Oscillator 1 to 3: wave well, wave selector, phase reset, and knobs for
@@ -49,13 +73,13 @@ private:
 class OscillatorCard final : public ModuleCard
 {
 public:
-    OscillatorCard (plugin::ScratchpadProcessor&, int oscillatorIndex);
+    OscillatorCard (plugin::ScratchpadProcessor&, ModulationModel&, int oscillatorIndex);
 
     void paint (juce::Graphics&) override;
     void resized() override;
     void lookAndFeelChanged() override;
 
-    static constexpr int width = 448, height = 86;
+    static constexpr int width = 448, height = 82;
 
 private:
     void applyColours();
@@ -74,7 +98,7 @@ private:
 class NoiseCard final : public ModuleCard
 {
 public:
-    explicit NoiseCard (plugin::ScratchpadProcessor&);
+    NoiseCard (plugin::ScratchpadProcessor&, ModulationModel&);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -96,17 +120,18 @@ private:
 class FilterCard final : public ModuleCard
 {
 public:
-    explicit FilterCard (plugin::ScratchpadProcessor&);
+    FilterCard (plugin::ScratchpadProcessor&, ModulationModel&);
 
     void paint (juce::Graphics&) override;
     void resized() override;
     void lookAndFeelChanged() override;
 
-    static constexpr int width = 276, height = 146;
+    static constexpr int width = 276, height = 198;
 
 private:
     void applyColours();
 
+    FilterCurve curve;
     ChoiceSegments mode;
     Knob cutoff, resonance, keyTrack, drive;
     juce::Rectangle<int> headerRow;
@@ -117,7 +142,47 @@ private:
 class EnvelopeCard final : public ModuleCard
 {
 public:
-    EnvelopeCard (plugin::ScratchpadProcessor&, plugin::Module which);
+    EnvelopeCard (plugin::ScratchpadProcessor&, ModulationModel&, plugin::Module which);
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void lookAndFeelChanged() override;
+
+    static constexpr int width = FilterCard::width, height = 150;
+
+private:
+    void applyColours();
+
+    const bool isAmp;
+    EnvelopeDisplay display;
+    Knob attack, decay, sustain, release, extra;
+    juce::Rectangle<int> headerRow;
+};
+
+/** The amp stage. Without an amp envelope it is the fixed 2 ms on / off gate;
+    with one it just says so, and the envelope card does the shaping. Its level and pan
+    are always full and centred, so they are dials that only show modulation. */
+class AmpCard final : public ModuleCard
+{
+public:
+    AmpCard (plugin::ScratchpadProcessor&, ModulationModel&);
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+    static constexpr int width = FilterCard::width, height = 104;
+
+private:
+    plugin::ScratchpadProcessor& processor;
+    ModDial level, pan;
+    juce::Rectangle<int> textArea;
+};
+
+/** Poly, mono or legato, how many voices, glide time and pitch bend range. */
+class VoicingCard final : public ModuleCard
+{
+public:
+    explicit VoicingCard (plugin::ScratchpadProcessor&);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -128,24 +193,11 @@ public:
 private:
     void applyColours();
 
-    const bool isAmp;
-    Knob attack, decay, sustain, release, extra;
+    ChoiceSegments mode;
+    Knob voices, glide, bendRange;
+    juce::ParameterAttachment modeWatcher;
+    int modeIndex = 0;
     juce::Rectangle<int> headerRow;
-};
-
-/** The amp stage. Without an amp envelope it is the fixed 2 ms on / off gate;
-    with one it just says so, and the envelope card does the shaping. */
-class AmpCard final : public ModuleCard
-{
-public:
-    explicit AmpCard (plugin::ScratchpadProcessor&);
-
-    void paint (juce::Graphics&) override;
-
-    static constexpr int width = FilterCard::width, height = 100;
-
-private:
-    plugin::ScratchpadProcessor& processor;
 };
 
 class OutputCard final : public ModuleCard

@@ -11,6 +11,7 @@ ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
       topBar (p),
       patchView (p),
       performanceBar (p),
+      explainPanel (p),
       presenceAttachment (*p.apvts.getParameter (params::osc1Enabled),
                           [this] (float v) { refreshMode (v >= 0.5f); },
                           &p.undoManager)
@@ -22,6 +23,7 @@ ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
     addChildComponent (picker);
     addChildComponent (patchView);
     addChildComponent (performanceBar);
+    addChildComponent (explainPanel);
 
     // After the children exist, so they all pick up the palette.
     setLookAndFeel (&lookAndFeel);
@@ -80,6 +82,7 @@ void ScratchpadEditor::refreshMode (bool started)
     picker.setVisible (! started);
     patchView.setVisible (started);
     performanceBar.setVisible (started);
+    explainPanel.setVisible (started);
     topBar.setPickerMode (! started);
 
     // Panels paint their shadows outside their bounds; clear what the hidden one left.
@@ -99,6 +102,9 @@ void ScratchpadEditor::globalFocusChanged (juce::Component* focused)
 
 bool ScratchpadEditor::keyPressed (const juce::KeyPress& key)
 {
+    if (patchView.isVisible() && key == juce::KeyPress::escapeKey && patchView.cancelConnecting())
+        return true;
+
     return patchView.isVisible() && performanceBar.handleKeyPressed (key);
 }
 
@@ -121,7 +127,10 @@ void ScratchpadEditor::resized()
 
     picker.setBounds (area);
 
-    constexpr int performanceHeight = 108;
+    explainPanel.setBounds (area.removeFromRight (ui::ExplainPanel::width));
+    area.removeFromRight (10);
+
+    constexpr int performanceHeight = 96;
     performanceBar.setBounds (area.removeFromBottom (performanceHeight));
     area.removeFromBottom (10);
     patchView.setBounds (area);

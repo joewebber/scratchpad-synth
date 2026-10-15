@@ -33,6 +33,11 @@ struct BlockLevels
     Ramp driveDb;             // 0 .. 24
     Ramp filterEnvAmount;     // -1 .. +1, already 0 when the filter envelope is disabled
 
+    // Modulation sources that are the same for every voice, at the end of the block.
+    std::array<float, 2> lfo {};  // free-running LFOs, -1 .. +1, 0 when the LFO is not present
+    float modWheel = 0.0f;        // 0 .. 1
+    float aftertouch = 0.0f;      // 0 .. 1
+
     /** What the levels settle to for `p`: every ramp is flat. */
     static BlockLevels steady (const EngineParams& p) noexcept
     {

@@ -1,0 +1,1256 @@
+{
+  "modules": {
+    "osc1": {
+      "title": "Oscillator 1",
+      "concept": "An oscillator makes a wave that repeats many times a second. The repeat rate is the pitch and the wave's shape is the tone.",
+      "what": "Where sound starts. It repeats one wave shape: how fast sets the pitch, the shape sets the tone.",
+      "listenFor": "Play a low note, then a high one. The tone stays the same; only the pitch moves.",
+      "tryThis": "Hold a note and switch between the four waves. Saw is brightest because it has every harmonic.",
+      "glossaryTerms": [
+        "oscillator",
+        "pitch",
+        "tone",
+        "harmonic",
+        "detune"
+      ]
+    },
+    "osc2": {
+      "title": "Oscillator 2",
+      "concept": "An oscillator makes a wave that repeats many times a second. The repeat rate is the pitch and the wave's shape is the tone.",
+      "what": "Where sound starts. It repeats one wave shape: how fast sets the pitch, the shape sets the tone. Add it to layer with other oscillators.",
+      "listenFor": "Play a low note, then a high one. The tone stays the same; only the pitch moves.",
+      "tryThis": "Set Fine to +7 cents against Oscillator 1 and hold a note to hear the shimmer.",
+      "glossaryTerms": [
+        "oscillator",
+        "pitch",
+        "tone",
+        "harmonic",
+        "detune"
+      ]
+    },
+    "osc3": {
+      "title": "Oscillator 3",
+      "concept": "An oscillator makes a wave that repeats many times a second. The repeat rate is the pitch and the wave's shape is the tone.",
+      "what": "Where sound starts. It repeats one wave shape: how fast sets the pitch, the shape sets the tone. Add it to layer with other oscillators.",
+      "listenFor": "Play a low note, then a high one. The tone stays the same; only the pitch moves.",
+      "tryThis": "Set Fine to +7 cents against Oscillator 1 and hold a note to hear the shimmer.",
+      "glossaryTerms": [
+        "oscillator",
+        "pitch",
+        "tone",
+        "harmonic",
+        "detune"
+      ]
+    },
+    "noise": {
+      "title": "Noise",
+      "concept": "Noise is random hiss rather than a repeating wave. It has no pitch, so it adds breath, grit and percussion.",
+      "what": "A source of random hiss, white or pink, mixed in with your oscillators.",
+      "listenFor": "A breathy or airy layer under the notes, with no pitch of its own.",
+      "tryThis": "Turn off the oscillators' level and play with only noise through a low-pass filter.",
+      "glossaryTerms": [
+        "white-noise",
+        "pink-noise",
+        "spectrum"
+      ]
+    },
+    "filter": {
+      "title": "Filter",
+      "concept": "A filter removes part of a sound's spectrum. A low-pass keeps the lows and turns the highs down, which makes the sound darker.",
+      "what": "Turns some frequencies down and lets others through. A low-pass removes harmonics above the cutoff, so the sound gets darker.",
+      "listenFor": "Hold a note and drag Cutoff down: the brightness drains out.",
+      "tryThis": "Watch the scope as you do it. The bars on the right go first.",
+      "glossaryTerms": [
+        "filter",
+        "cutoff",
+        "resonance",
+        "low-pass",
+        "high-pass",
+        "band-pass"
+      ]
+    },
+    "ampEnv": {
+      "title": "Amp envelope",
+      "concept": "An envelope shapes a note over time. This one controls volume: how it starts, how it settles while held, and how it fades after release.",
+      "what": "Shapes each note's volume over time in four stages: attack, decay, sustain and release.",
+      "listenFor": "How a note starts, how it settles while held, and how it fades after you let go.",
+      "tryThis": "Set Attack to about 500 ms and Release to 2 s, then play slow chords.",
+      "glossaryTerms": [
+        "envelope",
+        "attack",
+        "decay",
+        "sustain",
+        "release",
+        "velocity"
+      ]
+    },
+    "filterEnv": {
+      "title": "Filter envelope",
+      "concept": "This envelope moves the filter cutoff over the life of each note, so the tone changes as the note plays. Plucks and sweeps come from here.",
+      "what": "Shapes how the filter cutoff moves during each note, in four stages: attack, decay, sustain and release.",
+      "listenFor": "The tone opening up at the start of a note and closing as it decays.",
+      "tryThis": "Set Sustain to 0% and Decay to 300 ms, then raise Amount for a pluck.",
+      "glossaryTerms": [
+        "envelope",
+        "cutoff",
+        "attack",
+        "decay",
+        "sustain",
+        "release"
+      ]
+    },
+    "lfo1": {
+      "title": "LFO 1",
+      "concept": "An LFO is a wave too slow to hear. Instead of making sound, it moves other controls up and down for you. It needs a connection to do anything.",
+      "what": "A slow wave that moves other controls up and down. Connect it from the Connections panel to use it.",
+      "listenFor": "Nothing at first. An LFO only changes the sound once it is connected to something.",
+      "tryThis": "Connect it to Filter cutoff, then change the rate from 0.3 Hz to 6 Hz.",
+      "glossaryTerms": [
+        "lfo",
+        "modulation",
+        "vibrato",
+        "retrigger",
+        "sample-and-hold"
+      ]
+    },
+    "lfo2": {
+      "title": "LFO 2",
+      "concept": "An LFO is a wave too slow to hear. Instead of making sound, it moves other controls up and down for you. It needs a connection to do anything.",
+      "what": "A slow wave that moves other controls up and down. Connect it from the Connections panel to use it.",
+      "listenFor": "Nothing at first. An LFO only changes the sound once it is connected to something.",
+      "tryThis": "Connect it to Filter cutoff, then change the rate from 0.3 Hz to 6 Hz.",
+      "glossaryTerms": [
+        "lfo",
+        "modulation",
+        "vibrato",
+        "retrigger",
+        "sample-and-hold"
+      ]
+    },
+    "amp": {
+      "title": "Amp",
+      "concept": "The amp stage sets the final loudness of each note. Without an Amp Envelope it is a simple on/off gate.",
+      "what": "Sets how loud each note is. Without an Amp Envelope, notes switch on with the key and off when you let go, with a 2 ms fade.",
+      "listenFor": "Notes start and stop abruptly until you add an Amp Envelope.",
+      "tryThis": "Add an Amp Envelope from the signal chain and hear the difference.",
+      "glossaryTerms": [
+        "amp",
+        "gate",
+        "envelope"
+      ]
+    },
+    "voicing": {
+      "title": "Voicing",
+      "concept": "Voicing decides how many notes can sound at once and how the synth behaves when you play them.",
+      "what": "Controls how many notes play at once, whether pitch slides between them, and how far the pitch bend moves.",
+      "listenFor": "Chords in Poly; single lines in Mono and Legato.",
+      "tryThis": "Switch to Mono, set Glide to 200 ms, and play a melody.",
+      "glossaryTerms": [
+        "polyphony",
+        "mono",
+        "legato",
+        "glide",
+        "pitch-bend",
+        "voice-stealing"
+      ]
+    },
+    "output": {
+      "title": "Output",
+      "concept": "The output stage sets the overall volume leaving the synth, after everything else.",
+      "what": "Sets the overall volume after all other modules.",
+      "listenFor": "The whole sound getting louder or quieter, with its tone unchanged.",
+      "tryThis": "Lower it if the sound distorts, or raise it if it is too quiet.",
+      "glossaryTerms": [
+        "decibel",
+        "amp"
+      ]
+    },
+    "connections": {
+      "title": "Connections",
+      "concept": "A connection lets one control move another. A source (like an LFO) sends a signal to a destination (like cutoff), scaled by an amount.",
+      "what": "Eight slots that each link a source to a destination with an amount.",
+      "listenFor": "The destination moving by itself, in time with the source.",
+      "tryThis": "Link LFO 1 to Filter cutoff, then drag the amount up and down.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo",
+        "envelope",
+        "velocity"
+      ]
+    },
+    "sources": {
+      "title": "Sources",
+      "concept": "These are things you play with your hands: velocity, mod wheel, aftertouch and the key you press. They can be connected to any destination.",
+      "what": "Live performance controls: key velocity, mod wheel, aftertouch and key position.",
+      "listenFor": "Nothing until a connection uses them, then the sound responds to how you play.",
+      "tryThis": "Connect Mod wheel to Filter cutoff and move the wheel while holding a note.",
+      "glossaryTerms": [
+        "velocity",
+        "mod-wheel",
+        "aftertouch",
+        "key-tracking",
+        "modulation"
+      ]
+    }
+  },
+  "params": {
+    "osc1.enabled": {
+      "title": "Oscillator 1",
+      "module": "osc1",
+      "what": "Shows whether Oscillator 1 is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "When it is present, you hear it in the mix.",
+      "tryThis": "Click Oscillator in the signal chain to add or remove it.",
+      "glossaryTerms": [
+        "oscillator"
+      ]
+    },
+    "osc1.wave": {
+      "title": "Wave",
+      "module": "osc1",
+      "what": "Chooses the wave shape: Sine, Triangle, Saw or Pulse. The shape sets the tone.",
+      "listenFor": "Sine is pure, Triangle mellow, Saw bright and buzzy, Pulse hollow.",
+      "tryThis": "Hold a note and click through all four waves.",
+      "glossaryTerms": [
+        "tone",
+        "harmonic",
+        "oscillator"
+      ]
+    },
+    "osc1.octave": {
+      "title": "Octave",
+      "module": "osc1",
+      "what": "Shifts the pitch by whole octaves, from -2 to +2. Each octave doubles or halves the frequency.",
+      "listenFor": "The same note sounding higher or lower.",
+      "tryThis": "Set -1 for a bass layer, then +1 for a bright one.",
+      "glossaryTerms": [
+        "octave",
+        "frequency"
+      ]
+    },
+    "osc1.semitone": {
+      "title": "Semitone",
+      "module": "osc1",
+      "what": "Shifts the pitch in semitones, from -12 to +12. Twelve semitones make an octave.",
+      "listenFor": "Small steps up or down; +7 gives a fifth, +12 an octave.",
+      "tryThis": "Set +7 on a held note for a power-chord sound.",
+      "glossaryTerms": [
+        "semitone",
+        "octave"
+      ]
+    },
+    "osc1.fine": {
+      "title": "Fine",
+      "module": "osc1",
+      "what": "Shifts the pitch by up to 100 cents either way. 100 cents is one semitone.",
+      "listenFor": "A slow, shimmering beat when two oscillators are slightly apart.",
+      "tryThis": "Set +8 cents on a held note, then raise it until it sounds out of tune.",
+      "glossaryTerms": [
+        "cents",
+        "detune",
+        "semitone"
+      ]
+    },
+    "osc1.pulseWidth": {
+      "title": "Pulse width",
+      "module": "osc1",
+      "what": "Sets how wide the Pulse wave's high part is, from 5% to 95%. It only affects the Pulse wave.",
+      "listenFor": "50% sounds hollow; narrow settings sound thin and nasal.",
+      "tryThis": "Choose Pulse, then sweep from 50% down to 10%.",
+      "glossaryTerms": [
+        "pulse-width",
+        "harmonic"
+      ]
+    },
+    "osc1.level": {
+      "title": "Level",
+      "module": "osc1",
+      "what": "Sets how loud Oscillator 1 is in the mix, from silence (−∞ dB) up to 0 dB.",
+      "listenFor": "This oscillator getting louder or quieter against the others.",
+      "tryThis": "Balance it against the others until nothing sounds buried.",
+      "glossaryTerms": [
+        "decibel"
+      ]
+    },
+    "osc1.phaseReset": {
+      "title": "Phase reset",
+      "module": "osc1",
+      "what": "When on, the wave restarts from the same point on every note. When off, it keeps running.",
+      "listenFor": "On: every note starts the same. Off: slight variation between notes.",
+      "tryThis": "Turn it off, then play the same note repeatedly.",
+      "glossaryTerms": [
+        "oscillator",
+        "retrigger"
+      ]
+    },
+    "osc1.bypass": {
+      "title": "Bypass",
+      "module": "osc1",
+      "what": "Passes the signal through Oscillator 1 untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this module taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "osc1.solo": {
+      "title": "Solo",
+      "module": "osc1",
+      "what": "Mutes the other sources so you hear only Oscillator 1.",
+      "listenFor": "Only this oscillator, without the rest of the mix.",
+      "tryThis": "Solo it to hear its wave on its own, then switch off.",
+      "glossaryTerms": [
+        "solo"
+      ]
+    },
+    "osc2.enabled": {
+      "title": "Oscillator 2",
+      "module": "osc2",
+      "what": "Shows whether Oscillator 2 is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "When it is present, you hear it in the mix.",
+      "tryThis": "Click Oscillator in the signal chain to add or remove it.",
+      "glossaryTerms": [
+        "oscillator"
+      ]
+    },
+    "osc2.wave": {
+      "title": "Wave",
+      "module": "osc2",
+      "what": "Chooses the wave shape: Sine, Triangle, Saw or Pulse. The shape sets the tone.",
+      "listenFor": "Sine is pure, Triangle mellow, Saw bright and buzzy, Pulse hollow.",
+      "tryThis": "Hold a note and click through all four waves.",
+      "glossaryTerms": [
+        "tone",
+        "harmonic",
+        "oscillator"
+      ]
+    },
+    "osc2.octave": {
+      "title": "Octave",
+      "module": "osc2",
+      "what": "Shifts the pitch by whole octaves, from -2 to +2. Each octave doubles or halves the frequency.",
+      "listenFor": "The same note sounding higher or lower.",
+      "tryThis": "Set -1 for a bass layer, then +1 for a bright one. Compare it against Oscillator 1.",
+      "glossaryTerms": [
+        "octave",
+        "frequency"
+      ]
+    },
+    "osc2.semitone": {
+      "title": "Semitone",
+      "module": "osc2",
+      "what": "Shifts the pitch in semitones, from -12 to +12. Twelve semitones make an octave.",
+      "listenFor": "Small steps up or down; +7 gives a fifth, +12 an octave.",
+      "tryThis": "Set +7 on a held note for a power-chord sound. Compare it against Oscillator 1.",
+      "glossaryTerms": [
+        "semitone",
+        "octave"
+      ]
+    },
+    "osc2.fine": {
+      "title": "Fine",
+      "module": "osc2",
+      "what": "Shifts the pitch by up to 100 cents either way. 100 cents is one semitone. Use it to detune against Oscillator 1.",
+      "listenFor": "A slow, shimmering beat when two oscillators are slightly apart.",
+      "tryThis": "Set +8 cents on a held note, then raise it until it sounds out of tune.",
+      "glossaryTerms": [
+        "cents",
+        "detune",
+        "semitone"
+      ]
+    },
+    "osc2.pulseWidth": {
+      "title": "Pulse width",
+      "module": "osc2",
+      "what": "Sets how wide the Pulse wave's high part is, from 5% to 95%. It only affects the Pulse wave.",
+      "listenFor": "50% sounds hollow; narrow settings sound thin and nasal.",
+      "tryThis": "Choose Pulse, then sweep from 50% down to 10%.",
+      "glossaryTerms": [
+        "pulse-width",
+        "harmonic"
+      ]
+    },
+    "osc2.level": {
+      "title": "Level",
+      "module": "osc2",
+      "what": "Sets how loud Oscillator 2 is in the mix, from silence (−∞ dB) up to 0 dB.",
+      "listenFor": "This oscillator getting louder or quieter against the others.",
+      "tryThis": "Balance it against the others until nothing sounds buried.",
+      "glossaryTerms": [
+        "decibel"
+      ]
+    },
+    "osc2.phaseReset": {
+      "title": "Phase reset",
+      "module": "osc2",
+      "what": "When on, the wave restarts from the same point on every note. When off, it keeps running.",
+      "listenFor": "On: every note starts the same. Off: slight variation between notes.",
+      "tryThis": "Turn it off, then play the same note repeatedly.",
+      "glossaryTerms": [
+        "oscillator",
+        "retrigger"
+      ]
+    },
+    "osc2.bypass": {
+      "title": "Bypass",
+      "module": "osc2",
+      "what": "Passes the signal through Oscillator 2 untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this module taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "osc2.solo": {
+      "title": "Solo",
+      "module": "osc2",
+      "what": "Mutes the other sources so you hear only Oscillator 2.",
+      "listenFor": "Only this oscillator, without the rest of the mix.",
+      "tryThis": "Solo it to hear its wave on its own, then switch off.",
+      "glossaryTerms": [
+        "solo"
+      ]
+    },
+    "osc3.enabled": {
+      "title": "Oscillator 3",
+      "module": "osc3",
+      "what": "Shows whether Oscillator 3 is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "When it is present, you hear it in the mix.",
+      "tryThis": "Click Oscillator in the signal chain to add or remove it.",
+      "glossaryTerms": [
+        "oscillator"
+      ]
+    },
+    "osc3.wave": {
+      "title": "Wave",
+      "module": "osc3",
+      "what": "Chooses the wave shape: Sine, Triangle, Saw or Pulse. The shape sets the tone.",
+      "listenFor": "Sine is pure, Triangle mellow, Saw bright and buzzy, Pulse hollow.",
+      "tryThis": "Hold a note and click through all four waves.",
+      "glossaryTerms": [
+        "tone",
+        "harmonic",
+        "oscillator"
+      ]
+    },
+    "osc3.octave": {
+      "title": "Octave",
+      "module": "osc3",
+      "what": "Shifts the pitch by whole octaves, from -2 to +2. Each octave doubles or halves the frequency.",
+      "listenFor": "The same note sounding higher or lower.",
+      "tryThis": "Set -1 for a bass layer, then +1 for a bright one. Compare it against Oscillator 1.",
+      "glossaryTerms": [
+        "octave",
+        "frequency"
+      ]
+    },
+    "osc3.semitone": {
+      "title": "Semitone",
+      "module": "osc3",
+      "what": "Shifts the pitch in semitones, from -12 to +12. Twelve semitones make an octave.",
+      "listenFor": "Small steps up or down; +7 gives a fifth, +12 an octave.",
+      "tryThis": "Set +7 on a held note for a power-chord sound. Compare it against Oscillator 1.",
+      "glossaryTerms": [
+        "semitone",
+        "octave"
+      ]
+    },
+    "osc3.fine": {
+      "title": "Fine",
+      "module": "osc3",
+      "what": "Shifts the pitch by up to 100 cents either way. 100 cents is one semitone. Use it to detune against Oscillator 1.",
+      "listenFor": "A slow, shimmering beat when two oscillators are slightly apart.",
+      "tryThis": "Set +8 cents on a held note, then raise it until it sounds out of tune.",
+      "glossaryTerms": [
+        "cents",
+        "detune",
+        "semitone"
+      ]
+    },
+    "osc3.pulseWidth": {
+      "title": "Pulse width",
+      "module": "osc3",
+      "what": "Sets how wide the Pulse wave's high part is, from 5% to 95%. It only affects the Pulse wave.",
+      "listenFor": "50% sounds hollow; narrow settings sound thin and nasal.",
+      "tryThis": "Choose Pulse, then sweep from 50% down to 10%.",
+      "glossaryTerms": [
+        "pulse-width",
+        "harmonic"
+      ]
+    },
+    "osc3.level": {
+      "title": "Level",
+      "module": "osc3",
+      "what": "Sets how loud Oscillator 3 is in the mix, from silence (−∞ dB) up to 0 dB.",
+      "listenFor": "This oscillator getting louder or quieter against the others.",
+      "tryThis": "Balance it against the others until nothing sounds buried.",
+      "glossaryTerms": [
+        "decibel"
+      ]
+    },
+    "osc3.phaseReset": {
+      "title": "Phase reset",
+      "module": "osc3",
+      "what": "When on, the wave restarts from the same point on every note. When off, it keeps running.",
+      "listenFor": "On: every note starts the same. Off: slight variation between notes.",
+      "tryThis": "Turn it off, then play the same note repeatedly.",
+      "glossaryTerms": [
+        "oscillator",
+        "retrigger"
+      ]
+    },
+    "osc3.bypass": {
+      "title": "Bypass",
+      "module": "osc3",
+      "what": "Passes the signal through Oscillator 3 untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this module taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "osc3.solo": {
+      "title": "Solo",
+      "module": "osc3",
+      "what": "Mutes the other sources so you hear only Oscillator 3.",
+      "listenFor": "Only this oscillator, without the rest of the mix.",
+      "tryThis": "Solo it to hear its wave on its own, then switch off.",
+      "glossaryTerms": [
+        "solo"
+      ]
+    },
+    "noise.enabled": {
+      "title": "Noise",
+      "module": "noise",
+      "what": "Shows whether Noise is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "When present, a hiss joins the mix.",
+      "tryThis": "Click Noise in the signal chain to add it.",
+      "glossaryTerms": [
+        "white-noise"
+      ]
+    },
+    "noise.colour": {
+      "title": "Colour",
+      "module": "noise",
+      "what": "Chooses White noise (bright, like static) or Pink noise (softer, with fewer highs).",
+      "listenFor": "White hisses like steam; pink rumbles more like rain.",
+      "tryThis": "Switch between White and Pink while holding a note.",
+      "glossaryTerms": [
+        "white-noise",
+        "pink-noise"
+      ]
+    },
+    "noise.level": {
+      "title": "Level",
+      "module": "noise",
+      "what": "Sets how loud the noise is in the mix, from silence up to 0 dB. It starts at -18 dB.",
+      "listenFor": "A little noise adds breath; a lot hides the pitched sound.",
+      "tryThis": "Add a touch, then sweep Filter cutoff down.",
+      "glossaryTerms": [
+        "decibel"
+      ]
+    },
+    "noise.bypass": {
+      "title": "Bypass",
+      "module": "noise",
+      "what": "Passes the signal through Noise untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this module taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "noise.solo": {
+      "title": "Solo",
+      "module": "noise",
+      "what": "Mutes the other sources so you hear only Noise.",
+      "listenFor": "Just the hiss on its own.",
+      "tryThis": "Solo it, then change the colour.",
+      "glossaryTerms": [
+        "solo"
+      ]
+    },
+    "filter.enabled": {
+      "title": "Filter",
+      "module": "filter",
+      "what": "Shows whether the Filter is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "With it present, you can darken or thin the sound.",
+      "tryThis": "Click Filter in the signal chain to add it.",
+      "glossaryTerms": [
+        "filter"
+      ]
+    },
+    "filter.mode": {
+      "title": "Mode",
+      "module": "filter",
+      "what": "LP keeps lows and removes highs, HP does the opposite, BP keeps a band. 24 dB slopes cut more steeply than 12 dB.",
+      "listenFor": "HP thins the sound out; BP sounds like it is coming through a phone.",
+      "tryThis": "Hold a note and click through the four modes.",
+      "glossaryTerms": [
+        "low-pass",
+        "high-pass",
+        "band-pass"
+      ]
+    },
+    "filter.cutoff": {
+      "title": "Cutoff",
+      "module": "filter",
+      "what": "Sets where the filter starts cutting, from 20 Hz to 20 kHz. Harmonics beyond it are turned down.",
+      "listenFor": "Lower it and the note gets darker, as if it moved behind a door.",
+      "tryThis": "Hold a chord and sweep from 20 kHz to 200 Hz.",
+      "glossaryTerms": [
+        "cutoff",
+        "frequency",
+        "harmonic"
+      ]
+    },
+    "filter.resonance": {
+      "title": "Resonance",
+      "module": "filter",
+      "what": "Boosts frequencies right at the cutoff, adding a peak. It runs from 0% to 100%.",
+      "listenFor": "A whistling, vocal edge that follows the cutoff.",
+      "tryThis": "Set it near 80% and sweep Cutoff slowly.",
+      "glossaryTerms": [
+        "resonance",
+        "cutoff"
+      ]
+    },
+    "filter.keyTracking": {
+      "title": "Key tracking",
+      "module": "filter",
+      "what": "Makes the cutoff follow the note you play. At 100%, it moves in step with the pitch.",
+      "listenFor": "Higher notes stay as bright as low ones.",
+      "tryThis": "Set it to 100%, then play low and high notes.",
+      "glossaryTerms": [
+        "key-tracking",
+        "cutoff"
+      ]
+    },
+    "filter.drive": {
+      "title": "Drive",
+      "module": "filter",
+      "what": "Pushes the signal harder into the filter, from 0 to 24 dB. It adds warmth and gentle distortion.",
+      "listenFor": "A thicker, grittier tone as it rises.",
+      "tryThis": "Raise it to 12 dB while holding a chord.",
+      "glossaryTerms": [
+        "drive",
+        "decibel"
+      ]
+    },
+    "filter.bypass": {
+      "title": "Bypass",
+      "module": "filter",
+      "what": "Passes the signal through the Filter untouched, so you can compare with and without it.",
+      "listenFor": "The raw, unfiltered sound.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "ampEnv.enabled": {
+      "title": "Amp envelope",
+      "module": "ampEnv",
+      "what": "Shows whether the Amp Envelope is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "With it present, notes change over time. Without it, notes are on or off.",
+      "tryThis": "Click Amp Envelope in the signal chain to add it.",
+      "glossaryTerms": [
+        "envelope"
+      ]
+    },
+    "ampEnv.attack": {
+      "title": "Attack",
+      "module": "ampEnv",
+      "what": "How long the volume takes to reach its peak after you press a key, from 1 ms to 10 s.",
+      "listenFor": "Short attacks pluck; long ones swell in.",
+      "tryThis": "Repeat one note while you sweep from 1 ms to 1 s.",
+      "glossaryTerms": [
+        "attack",
+        "envelope"
+      ]
+    },
+    "ampEnv.decay": {
+      "title": "Decay",
+      "module": "ampEnv",
+      "what": "How long the volume takes to fall from its peak to the sustain level, from 1 ms to 10 s.",
+      "listenFor": "Only audible when Sustain is below 100%.",
+      "tryThis": "Set Sustain to 0% and Decay to 200 ms for a pluck.",
+      "glossaryTerms": [
+        "decay",
+        "sustain"
+      ]
+    },
+    "ampEnv.sustain": {
+      "title": "Sustain",
+      "module": "ampEnv",
+      "what": "The volume level held while the key stays down, from 0% to 100%. It is a level, not a time.",
+      "listenFor": "At 0% the note dies away even while you hold it.",
+      "tryThis": "Hold a key and drag Sustain down slowly.",
+      "glossaryTerms": [
+        "sustain",
+        "envelope"
+      ]
+    },
+    "ampEnv.release": {
+      "title": "Release",
+      "module": "ampEnv",
+      "what": "How long the volume takes to fall to nothing after you let go, up to 20 s.",
+      "listenFor": "Long releases make notes overlap and blur together.",
+      "tryThis": "Set it to 3 s and play short, separate notes.",
+      "glossaryTerms": [
+        "release",
+        "envelope"
+      ]
+    },
+    "ampEnv.bypass": {
+      "title": "Bypass",
+      "module": "ampEnv",
+      "what": "Passes the signal through the Amp Envelope untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this envelope taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass",
+        "envelope"
+      ]
+    },
+    "filterEnv.enabled": {
+      "title": "Filter envelope",
+      "module": "filterEnv",
+      "what": "Shows whether the Filter Envelope is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "With it present, notes change over time.",
+      "tryThis": "Click Filter Envelope in the signal chain to add it.",
+      "glossaryTerms": [
+        "envelope"
+      ]
+    },
+    "filterEnv.attack": {
+      "title": "Attack",
+      "module": "filterEnv",
+      "what": "How long the cutoff takes to reach its peak after you press a key, from 1 ms to 10 s.",
+      "listenFor": "Short attacks pluck; long ones swell in.",
+      "tryThis": "Repeat one note while you sweep from 1 ms to 1 s.",
+      "glossaryTerms": [
+        "attack",
+        "envelope"
+      ]
+    },
+    "filterEnv.decay": {
+      "title": "Decay",
+      "module": "filterEnv",
+      "what": "How long the cutoff takes to fall from its peak to the sustain level, from 1 ms to 10 s.",
+      "listenFor": "Only audible when Sustain is below 100%.",
+      "tryThis": "Set Sustain to 0% and Decay to 200 ms for a pluck.",
+      "glossaryTerms": [
+        "decay",
+        "sustain"
+      ]
+    },
+    "filterEnv.sustain": {
+      "title": "Sustain",
+      "module": "filterEnv",
+      "what": "The cutoff level held while the key stays down, from 0% to 100%. It is a level, not a time.",
+      "listenFor": "At 0% the note dies away even while you hold it.",
+      "tryThis": "Hold a key and drag Sustain down slowly.",
+      "glossaryTerms": [
+        "sustain",
+        "envelope"
+      ]
+    },
+    "filterEnv.release": {
+      "title": "Release",
+      "module": "filterEnv",
+      "what": "How long the cutoff takes to fall to nothing after you let go, up to 20 s.",
+      "listenFor": "Long releases make notes overlap and blur together.",
+      "tryThis": "Set it to 3 s and play short, separate notes.",
+      "glossaryTerms": [
+        "release",
+        "envelope"
+      ]
+    },
+    "filterEnv.bypass": {
+      "title": "Bypass",
+      "module": "filterEnv",
+      "what": "Passes the signal through the Filter Envelope untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this envelope taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass",
+        "envelope"
+      ]
+    },
+    "ampEnv.velocitySens": {
+      "title": "Velocity sensitivity",
+      "module": "ampEnv",
+      "what": "How much key velocity changes the volume. At 0% every note is equally loud; at 100% soft presses are quiet.",
+      "listenFor": "Harder key presses sounding louder.",
+      "tryThis": "Set it to 100% and play soft, then hard.",
+      "glossaryTerms": [
+        "velocity"
+      ]
+    },
+    "filterEnv.amount": {
+      "title": "Amount",
+      "module": "filterEnv",
+      "what": "How far the envelope moves the cutoff, from -100% to 100%. Negative values move it down instead.",
+      "listenFor": "A bigger sweep as it rises; a downward sweep when negative.",
+      "tryThis": "Set Cutoff low, Amount to 80%, and Decay to 400 ms.",
+      "glossaryTerms": [
+        "envelope",
+        "cutoff"
+      ]
+    },
+    "lfo1.enabled": {
+      "title": "LFO 1",
+      "module": "lfo1",
+      "what": "Shows whether LFO 1 is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "Once present, it can be used as a source in Connections.",
+      "tryThis": "Add LFO 1, then link it in Connections.",
+      "glossaryTerms": [
+        "lfo"
+      ]
+    },
+    "lfo1.shape": {
+      "title": "Shape",
+      "module": "lfo1",
+      "what": "The wave the LFO follows: Sine, Triangle, Saw up, Saw down, Square or Sample & hold.",
+      "listenFor": "Sine is smooth, Square jumps, Sample & hold is random steps.",
+      "tryThis": "Send it to cutoff and cycle through the shapes.",
+      "glossaryTerms": [
+        "lfo",
+        "sample-and-hold"
+      ]
+    },
+    "lfo1.rate": {
+      "title": "Rate",
+      "module": "lfo1",
+      "what": "How many times a second the LFO repeats, from 0.01 Hz to 50 Hz.",
+      "listenFor": "Slow rates sweep; fast rates wobble, then buzz.",
+      "tryThis": "Try 0.3 Hz, then 6 Hz, on Filter cutoff.",
+      "glossaryTerms": [
+        "frequency",
+        "lfo"
+      ]
+    },
+    "lfo1.retrigger": {
+      "title": "Retrigger",
+      "module": "lfo1",
+      "what": "When on, the LFO restarts from the beginning on every note. When off, it runs freely.",
+      "listenFor": "On: every note moves the same way. Off: each starts at a different point.",
+      "tryThis": "Turn it on and play the same note repeatedly.",
+      "glossaryTerms": [
+        "retrigger",
+        "lfo"
+      ]
+    },
+    "lfo1.fade": {
+      "title": "Fade-in",
+      "module": "lfo1",
+      "what": "How long the LFO takes to reach full strength after a note starts, up to 5 s. Off means immediate.",
+      "listenFor": "Vibrato that starts after a short delay.",
+      "tryThis": "Send it to pitch, set Fade to 1 s, and hold a note.",
+      "glossaryTerms": [
+        "lfo",
+        "vibrato"
+      ]
+    },
+    "lfo1.bypass": {
+      "title": "Bypass",
+      "module": "lfo1",
+      "what": "Passes the signal through LFO 1 untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this LFO's motion taken out.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "lfo2.enabled": {
+      "title": "LFO 2",
+      "module": "lfo2",
+      "what": "Shows whether LFO 2 is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "Once present, it can be used as a source in Connections.",
+      "tryThis": "Add LFO 2, then link it in Connections.",
+      "glossaryTerms": [
+        "lfo"
+      ]
+    },
+    "lfo2.shape": {
+      "title": "Shape",
+      "module": "lfo2",
+      "what": "The wave the LFO follows: Sine, Triangle, Saw up, Saw down, Square or Sample & hold.",
+      "listenFor": "Sine is smooth, Square jumps, Sample & hold is random steps.",
+      "tryThis": "Send it to cutoff and cycle through the shapes.",
+      "glossaryTerms": [
+        "lfo",
+        "sample-and-hold"
+      ]
+    },
+    "lfo2.rate": {
+      "title": "Rate",
+      "module": "lfo2",
+      "what": "How many times a second the LFO repeats, from 0.01 Hz to 50 Hz.",
+      "listenFor": "Slow rates sweep; fast rates wobble, then buzz.",
+      "tryThis": "Try 0.3 Hz, then 6 Hz, on Filter cutoff.",
+      "glossaryTerms": [
+        "frequency",
+        "lfo"
+      ]
+    },
+    "lfo2.retrigger": {
+      "title": "Retrigger",
+      "module": "lfo2",
+      "what": "When on, the LFO restarts from the beginning on every note. When off, it runs freely.",
+      "listenFor": "On: every note moves the same way. Off: each starts at a different point.",
+      "tryThis": "Turn it on and play the same note repeatedly.",
+      "glossaryTerms": [
+        "retrigger",
+        "lfo"
+      ]
+    },
+    "lfo2.fade": {
+      "title": "Fade-in",
+      "module": "lfo2",
+      "what": "How long the LFO takes to reach full strength after a note starts, up to 5 s. Off means immediate.",
+      "listenFor": "Vibrato that starts after a short delay.",
+      "tryThis": "Send it to pitch, set Fade to 1 s, and hold a note.",
+      "glossaryTerms": [
+        "lfo",
+        "vibrato"
+      ]
+    },
+    "lfo2.bypass": {
+      "title": "Bypass",
+      "module": "lfo2",
+      "what": "Passes the signal through LFO 2 untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this LFO's motion taken out.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "mod1.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod1.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod1.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "mod2.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod2.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod2.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "mod3.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod3.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod3.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "mod4.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod4.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod4.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "mod5.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod5.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod5.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "mod6.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod6.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod6.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "mod7.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod7.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod7.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "mod8.source": {
+      "title": "Source",
+      "module": "connections",
+      "what": "Chooses what drives this connection: an LFO, envelope, velocity, mod wheel, aftertouch or key.",
+      "listenFor": "Nothing until you also choose a destination.",
+      "tryThis": "Choose LFO 1 as the source, then pick a destination.",
+      "glossaryTerms": [
+        "modulation",
+        "lfo"
+      ]
+    },
+    "mod8.dest": {
+      "title": "Destination",
+      "module": "connections",
+      "what": "Chooses what the source moves, such as pitch, pulse width, cutoff, resonance, level, pan or LFO rate.",
+      "listenFor": "The chosen control moving by itself.",
+      "tryThis": "Choose Filter cutoff and listen to the tone move.",
+      "glossaryTerms": [
+        "modulation"
+      ]
+    },
+    "mod8.amount": {
+      "title": "Amount",
+      "module": "connections",
+      "what": "How far the source moves the destination, -100% to +100%. At 100%: pitch 2 semitones, cutoff 6 octaves, pulse width 45 points, LFO rate 3 octaves.",
+      "listenFor": "Negative values flip the movement. On level, -100% is silent and +100% doubles; on pan, it reaches hard left or right.",
+      "tryThis": "Start at +50%, then try -50%. On resonance, 100% covers the whole range.",
+      "glossaryTerms": [
+        "modulation",
+        "semitone",
+        "octave",
+        "pulse-width"
+      ]
+    },
+    "voicing.mode": {
+      "title": "Voice mode",
+      "module": "voicing",
+      "what": "Poly plays chords. Mono plays one note at a time. Legato is mono, but joined notes do not restart envelopes.",
+      "listenFor": "Poly sounds full; Mono and Legato suit leads and basses.",
+      "tryThis": "Switch to Legato and play overlapping notes.",
+      "glossaryTerms": [
+        "polyphony",
+        "mono",
+        "legato"
+      ]
+    },
+    "voicing.voices": {
+      "title": "Voices",
+      "module": "voicing",
+      "what": "The most notes that can sound at once, from 1 to 16. A new note beyond that takes a voice that has been let go, or else the oldest held one.",
+      "listenFor": "Older notes cutting off when you play too many.",
+      "tryThis": "Set it to 2 and play a three-note chord.",
+      "glossaryTerms": [
+        "polyphony",
+        "voice-stealing"
+      ]
+    },
+    "voicing.glide": {
+      "title": "Glide",
+      "module": "voicing",
+      "what": "How long pitch takes to slide from one note to the next, up to 2 s. Off jumps straight.",
+      "listenFor": "A smooth slide between notes.",
+      "tryThis": "Set Mono mode, Glide to 300 ms, and play two notes.",
+      "glossaryTerms": [
+        "glide",
+        "pitch"
+      ]
+    },
+    "voicing.bendRange": {
+      "title": "Pitch bend range",
+      "module": "voicing",
+      "what": "How far the pitch bend wheel moves the pitch, from 1 to 24 semitones either way.",
+      "listenFor": "Wider settings bend further for the same wheel move.",
+      "tryThis": "Set it to 12, then move the pitch wheel fully.",
+      "glossaryTerms": [
+        "pitch-bend",
+        "semitone"
+      ]
+    },
+    "output.volume": {
+      "title": "Volume",
+      "module": "output",
+      "what": "Sets the overall output level, from silence up to +6 dB. 0 dB leaves it unchanged.",
+      "listenFor": "The whole sound louder or quieter, tone unchanged.",
+      "tryThis": "Lower it if loud chords distort.",
+      "glossaryTerms": [
+        "decibel"
+      ]
+    }
+  }
+}

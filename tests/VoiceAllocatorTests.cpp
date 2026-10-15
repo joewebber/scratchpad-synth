@@ -39,12 +39,12 @@ namespace
     void run (VoiceAllocator& a, int numSamples)
     {
         const auto levels = BlockLevels::steady (patch());
-        std::vector<float> scratch ((size_t) Voice::blockSize, 0.0f);
+        std::vector<float> scratch ((size_t) Voice::blockSize, 0.0f), scratchRight ((size_t) Voice::blockSize, 0.0f);
 
         for (int done = 0; done < numSamples; done += Voice::blockSize)
         {
             const int n = std::min (Voice::blockSize, numSamples - done);
-            a.render (scratch.data(), n, patch(), levels, 0.0);
+            a.render (scratch.data(), scratchRight.data(), n, patch(), levels, 0.0);
         }
     }
 

@@ -17,6 +17,12 @@ void Voice::prepare (double sr, std::uint32_t noiseSeed) noexcept
     filter.prepare (sr);
     noise.seed (noiseSeed);
 
+    for (size_t i = 0; i < lfos.size(); ++i)
+    {
+        lfos[i].setSampleRate (sr);
+        lfos[i].seed (noiseSeed * 2654435761u + (std::uint32_t) i * 40503u + 1u);
+    }
+
     waveFadeLength = std::max (1, (int) (waveSwitchSeconds * sr));
     ampMixStep = (float) (1.0 / std::max (1.0, ampSwitchSeconds * sr));
     filterWetStep = (float) (1.0 / std::max (1.0, filterBypassSeconds * sr));
@@ -99,6 +105,7 @@ void Voice::retrigger (const Pending& n, bool restartEnvelopes) noexcept
         ampEnv.gateOn();
         filterEnv.gateOn();
         gate.open();
+        restartLfos = true;
     }
 
     state = State::held;
@@ -154,6 +161,11 @@ void Voice::init (const EngineParams& p) noexcept
         o.fadeRemaining = 0;
     }
 
+    modPrimed = false;
+    modEnd = {};
+    sources = {};
+    restartLfos = true; // the LFOs that retrigger start their cycle (and fade-in) with the note
+
     ampMix = p.ampEnv.enabled ? 1.0f : 0.0f;
     filterWet = p.filter.enabled ? 1.0f : 0.0f;
     velocityNow = velocityGain (p);
@@ -163,7 +175,7 @@ void Voice::init (const EngineParams& p) noexcept
     filterLive = false;
 }
 
-void Voice::render (float* out, int numSamples, const EngineParams& p, const BlockLevels& lv, double bend) noexcept
+void Voice::render (float* left, float* right, int numSamples, const EngineParams& p, const BlockLevels& lv, double bend, const Taps& taps) noexcept
 {
     if (numSamples <= 0)
         return;
@@ -180,12 +192,64 @@ void Voice::render (float* out, int numSamples, const EngineParams& p, const Blo
         init (p);
 
     if (preview)
-        renderPreview (out, numSamples, lv, bend);
+        renderPreview (left, right, numSamples, lv, bend);
     else
-        renderPlayed (out, numSamples, p, lv, bend);
+        renderPlayed (left, right, numSamples, p, lv, bend, taps);
 }
 
-void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockLevels& lv, double bend) noexcept
+/** Reads every modulation source as it stands at the end of this block and adds
+    up the connections. The LFOs that retrigger run here, per voice; the others
+    arrive in `lv`, one value shared by every voice. */
+void Voice::computeModulation (const EngineParams& p, const BlockLevels& lv, int n, float filterEnvEnd) noexcept
+{
+    if (restartLfos)
+    {
+        for (auto& l : lfos)
+            l.reset (0.0);
+
+        age = 0.0;
+        restartLfos = false;
+    }
+
+    age += (double) n / sampleRate;
+    sources = {};
+
+    for (size_t i = 0; i < lfos.size(); ++i)
+    {
+        const auto& lp = p.lfo[i];
+
+        if (! lp.enabled)
+            continue;
+
+        float value;
+
+        if (lp.retrigger)
+        {
+            auto& l = lfos[i];
+            l.setShape (lp.shape);
+            l.setRate (modulatedLfoRate (lp.rateHz, modEnd[index (lfoRateDest (i))])); // last block's rate modulation
+            value = l.advance (n);
+        }
+        else
+        {
+            value = lv.lfo[i];
+        }
+
+        const float fade = lp.fadeSeconds > 0.0f ? (float) std::min (1.0, age / (double) lp.fadeSeconds) : 1.0f;
+        sources[index (lfoSource (i))] = value * fade;
+    }
+
+    sources[index (ModSource::ampEnv)] = p.ampEnv.enabled ? ampEnv.getLevel() : 0.0f;
+    sources[index (ModSource::filterEnv)] = p.filterEnv.enabled ? filterEnvEnd : 0.0f;
+    sources[index (ModSource::velocity)] = velocity;
+    sources[index (ModSource::modWheel)] = lv.modWheel;
+    sources[index (ModSource::aftertouch)] = lv.aftertouch;
+    sources[index (ModSource::key)] = std::clamp ((float) (note - 60) / 60.0f, -1.0f, 1.0f);
+
+    modEnd = accumulate (p.mod, sources);
+}
+
+void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& p, const BlockLevels& lv, double bend, const Taps& taps) noexcept
 {
     const float invN = 1.0f / (float) n;
 
@@ -203,15 +267,38 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
     const float envEnd = filterEnv.getLevel();
     filterEnvLevel = envEnd;
 
+    // Modulation is evaluated once per block like the envelope; every
+    // destination moves in a straight line from last block's sum to this one's.
+    ModSums modStart = modEnd;
+    computeModulation (p, lv, n, envEnd);
+
+    if (! modPrimed)
+    {
+        modStart = modEnd;
+        modPrimed = true;
+    }
+
+    const auto rampOf = [&] (ModDest d) noexcept { return Ramp { modStart[index (d)], modEnd[index (d)] }; };
+    const auto levelRamp = [&] (const Ramp& sums, float maxFactor) noexcept
+    {
+        return Ramp { levelFactor (sums.start, maxFactor), levelFactor (sums.end, maxFactor) };
+    };
+
+    const Ramp cutoffMod = rampOf (ModDest::cutoff);
+    const Ramp resonanceMod = rampOf (ModDest::resonance);
+
     const float tracking = p.filter.keyTracking / 12.0f;
     const Ramp cutoff {
-        lv.cutoffLog2.start + tracking * (float) (pitchStart - 60.0) + lv.filterEnvAmount.start * filterEnvOctaves * envStart,
+        lv.cutoffLog2.start + tracking * (float) (pitchStart - 60.0) + lv.filterEnvAmount.start * filterEnvOctaves * envStart
+            + modCutoffOctaves * cutoffMod.start,
         lv.cutoffLog2.end + tracking * (float) (pitchEnd - 60.0) + lv.filterEnvAmount.end * filterEnvOctaves * envEnd
+            + modCutoffOctaves * cutoffMod.end
     };
 
     std::array<bool, 3> on {};
     std::array<double, 3> incrementStep {};
     std::array<float, 3> widthStep {};
+    std::array<Ramp, 3> oscFactor {};
 
     for (size_t k = 0; k < oscs.size(); ++k)
     {
@@ -227,7 +314,9 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
             continue;
         }
 
-        const double target = incrementFor (op, pitchEnd, bend);
+        const double pitchMod = (double) modPitchSemitones * (double) (modEnd[index (ModDest::pitchAll)] + modEnd[index (pitchDest (k))]);
+        const double target = incrementFor (op, pitchEnd, bend + pitchMod);
+        const float width = std::clamp (op.pulseWidth + modPulseWidth * modEnd[index (pulseWidthDest (k))], 0.05f, 0.95f);
 
         if (! st.running)
         {
@@ -235,7 +324,7 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
             st.wave = op.wave;
             st.fadeRemaining = 0;
             st.increment = target;
-            st.pulseWidth = op.pulseWidth;
+            st.pulseWidth = width;
             st.running = true;
         }
         else if (op.wave != st.wave)
@@ -246,8 +335,13 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
         }
 
         incrementStep[k] = (target - st.increment) / (double) n;
-        widthStep[k] = (op.pulseWidth - st.pulseWidth) * invN;
+        widthStep[k] = (width - st.pulseWidth) * invN;
+        oscFactor[k] = levelRamp (rampOf (levelDest (k)), modOscLevelMaxFactor);
     }
+
+    const Ramp noiseFactor = levelRamp (rampOf (ModDest::noiseLevel), modOscLevelMaxFactor);
+    const Ramp ampFactor = levelRamp (rampOf (ModDest::ampLevel), modAmpLevelMaxFactor);
+    const Ramp pan = rampOf (ModDest::pan);
 
     noise.setPink (p.noise.pink);
     filter.setMode (p.filter.mode);
@@ -285,12 +379,15 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
                 s = st.osc.process (st.wave);
             }
 
-            sum += s * lv.osc[k].at (t);
+            sum += s * lv.osc[k].at (t) * oscFactor[k].at (t);
         }
 
         const float noiseGain = lv.noise.at (t);
         if (noiseGain > 0.0f)
-            sum += noise.next() * noiseGain;
+            sum += noise.next() * noiseGain * noiseFactor.at (t);
+
+        if (taps.afterOscillators != nullptr)
+            taps.afterOscillators[i] += sum;
 
         if (filterWet < wetTarget)
             filterWet = std::min (wetTarget, filterWet + filterWetStep);
@@ -303,7 +400,8 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
             // cutoff that only moves smoothly.
             if (! filterParamsSet || (i & 7) == 0)
             {
-                filter.setParams (std::exp2 (cutoff.at (t)), lv.resonance.at (t), lv.driveDb.at (t));
+                const float resonance = std::clamp (lv.resonance.at (t) + modResonance * resonanceMod.at (t), 0.0f, 1.0f);
+                filter.setParams (std::exp2 (cutoff.at (t)), resonance, lv.driveDb.at (t));
                 filterParamsSet = true;
             }
 
@@ -316,6 +414,9 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
             filter.reset(); // so it starts clean the next time it is switched in
             filterLive = false;
         }
+
+        if (taps.afterFilter != nullptr)
+            taps.afterFilter[i] += sum;
 
         velocityNow += std::clamp (velocityTarget - velocityNow, -velocityStep, velocityStep);
 
@@ -337,14 +438,20 @@ void Voice::renderPlayed (float* out, int n, const EngineParams& p, const BlockL
         }
 
         applyStealFade (amp);
-        out[i] += sum * amp;
+
+        // Balance pan: the far side is turned down, the near side is left alone,
+        // so a centred voice is exactly as loud as before there was a pan.
+        const float panNow = std::clamp (pan.at (t), -1.0f, 1.0f) * modPan;
+        const float out = sum * amp * ampFactor.at (t);
+        left[i] += out * (panNow > 0.0f ? 1.0f - panNow : 1.0f);
+        right[i] += out * (panNow < 0.0f ? 1.0f + panNow : 1.0f);
 
         if (ended())
             return;
     }
 }
 
-void Voice::renderPreview (float* out, int n, const BlockLevels& lv, double bend) noexcept
+void Voice::renderPreview (float* left, float* right, int n, const BlockLevels& lv, double bend) noexcept
 {
     const float invN = 1.0f / (float) n;
     auto& st = oscs[0];
@@ -373,7 +480,9 @@ void Voice::renderPreview (float* out, int n, const BlockLevels& lv, double bend
             amp = gate.next();
 
         applyStealFade (amp);
-        out[i] += s * lv.preview.at ((float) (i + 1) * invN) * amp;
+        const float out = s * lv.preview.at ((float) (i + 1) * invN) * amp;
+        left[i] += out;
+        right[i] += out;
 
         if (ended())
             return;

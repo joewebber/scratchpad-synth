@@ -215,10 +215,21 @@ void VoiceAllocator::releaseAll (bool includePreview) noexcept
         sustainDown = false;
 }
 
-void VoiceAllocator::render (float* out, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones) noexcept
+void VoiceAllocator::render (float* left, float* right, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones, const Voice::Taps& taps) noexcept
 {
     for (auto& v : voices)
-        v.render (out, numSamples, params, levels, bendSemitones);
+        v.render (left, right, numSamples, params, levels, bendSemitones, taps);
+}
+
+const Voice* VoiceAllocator::newestPlayedVoice() const noexcept
+{
+    const Voice* newest = nullptr;
+
+    for (const auto& v : voices)
+        if (v.isActive() && ! v.preview && (newest == nullptr || v.startOrder > newest->startOrder))
+            newest = &v;
+
+    return newest;
 }
 
 int VoiceAllocator::countActive() const noexcept

@@ -24,6 +24,7 @@ public:
         jassert (param != nullptr);
 
         setTitle (accessibleName);
+        getProperties().set ("explainId", paramID);
         setClickingTogglesState (true);
         attachment = std::make_unique<juce::ButtonParameterAttachment> (*param, *this, &undo);
 

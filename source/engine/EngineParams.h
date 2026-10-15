@@ -1,7 +1,9 @@
 #pragma once
 
+#include "dsp/Lfo.h"
 #include "dsp/MultimodeFilter.h"
 #include "dsp/Oscillator.h"
+#include "engine/Modulation.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
@@ -63,6 +65,15 @@ struct FilterEnvelopeParams : EnvelopeParams
     float amount = 0.5f;      // -1 .. +1; 1 is +6 octaves of cutoff at the envelope's peak
 };
 
+struct LfoParams
+{
+    bool enabled = false;
+    dsp::LfoShape shape = dsp::LfoShape::sine;
+    float rateHz = 2.0f;      // 0.01 .. 50
+    bool retrigger = false;   // restart the cycle on every note, per voice
+    float fadeSeconds = 0.0f; // 0 .. 5: the LFO's depth rises over this long after each note starts
+};
+
 enum class VoiceMode { poly = 0, mono = 1, legato = 2 };
 
 struct VoicingParams
@@ -81,6 +92,8 @@ struct EngineParams
     AmpEnvelopeParams ampEnv;
     FilterEnvelopeParams filterEnv;
     VoicingParams voicing;
+    std::array<LfoParams, 2> lfo;
+    ModConnections mod;
     float outputVolumeDb = 0.0f;
 };
 

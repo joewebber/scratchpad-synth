@@ -1,11 +1,12 @@
-# Architecture notes (M2)
+# Architecture notes (M3)
 
 ## Shape
 
 ```
 MIDI in ──┐
           ├─> ScratchpadProcessor::processBlock ──> SynthEngine ──> VoiceAllocator ──> Voice[16]
-UI events ┘      (splits the block at MIDI timestamps)       osc 1-3 + noise -> filter -> amp (envelope or gate)
+UI events ┘      (splits the block at MIDI timestamps)       osc 1-3 + noise -> filter -> amp (envelope or gate) -> pan
+                                                    shared LFOs, mod wheel, aftertouch ──┘  (modulation sources, see below)
 ```
 
 - `ScratchpadProcessor` owns the `AudioProcessorValueTreeState` and the `UndoManager`.
@@ -83,7 +84,7 @@ block by the processor from cached parameter pointers.
   when no key was held. Changing voicing mode releases the played notes.
 - **Latency.** The oscillator runs 16 samples late, and a fresh voice holds its amp
   stage closed for the same 16 samples so the attack is not eaten.
-- **Modules.** `plugin::Module` names the six things a user adds. `addModule` and
+- **Modules.** `plugin::Module` names the eight things a user adds: oscillators 2 and 3, noise, the filter, both envelopes and both LFOs. `addModule` and
   `removeModule` reset the module's parameters and flip its `enabled` flag in one named
   undo step ("Added Filter"). `newPatch` resets every parameter.
 
@@ -109,14 +110,67 @@ audio path.
 - `ParameterAttachment` callbacks use the value they are handed. JUCE calls listeners
   last-added-first, so the APVTS raw value can still be the old one inside a callback.
 - Saved state is the tree as XML with `schemaVersion`. `patch::migrate` upgrades older
-  versions in place and refuses newer ones. Schema 2 (M2) only adds parameters, so a
-  schema 1 state migrates by restamping; `setStateInformation` resets every parameter to
+  versions in place and refuses newer ones. Schemas 2 (M2) and 3 (M3) only add parameters, so
+  an older state migrates by restamping; `setStateInformation` resets every parameter to
   its default first, so parameters an older state does not mention come up at defaults.
 
-## Not in M2
+## Modulation (M3)
 
-LFOs and modulation, oscillator sync, ring modulation, FM and unison, mod wheel and aftertouch destinations (both
-are parsed from MIDI but nothing listens yet), effects, the safety limiter, the
-Explain panel and scope, live module visualisations, patch save and open, resizing, the light theme switch and
-Steinberg validator in CI. With no limiter yet, eight voices at full level can exceed
-0 dBFS: the oscillator defaults to −6 dB and the output meter shows it.
+Eight fixed connection slots, `modN.source`, `modN.dest` (non-automatable choices) and `modN.amount`
+(automatable, -100% to +100%). A slot is unused while its source or destination is "None".
+`ModSource` and `ModDest` (`engine/Modulation.h`) are saved as choice indices: append, never reorder.
+
+- **Sources.** LFO 1, LFO 2 (bipolar), amp envelope and filter envelope (0..1, read while their module is
+  in the patch, else 0), velocity, mod wheel, aftertouch (0..1) and key, `(note - 60) / 60` limited to +-1.
+  A source whose module is absent reads 0, so a stale connection does nothing.
+- **Evaluation.** Once per 32-sample sub-block per voice: every source is read at the end of the block, the
+  connections are summed per destination (`accumulate`), and the voice interpolates linearly from the last
+  block's sums to this one's, per sample. Envelopes and the mod wheel are therefore up to one block (0.7 ms)
+  behind. The mod wheel and aftertouch are smoothed over 10 ms in the engine.
+- **Scales** (a sum of +1.0, i.e. +100% from a source at its peak):
+
+  | Destination | +100% means |
+  | --- | --- |
+  | Pitch (all, or one oscillator) | 2 semitones |
+  | Pulse width | 0.45 of the cycle (the knob's own 5-95% limits still hold) |
+  | Osc level, noise level | gain x (1 + sum), limited to 0..2: -100% is silence, +100% is +6 dB |
+  | Filter cutoff | 6 octaves, the same scale as the filter envelope's amount |
+  | Resonance | the whole 0..1 range |
+  | Amp level | gain x (1 + sum), limited to 0..1: modulation can only turn it down |
+  | Pan | hard left to hard right; a balance law, so a centred voice is exactly as loud as before |
+  | LFO rate | 3 octaves (x or / 8) |
+
+- **LFOs.** `dsp::Lfo` is a phase accumulator read at the end of a block; sample and hold draws a new
+  xorshift value at each wrap. An LFO that does not retrigger is one shared phase, advanced by the engine;
+  one that does keeps a phase per voice and restarts it (and its fade-in) on every note, including a mono
+  retrigger. Fade-in is per voice either way: depth rises from 0 over `lfoN.fade` seconds after the note starts.
+  Tempo sync is not here: the brief puts host tempo in M5.
+- **LFO rate as a destination.** The shared LFOs can only follow sources every voice agrees on (the LFOs
+  themselves, as of the last block, the mod wheel and aftertouch); envelopes, velocity and key do nothing to
+  them. A retriggering LFO sees every source. An LFO cannot move its own rate.
+- **Pan** needs a stereo voice, so `Voice::render` now adds to a left and a right buffer.
+- **Live values.** The engine writes the newest note's source values and the LFO phases into
+  `LiveModulation`, relaxed atomics, once per `render`. The editor reads them at 30 Hz for the moving dots.
+- **Module removal.** Removing an LFO, an envelope or an oscillator, noise or the filter clears every
+  connection that starts or ends there, in the same undo step as the removal.
+
+## Editor structure (M3)
+
+`PatchView` is the chain panel (sources, filter, amp with the voicing under it, output) over the modulation
+strip (LFO 1, LFO 2, other sources' handles, the eight slots). `ModulationModel` is its message-thread view of
+modulation: the slot snapshot (refreshed by a `ChangeBroadcaster` the processor fires from parameter
+attachments, so undo, load and the host reach it), the live values, and the state of a connection being made.
+Knobs and dials that modulation can reach register with it as `ModTarget`s and draw an arc per connection
+(range the source can move the knob over, plus a dot where it is now). `ModOverlay` sits on top of the
+PatchView: it draws the cable and lights valid knobs during a drag, takes the click on a knob while a handle
+is armed, and owns the arcs at rest (drag one to change the amount, right-click to remove).
+
+## Not in M3
+
+Oscillator sync, ring modulation, FM and unison, effects, the safety limiter, tempo-synced LFO rates, the
+Explain panel and scope, live envelope and filter-curve visualisations, bypass and solo, the patch
+description, patch save and open, resizing, the light theme switch and Steinberg validator in CI.
+Aftertouch has no on-screen control; it arrives from MIDI channel pressure.
+
+With no limiter yet, eight voices at full level can exceed 0 dBFS: the oscillator defaults to −6 dB and the
+output meter shows it.

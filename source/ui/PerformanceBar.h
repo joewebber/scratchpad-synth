@@ -9,7 +9,7 @@
 namespace scratchpad::ui
 {
 
-/** Two-octave on-screen keyboard, pitch bend wheel, octave shift and the
+/** Two-octave on-screen keyboard, pitch bend and mod wheels, octave shift and the
     computer-keyboard mapping (A to K white keys, W E T Y U black keys, Z/X
     octave down/up, C/V velocity down/up).
 
@@ -42,6 +42,7 @@ private:
     void setOctave (int newOctave);
     void setVelocity (float newVelocity);
     void sendBend (float value);
+    void sendModWheel (float value);
 
     plugin::ScratchpadProcessor& processor;
 
@@ -50,9 +51,9 @@ private:
 
     juce::TextButton octaveDown { juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")) };
     juce::TextButton octaveUp { "+" };
-    juce::Slider bendWheel;
+    juce::Slider bendWheel, modWheel;
 
-    juce::Rectangle<int> octaveLabelArea, velocityLabelArea, hintArea, bendCaptionArea;
+    juce::Rectangle<int> octaveLabelArea, velocityLabelArea, hintArea, bendCaptionArea, modCaptionArea;
 
     int octave = 4; // JUCE octave numbering: the A key plays note 12 * octave
     float velocity = 0.8f;

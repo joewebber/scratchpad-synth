@@ -16,11 +16,13 @@ enum class Module
     noise,
     filter,
     ampEnv,
-    filterEnv
+    filterEnv,
+    lfo1,
+    lfo2
 };
 
-inline constexpr std::array<Module, 6> allModules {
-    Module::osc2, Module::osc3, Module::noise, Module::filter, Module::ampEnv, Module::filterEnv
+inline constexpr std::array<Module, 8> allModules {
+    Module::osc2, Module::osc3, Module::noise, Module::filter, Module::ampEnv, Module::filterEnv, Module::lfo1, Module::lfo2
 };
 
 } // namespace scratchpad::plugin

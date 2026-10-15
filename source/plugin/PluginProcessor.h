@@ -2,6 +2,7 @@
 
 #include "engine/SynthEngine.h"
 #include "plugin/Modules.h"
+#include "plugin/ModulationInfo.h"
 #include "plugin/Parameters.h"
 #include "plugin/UiEventQueue.h"
 
@@ -10,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <functional>
+#include <memory>
 
 namespace scratchpad::plugin
 {
@@ -61,6 +63,51 @@ public:
     void removeModule (Module);
     static juce::String moduleName (Module);
 
+    // Modulation (message thread). A connection is one of eight slots: a source, a
+    // destination and an amount. Every change is one named undo step.
+    enum class ConnectResult
+    {
+        created,
+        alreadyConnected, // that source already drives that destination
+        noFreeSlot,
+        unavailable       // the source's or the destination's module is not in the patch
+    };
+
+    engine::ModConnections getModConnections() const;
+    bool isModSourcePresent (engine::ModSource) const;
+    bool isModDestinationPresent (engine::ModDest) const;
+
+    /** Connects `source` to `destination` in the first free slot at +50%. */
+    ConnectResult connectMod (engine::ModSource source, engine::ModDest destination);
+    void disconnectMod (int slot);
+
+    /** Edits a slot's amount (percent, -100 to +100) as one undo step, however many calls it takes. */
+    void beginModAmountEdit (int slot);
+    void setModAmount (int slot, float percent);
+    void endModAmountEdit (int slot);
+
+    /** Told whenever any slot's source, destination or amount changes, by any route (undo, load, host). */
+    juce::ChangeBroadcaster& getModulationBroadcaster() noexcept { return modulationBroadcaster; }
+
+    /** What the audio thread last saw: source values and LFO phases of the newest note. */
+    const engine::LiveModulation& getLiveModulation() const noexcept { return synthEngine.getLiveModulation(); }
+
+    /** Bypass and solo, by module key ("osc1", "filter", "lfo2": see `params::bypassKeys`). Bypass takes a
+        module out of the sound without losing its settings; solo (sources only) mutes the other sources.
+        Soloing one source un-solos the rest. Each call is one named undo step. */
+    bool isBypassed (const juce::String& key) const;
+    bool isSoloed (const juce::String& key) const;
+    void setBypassed (const juce::String& key, bool shouldBypass);
+    void setSoloed (const juce::String& key, bool shouldSolo);
+
+    /** The patch as a sentence (see `describe`), built from what is audible right now. Message thread. */
+    juce::String describePatch() const;
+
+    /** Scope: which signal it shows, and the samples queued since the last read. Message thread. */
+    void setScopeTap (engine::ScopeTap t) noexcept { synthEngine.setScopeTap (t); }
+    int readScope (float* dest, int maxSamples) noexcept { return synthEngine.readScope (dest, maxSamples); }
+    double getSampleRate() const noexcept { return currentSampleRate.load(); }
+
     /** Peak of the output since the last call, then resets. Message thread. */
     float takeOutputPeak() noexcept { return outputPeak.exchange (0.0f, std::memory_order_relaxed); }
 
@@ -75,6 +122,7 @@ public:
 
 private:
     engine::EngineParams readParams() const noexcept;
+    void clearModSlot (int slot);
     void renderRange (juce::AudioBuffer<float>& buffer, int start, int count) noexcept;
 
     engine::SynthEngine synthEngine;
@@ -110,6 +158,39 @@ private:
     std::atomic<float>* voicingGlide = nullptr;
     std::atomic<float>* voicingBendRange = nullptr;
     std::atomic<float>* outVolume = nullptr;
+
+    struct LfoPointers
+    {
+        std::atomic<float> *enabled, *shape, *rate, *retrigger, *fade;
+    };
+
+    struct ModPointers
+    {
+        std::atomic<float> *source, *dest, *amount;
+    };
+
+    std::array<LfoPointers, params::numLfos> lfoPointers {};
+    std::array<ModPointers, params::numModSlots> modPointers {};
+
+    struct ModParams
+    {
+        juce::AudioParameterChoice *source, *dest;
+        juce::RangedAudioParameter* amount;
+    };
+
+    std::array<ModParams, params::numModSlots> modParams {};
+
+    // Watch every slot parameter so the editor hears about changes made by undo,
+    // a loaded session or the host. The amount ones also carry the undo manager,
+    // so a drag on a modulation ring is one step.
+    std::array<std::unique_ptr<juce::ParameterAttachment>, params::numModSlots> amountAttachments;
+    std::array<std::unique_ptr<juce::ParameterAttachment>, 2 * params::numModSlots> choiceWatchers;
+    juce::ChangeBroadcaster modulationBroadcaster;
+    std::array<float, params::numModSlots> amountAtEditStart {};
+
+    std::array<std::atomic<float>*, params::numBypassable> bypassPointers {};
+    std::array<std::atomic<float>*, params::numSoloable> soloPointers {};
+    std::atomic<double> currentSampleRate { 48000.0 };
 
     std::atomic<float> outputPeak { 0.0f };
 

@@ -79,8 +79,108 @@ void ModuleCard::makeRemovable (const juce::String& accessibleName, std::functio
 
 void ModuleCard::placeRemoveButton (juce::Rectangle<int> row)
 {
-    if (removeButton != nullptr)
-        removeButton->setBounds (row.removeFromRight (24).withSizeKeepingCentre (24, 20));
+    constexpr int w = 22, h = 20, gap = 3;
+
+    const auto place = [&] (juce::Component* c)
+    {
+        if (c != nullptr)
+        {
+            c->setBounds (row.removeFromRight (w).withSizeKeepingCentre (w, h));
+            row.removeFromRight (gap);
+        }
+    };
+
+    place (removeButton.get());
+    place (explainButton.get());
+
+    if (! bypassSoloElsewhere)
+    {
+        place (soloButton.get());
+        place (bypassButton.get());
+    }
+}
+
+void ModuleCard::placeBypassSolo (juce::Point<int> topLeft)
+{
+    if (bypassButton != nullptr)
+        bypassButton->setBounds (topLeft.x, topLeft.y, 22, 20);
+
+    if (soloButton != nullptr)
+        soloButton->setBounds (topLeft.x + 25, topLeft.y, 22, 20);
+}
+
+void ModuleCard::setExplainKey (const juce::String& moduleKey)
+{
+    getProperties().set ("explainId", moduleKey);
+}
+
+void ModuleCard::makeControllable (plugin::ScratchpadProcessor& p, const juce::String& key, bool soloable, bool bypassable)
+{
+    controlled = &p;
+    controlKey = key;
+    isSoloable = soloable;
+    setExplainKey (key);
+
+    explainButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::explain, "Explain this module");
+    explainButton->onClick = [this]
+    {
+        if (auto* top = getTopLevelComponent())
+            if (auto* panel = top->findChildWithID ("explainPanel"))
+                panel->getProperties().set ("pinRequest", controlKey); // picked up by the panel's timer
+    };
+    explainButton->getProperties().set ("explainId", key);
+    addAndMakeVisible (*explainButton);
+
+    if (bypassable)
+    {
+        bypassButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::bypass, "Bypass");
+        bypassButton->onClick = [this] { controlled->setBypassed (controlKey, ! controlled->isBypassed (controlKey)); };
+        addAndMakeVisible (*bypassButton);
+        stateWatchers.push_back (std::make_unique<juce::ParameterAttachment> (
+            *p.apvts.getParameter (key + ".bypass"), [this] (float) { refreshState(); }));
+    }
+
+    if (soloable)
+    {
+        soloButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::solo, "Solo");
+        soloButton->onClick = [this] { controlled->setSoloed (controlKey, ! controlled->isSoloed (controlKey)); };
+        addAndMakeVisible (*soloButton);
+
+        // Any source's solo changes whether this one is heard.
+        for (int i = 0; i < params::numSoloable; ++i)
+            stateWatchers.push_back (std::make_unique<juce::ParameterAttachment> (
+                *p.apvts.getParameter (juce::String (params::bypassKeys[(size_t) i]) + ".solo"), [this] (float) { refreshState(); }));
+    }
+
+    refreshState();
+}
+
+void ModuleCard::refreshState()
+{
+    if (controlled == nullptr)
+        return;
+
+    const bool bypassed = bypassButton != nullptr && controlled->isBypassed (controlKey);
+    const bool soloed = isSoloable && controlled->isSoloed (controlKey);
+
+    bool anySolo = false;
+    for (int i = 0; i < params::numSoloable; ++i)
+        anySolo = anySolo || controlled->isSoloed (params::bypassKeys[(size_t) i]);
+
+    if (bypassButton != nullptr)
+    {
+        bypassButton->setOn (bypassed);
+        bypassButton->setTitle (bypassed ? "Bypass, on" : "Bypass, off");
+    }
+
+    if (soloButton != nullptr)
+    {
+        soloButton->setOn (soloed);
+        soloButton->setTitle (soloed ? "Solo, on" : "Solo, off");
+    }
+
+    // A bypassed module, or a source another one's solo has muted, is shown faded.
+    setAlpha (bypassed || (isSoloable && anySolo && ! soloed) ? 0.5f : 1.0f);
 }
 
 void ModuleCard::drawHeader (juce::Graphics& g, const Palette& p, juce::Rectangle<float> row,
@@ -101,7 +201,7 @@ void ModuleCard::drawHeader (juce::Graphics& g, const Palette& p, juce::Rectangl
 }
 
 //==============================================================================
-OscillatorCard::OscillatorCard (plugin::ScratchpadProcessor& p, int oscillatorIndex)
+OscillatorCard::OscillatorCard (plugin::ScratchpadProcessor& p, ModulationModel& model, int oscillatorIndex)
     : index (oscillatorIndex),
       waveSelector (p.apvts, params::osc[(size_t) oscillatorIndex].wave, oscName (oscillatorIndex) + " wave", p.undoManager, &Palette::src),
       phaseReset (p.apvts, params::osc[(size_t) oscillatorIndex].phaseReset, "Phase reset",
@@ -125,6 +225,15 @@ OscillatorCard::OscillatorCard (plugin::ScratchpadProcessor& p, int oscillatorIn
         const auto which = index == 1 ? plugin::Module::osc2 : plugin::Module::osc3;
         makeRemovable ("Remove " + oscName (index), [&p, which] { p.removeModule (which); });
     }
+
+    makeControllable (p, "osc" + juce::String (index + 1), true);
+    bypassSoloElsewhere = true; // the header is too narrow: B and S sit under the wave picture
+
+    // Fine tune is the pitch knob: a drop there moves this oscillator's pitch, or all of them.
+    fine.setModulation (model, index == 0 ? std::vector<engine::ModDest> { engine::ModDest::pitchAll, engine::ModDest::pitch1 }
+                                          : std::vector<engine::ModDest> { engine::pitchDest ((size_t) index), engine::ModDest::pitchAll });
+    level.setModulation (model, { engine::levelDest ((size_t) index) });
+    pulseWidth.setModulation (model, { engine::pulseWidthDest ((size_t) index) });
 
     for (auto* c : std::initializer_list<juce::Component*> { &waveSelector, &phaseReset, &octave, &semitone, &fine, &level, &pulseWidth })
         addAndMakeVisible (c);
@@ -154,9 +263,10 @@ void OscillatorCard::setWave (int newWave)
 
 void OscillatorCard::resized()
 {
-    constexpr int top = 6, midX = 70, midWidth = 104, knobsX = 180;
+    constexpr int top = 4, midX = 70, midWidth = 104, knobsX = 180;
 
-    waveWell = { pad, top, 56, height - 2 * top };
+    waveWell = { pad, top, 56, 46 };
+    placeBypassSolo ({ pad + 4, top + 50 });
     headerRow = { midX, top, midWidth, 20 };
     placeRemoveButton (headerRow);
     waveSelector.setBounds (midX, top + 25, midWidth, 24);
@@ -175,7 +285,7 @@ void OscillatorCard::paint (juce::Graphics& g)
     ModuleCard::paint (g);
 
     const auto& p = paletteOf (*this);
-    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (index > 0 ? 26.0f : 0.0f), p.src, headerGlyph ((Wave) wave),
+    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (index > 0 ? 51.0f : 25.0f), p.src, headerGlyph ((Wave) wave),
                 "Osc " + juce::String (index + 1));
 
     drawInset (g, waveWell.toFloat(), 10.0f, p, p.well);
@@ -189,7 +299,7 @@ void OscillatorCard::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-NoiseCard::NoiseCard (plugin::ScratchpadProcessor& p)
+NoiseCard::NoiseCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
     : colour (p.apvts, params::noiseColour, "Noise colour", p.undoManager, &Palette::src),
       level (p.apvts, params::noiseLevel, "Level", p.undoManager, "Noise level"),
       colourWatcher (*p.apvts.getParameter (params::noiseColour),
@@ -197,6 +307,8 @@ NoiseCard::NoiseCard (plugin::ScratchpadProcessor& p)
 {
     setTitle ("Noise");
     makeRemovable ("Remove Noise", [&p] { p.removeModule (plugin::Module::noise); });
+    makeControllable (p, "noise", true);
+    level.setModulation (model, { engine::ModDest::noiseLevel });
 
     addAndMakeVisible (colour);
     addAndMakeVisible (level);
@@ -216,7 +328,7 @@ void NoiseCard::lookAndFeelChanged()
 
 void NoiseCard::resized()
 {
-    constexpr int top = 6, midX = pad, blockWidth = 166, knobsX = 180;
+    constexpr int top = 4, midX = pad, blockWidth = 166, knobsX = 180;
 
     headerRow = { midX, top, blockWidth, 20 };
     placeRemoveButton (headerRow);
@@ -232,7 +344,7 @@ void NoiseCard::paint (juce::Graphics& g)
     ModuleCard::paint (g);
 
     const auto& p = paletteOf (*this);
-    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (26.0f), p.src, noiseGlyph, "Noise");
+    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (101.0f), p.src, noiseGlyph, "Noise");
 
     const auto font = uiFont (12.0f);
     g.setFont (font);
@@ -244,8 +356,9 @@ void NoiseCard::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-FilterCard::FilterCard (plugin::ScratchpadProcessor& p)
-    : mode (p.apvts, params::filterMode, "Filter mode", p.undoManager, &Palette::flt),
+FilterCard::FilterCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
+    : curve (p),
+      mode (p.apvts, params::filterMode, "Filter mode", p.undoManager, &Palette::flt),
       cutoff (p.apvts, params::filterCutoff, "Cutoff", p.undoManager, "Filter cutoff"),
       resonance (p.apvts, params::filterResonance, "Reso", p.undoManager, "Filter resonance"),
       keyTrack (p.apvts, params::filterKeyTrack, "Key track", p.undoManager, "Filter key tracking"),
@@ -253,8 +366,13 @@ FilterCard::FilterCard (plugin::ScratchpadProcessor& p)
 {
     setTitle ("Filter");
     makeRemovable ("Remove Filter", [&p] { p.removeModule (plugin::Module::filter); });
+    makeControllable (p, "filter", false);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &mode, &cutoff, &resonance, &keyTrack, &drive })
+    // The filter envelope's own amount is a connection too, so it shows as an arc on the cutoff.
+    cutoff.setModulation (model, { engine::ModDest::cutoff }, p.apvts.getParameter (params::filterEnvAmount));
+    resonance.setModulation (model, { engine::ModDest::resonance });
+
+    for (auto* c : std::initializer_list<juce::Component*> { &curve, &mode, &cutoff, &resonance, &keyTrack, &drive })
         addAndMakeVisible (c);
 
     applyColours();
@@ -278,14 +396,15 @@ void FilterCard::resized()
 
     headerRow = inner.withTrimmedTop (pad).withHeight (headerHeight);
     placeRemoveButton (headerRow);
-    mode.setBounds (inner.getX(), 36, inner.getWidth(), 24);
+    curve.setBounds (inner.getX(), 32, inner.getWidth(), 50);
+    mode.setBounds (inner.getX(), 88, inner.getWidth(), 24);
 
     constexpr int knobs = 4;
     const int gap = (inner.getWidth() - knobs * Knob::knobWidth) / (knobs - 1);
     int x = inner.getX();
     for (auto* k : { &cutoff, &resonance, &keyTrack, &drive })
     {
-        k->setBounds (x, 66, Knob::knobWidth, Knob::knobHeight);
+        k->setBounds (x, 118, Knob::knobWidth, Knob::knobHeight);
         x += Knob::knobWidth + gap;
     }
 }
@@ -295,12 +414,13 @@ void FilterCard::paint (juce::Graphics& g)
     ModuleCard::paint (g);
 
     const auto& p = paletteOf (*this);
-    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (26.0f), p.flt, filterGlyph, "Filter");
+    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (76.0f), p.flt, filterGlyph, "Filter");
 }
 
 //==============================================================================
-EnvelopeCard::EnvelopeCard (plugin::ScratchpadProcessor& p, plugin::Module which)
+EnvelopeCard::EnvelopeCard (plugin::ScratchpadProcessor& p, ModulationModel& model, plugin::Module which)
     : isAmp (which == plugin::Module::ampEnv),
+      display (p, model, which == plugin::Module::ampEnv),
       attack (p.apvts, (isAmp ? params::ampEnv : params::filterEnv).attack, "Attack", p.undoManager,
               plugin::ScratchpadProcessor::moduleName (which) + " attack"),
       decay (p.apvts, (isAmp ? params::ampEnv : params::filterEnv).decay, "Decay", p.undoManager,
@@ -314,6 +434,9 @@ EnvelopeCard::EnvelopeCard (plugin::ScratchpadProcessor& p, plugin::Module which
 {
     setTitle (plugin::ScratchpadProcessor::moduleName (which));
     makeRemovable ("Remove " + plugin::ScratchpadProcessor::moduleName (which), [&p, which] { p.removeModule (which); });
+    makeControllable (p, isAmp ? "ampEnv" : "filterEnv", false);
+
+    addAndMakeVisible (display);
 
     for (auto* k : { &attack, &decay, &sustain, &release, &extra })
         addAndMakeVisible (k);
@@ -339,13 +462,14 @@ void EnvelopeCard::resized()
 
     headerRow = inner.withTrimmedTop (pad).withHeight (headerHeight);
     placeRemoveButton (headerRow);
+    display.setBounds (inner.getX(), 32, inner.getWidth(), 36);
 
     constexpr int knobs = 5;
     const int gap = (inner.getWidth() - knobs * Knob::knobWidth) / (knobs - 1);
     int x = inner.getX();
     for (auto* k : { &attack, &decay, &sustain, &release, &extra })
     {
-        k->setBounds (x, 36, Knob::knobWidth, Knob::knobHeight);
+        k->setBounds (x, 72, Knob::knobWidth, Knob::knobHeight);
         x += Knob::knobWidth + gap;
     }
 }
@@ -355,15 +479,33 @@ void EnvelopeCard::paint (juce::Graphics& g)
     ModuleCard::paint (g);
 
     const auto& p = paletteOf (*this);
-    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (26.0f), isAmp ? p.amp : p.flt, envelopeGlyph,
+    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (76.0f), isAmp ? p.amp : p.flt, envelopeGlyph,
                 isAmp ? "Amp Envelope" : "Filter Envelope");
 }
 
 //==============================================================================
-AmpCard::AmpCard (plugin::ScratchpadProcessor& p)
-    : processor (p)
+AmpCard::AmpCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
+    : processor (p),
+      level (model, engine::ModDest::ampLevel, "Level", "Amp level", 100.0f,
+             [] (float percent) { return juce::jlimit (0.0f, 1.0f, percent / 100.0f); }, "100%"),
+      pan (model, engine::ModDest::pan, "Pan", "Amp pan", 0.0f,
+           [] (float percent) { return juce::jlimit (0.0f, 1.0f, (percent + 100.0f) / 200.0f); }, "C")
 {
     setTitle ("Amp");
+    setExplainKey ("amp");
+    addAndMakeVisible (level);
+    addAndMakeVisible (pan);
+}
+
+void AmpCard::resized()
+{
+    constexpr int dialsTop = 26;
+    const int panX = width - pad - Knob::knobWidth;
+    const int levelX = panX - Knob::knobWidth - 4;
+
+    level.setBounds (levelX, dialsTop, Knob::knobWidth, Knob::knobHeight);
+    pan.setBounds (panX, dialsTop, Knob::knobWidth, Knob::knobHeight);
+    textArea = { pad, 52, levelX - pad - 6, height - 52 - 4 };
 }
 
 void AmpCard::paint (juce::Graphics& g)
@@ -373,18 +515,84 @@ void AmpCard::paint (juce::Graphics& g)
     const auto& p = paletteOf (*this);
     const bool shaped = processor.isModulePresent (plugin::Module::ampEnv);
 
-    auto inner = getLocalBounds().toFloat().reduced ((float) pad);
-    drawHeader (g, p, inner.removeFromTop ((float) headerHeight), p.amp, shaped ? envelopeGlyph : gateGlyph, "Amp");
-    inner.removeFromTop (8.0f);
-    drawCaption (g, shaped ? "Shaped by an envelope" : "On / off gate", inner.removeFromTop (13.0f), p.ink2);
-    inner.removeFromTop (6.0f);
+    drawHeader (g, p, juce::Rectangle<float> ((float) pad, (float) pad - 4.0f, (float) width - 2.0f * pad, (float) headerHeight),
+                p.amp, shaped ? envelopeGlyph : gateGlyph, "Amp");
+
+    drawCaption (g, shaped ? "Envelope" : "On / off gate",
+                 juce::Rectangle<float> ((float) pad, 30.0f, (float) level.getX() - pad - 4.0f, 13.0f), p.ink2);
 
     g.setColour (p.mute);
-    const auto font = uiFont (12.0f);
+    const auto font = uiFont (11.0f);
     g.setFont (font);
-    const char* text = shaped ? "The envelope sets how each note starts and ends. Velocity sets how hard keys play."
-                              : "A fixed 2 ms fade on every note start and stop, so there are no clicks.";
-    drawLines (g, wrapLines (font, text, inner.getWidth()), inner.getPosition(), inner.getWidth(), 16.0f);
+    const char* text = shaped ? "The envelope sets how each note starts and ends."
+                              : "A fixed 2 ms fade on every note start and stop.";
+    drawLines (g, wrapLines (font, text, (float) textArea.getWidth()), textArea.getPosition().toFloat(),
+               (float) textArea.getWidth(), 14.0f);
+}
+
+//==============================================================================
+VoicingCard::VoicingCard (plugin::ScratchpadProcessor& p)
+    : mode (p.apvts, params::voicingMode, "Voice mode", p.undoManager, &Palette::perf),
+      voices (p.apvts, params::voicingVoices, "Voices", p.undoManager, "Voices"),
+      glide (p.apvts, params::voicingGlide, "Glide", p.undoManager, "Glide time"),
+      bendRange (p.apvts, params::voicingBendRange, "Bend", p.undoManager, "Pitch bend range"),
+      modeWatcher (*p.apvts.getParameter (params::voicingMode),
+                   [this] (float v)
+                   {
+                       modeIndex = (int) std::lround (v);
+                       voices.setEnabled (modeIndex == 0); // mono and legato are one voice
+                       repaint (headerRow);
+                   })
+{
+    setTitle ("Voicing");
+    setExplainKey ("voicing");
+
+    for (auto* c : std::initializer_list<juce::Component*> { &mode, &voices, &glide, &bendRange })
+        addAndMakeVisible (c);
+
+    applyColours();
+    modeWatcher.sendInitialUpdate();
+}
+
+void VoicingCard::applyColours()
+{
+    const auto ink = paletteOf (*this).perfInk;
+    for (auto* k : { &voices, &glide, &bendRange })
+        k->setFamilyColour (ink);
+}
+
+void VoicingCard::lookAndFeelChanged()
+{
+    applyColours();
+}
+
+void VoicingCard::resized()
+{
+    constexpr int top = 6, titleWidth = 74;
+
+    headerRow = { pad, top, titleWidth, 24 };
+    mode.setBounds (pad + titleWidth, top, width - 2 * pad - titleWidth, 24);
+
+    constexpr int knobs = 3;
+    const int gap = (width - 2 * pad - knobs * Knob::knobWidth) / (knobs - 1);
+    int x = pad;
+    for (auto* k : { &voices, &glide, &bendRange })
+    {
+        k->setBounds (x, 36, Knob::knobWidth, Knob::knobHeight);
+        x += Knob::knobWidth + gap;
+    }
+}
+
+void VoicingCard::paint (juce::Graphics& g)
+{
+    ModuleCard::paint (g);
+
+    const auto& p = paletteOf (*this);
+    g.setColour (p.ink);
+    auto font = uiFont (13.0f, Weight::medium);
+    font.setExtraKerningFactor (0.08f);
+    g.setFont (font);
+    g.drawText ("Voicing", headerRow, juce::Justification::centredLeft, false);
 }
 
 //==============================================================================
@@ -392,6 +600,7 @@ OutputCard::OutputCard (plugin::ScratchpadProcessor& p)
     : volume (p.apvts, params::outVolume, "Volume", p.undoManager, "Output volume")
 {
     setTitle ("Output");
+    setExplainKey ("output");
     addAndMakeVisible (volume);
     volume.setFamilyColour (paletteOf (*this).perfInk);
 }
