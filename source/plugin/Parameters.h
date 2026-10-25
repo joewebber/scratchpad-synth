@@ -14,6 +14,7 @@ inline constexpr int versionHint = 1;
 inline constexpr int versionHintM2 = 2;
 inline constexpr int versionHintM3 = 3;
 inline constexpr int versionHintM4 = 4;
+inline constexpr int versionHintM5 = 5;
 
 inline constexpr int numOscillators = 3;
 
@@ -21,13 +22,55 @@ inline constexpr int numOscillators = 3;
 struct OscIds
 {
     const char *enabled, *wave, *octave, *semitone, *fine, *pulseWidth, *level, *phaseReset;
+    const char *unison, *unisonDetune, *unisonSpread, *antiAlias;
+    const char* sync; // nullptr for oscillator 1: it is the sync master
 };
 
 inline constexpr std::array<OscIds, numOscillators> osc {{
-    { "osc1.enabled", "osc1.wave", "osc1.octave", "osc1.semitone", "osc1.fine", "osc1.pulseWidth", "osc1.level", "osc1.phaseReset" },
-    { "osc2.enabled", "osc2.wave", "osc2.octave", "osc2.semitone", "osc2.fine", "osc2.pulseWidth", "osc2.level", "osc2.phaseReset" },
-    { "osc3.enabled", "osc3.wave", "osc3.octave", "osc3.semitone", "osc3.fine", "osc3.pulseWidth", "osc3.level", "osc3.phaseReset" }
+    { "osc1.enabled", "osc1.wave", "osc1.octave", "osc1.semitone", "osc1.fine", "osc1.pulseWidth", "osc1.level", "osc1.phaseReset",
+      "osc1.unison", "osc1.unisonDetune", "osc1.unisonSpread", "osc1.antiAlias", nullptr },
+    { "osc2.enabled", "osc2.wave", "osc2.octave", "osc2.semitone", "osc2.fine", "osc2.pulseWidth", "osc2.level", "osc2.phaseReset",
+      "osc2.unison", "osc2.unisonDetune", "osc2.unisonSpread", "osc2.antiAlias", "osc2.sync" },
+    { "osc3.enabled", "osc3.wave", "osc3.octave", "osc3.semitone", "osc3.fine", "osc3.pulseWidth", "osc3.level", "osc3.phaseReset",
+      "osc3.unison", "osc3.unisonDetune", "osc3.unisonSpread", "osc3.antiAlias", "osc3.sync" }
 }};
+
+// Oscillator 1 acts on the others. Ring modulation and FM are single patch-wide controls.
+inline constexpr const char* ringLevel  = "ring.level";   // dB, minLevelDb = off
+inline constexpr const char* fmAmount   = "fm.amount";    // percent
+inline constexpr const char* fmTarget   = "fm.target";    // choice, see fmTargetNames()
+
+inline constexpr int maxUnison = 7;
+inline constexpr float unisonDetuneDefaultCents = 20.0f, unisonDetuneMaxCents = 100.0f, unisonSpreadDefaultPercent = 50.0f;
+
+/** The four effects. Each has `<key>.enabled` (non-automatable presence), `<key>.bypass` and its own controls.
+    Their saved order is the non-parameter tree property `effectOrder` (see ScratchpadProcessor). */
+inline constexpr int numEffectKinds = 4;
+inline constexpr std::array<const char*, numEffectKinds> effectKeys { "distortion", "chorus", "delay", "reverb" };
+
+inline constexpr const char* distortionEnabled = "distortion.enabled";
+inline constexpr const char* distortionDrive   = "distortion.drive";   // dB, 0 .. 40, default 12
+inline constexpr const char* distortionTone    = "distortion.tone";    // percent, default 50
+inline constexpr const char* distortionMix     = "distortion.mix";     // percent, default 100
+
+inline constexpr const char* chorusEnabled = "chorus.enabled";
+inline constexpr const char* chorusRate    = "chorus.rate";            // Hz, 0.1 .. 8, default 0.8
+inline constexpr const char* chorusDepth   = "chorus.depth";           // percent, default 50
+inline constexpr const char* chorusMix     = "chorus.mix";             // percent, default 50
+
+inline constexpr const char* delayEnabled  = "delay.enabled";
+inline constexpr const char* delayTime     = "delay.time";             // ms, 1 .. 2000 (log), default 350
+inline constexpr const char* delaySync     = "delay.sync";             // bool: follow the tempo instead of `delay.time`
+inline constexpr const char* delayDivision = "delay.division";         // choice, see tempoDivisionNames()
+inline constexpr const char* delayFeedback = "delay.feedback";         // percent, 0 .. 95, default 40
+inline constexpr const char* delayPingPong = "delay.pingPong";         // bool, default off
+inline constexpr const char* delayMix      = "delay.mix";              // percent, default 35
+
+inline constexpr const char* reverbEnabled = "reverb.enabled";
+inline constexpr const char* reverbSize    = "reverb.size";            // percent, default 50
+inline constexpr const char* reverbDecay   = "reverb.decay";           // seconds, 0.2 .. 10 (log), default 2
+inline constexpr const char* reverbDamping = "reverb.damping";         // percent, default 50
+inline constexpr const char* reverbMix     = "reverb.mix";             // percent, default 30
 
 // Kept for the M1 call sites; these are `osc[0]`'s IDs.
 inline constexpr const char* osc1Enabled = "osc1.enabled";
@@ -59,10 +102,11 @@ inline constexpr const char* filterEnvAmount   = "filterEnv.amount";
 
 /** Modules that can be bypassed, by the prefix of their parameter IDs: `<key>.bypass`.
     The first four are sources and can also be soloed: `<key>.solo`. */
-inline constexpr int numBypassable = 9;
+inline constexpr int numBypassable = 13;
 inline constexpr int numSoloable = 4;
 inline constexpr std::array<const char*, numBypassable> bypassKeys {
-    "osc1", "osc2", "osc3", "noise", "filter", "ampEnv", "filterEnv", "lfo1", "lfo2"
+    "osc1", "osc2", "osc3", "noise", "filter", "ampEnv", "filterEnv", "lfo1", "lfo2",
+    "distortion", "chorus", "delay", "reverb"
 };
 
 inline constexpr int numLfos = 2;
@@ -71,11 +115,12 @@ inline constexpr int numLfos = 2;
 struct LfoIds
 {
     const char *enabled, *shape, *rate, *retrigger, *fade;
+    const char *sync, *division; // bool, and a choice from tempoDivisionNames(): the rate follows the tempo when sync is on
 };
 
 inline constexpr std::array<LfoIds, numLfos> lfo {{
-    { "lfo1.enabled", "lfo1.shape", "lfo1.rate", "lfo1.retrigger", "lfo1.fade" },
-    { "lfo2.enabled", "lfo2.shape", "lfo2.rate", "lfo2.retrigger", "lfo2.fade" }
+    { "lfo1.enabled", "lfo1.shape", "lfo1.rate", "lfo1.retrigger", "lfo1.fade", "lfo1.sync", "lfo1.division" },
+    { "lfo2.enabled", "lfo2.shape", "lfo2.rate", "lfo2.retrigger", "lfo2.fade", "lfo2.sync", "lfo2.division" }
 }};
 
 /** The eight modulation connection slots. A slot is unused while its source or destination is "None". */
@@ -148,6 +193,15 @@ juce::StringArray modSourceNames();
 
 /** Choice order matches `scratchpad::engine::ModDest`; index 0 is "None". */
 juce::StringArray modDestNames();
+
+/** Order matches `scratchpad::engine::FmTarget`: Osc 2, Osc 3, Both. */
+juce::StringArray fmTargetNames();
+
+/** "1/32", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars": lengths 1/8, 1/4, 1/2, 1, 2, 4, 8, 16 beats
+    (a beat is a quarter note). Shared by the LFOs and the delay. */
+juce::StringArray tempoDivisionNames();
+inline constexpr std::array<float, 8> tempoDivisionBeats { 0.125f, 0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f };
+inline constexpr int tempoDivisionDefault = 3; // 1/4
 
 /** Formats a level in dB for display: "-6.0 dB", or "-inf" at the bottom of the range. */
 juce::String levelText (float db, float minDb);

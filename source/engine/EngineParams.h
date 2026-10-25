@@ -27,6 +27,13 @@ struct OscParams
     float pulseWidth = 0.5f;  // 0.05 .. 0.95
     float levelDb = -6.0f;
     bool phaseReset = true;   // restart the cycle on every note
+
+    // M5: unison copies share the voice's filter and envelopes.
+    int unison = 1;               // 1 .. 7 copies
+    float unisonDetuneCents = 20.0f; // 0 .. 100: the outer copies sit this far either side
+    float unisonSpread = 0.5f;    // 0 .. 1 stereo spread of the copies
+    bool antiAlias = true;        // false: naive waveforms, no BLEP/BLAMP (a teaching switch)
+    bool sync = false;            // osc 2 and 3 only: restart this cycle whenever oscillator 1 wraps
 };
 
 struct NoiseParams
@@ -84,6 +91,47 @@ struct VoicingParams
     float bendRange = 2.0f;   // semitones either way
 };
 
+/** Which oscillators oscillator 1 phase-modulates. The order matches `params::fmTargetNames()`. */
+enum class FmTarget { osc2 = 0, osc3 = 1, both = 2 };
+
+/** The four effects. Their saved order is a permutation of these; the integer values are stored. */
+enum class EffectKind { distortion = 0, chorus = 1, delay = 2, reverb = 3 };
+inline constexpr int numEffects = 4;
+
+struct DistortionParams
+{
+    bool enabled = false;
+    float driveDb = 12.0f;  // 0 .. 40
+    float tone = 0.5f;      // 0 .. 1, dark to bright
+    float mix = 1.0f;       // 0 .. 1
+};
+
+struct ChorusParams
+{
+    bool enabled = false;
+    float rateHz = 0.8f;    // 0.1 .. 8
+    float depth = 0.5f;     // 0 .. 1
+    float mix = 0.5f;       // 0 .. 1
+};
+
+struct DelayParams
+{
+    bool enabled = false;
+    float timeMs = 350.0f;  // 1 .. 2000; the processor has already resolved tempo sync into this
+    float feedback = 0.4f;  // 0 .. 0.95
+    bool pingPong = false;
+    float mix = 0.35f;      // 0 .. 1
+};
+
+struct ReverbParams
+{
+    bool enabled = false;
+    float size = 0.5f;          // 0 .. 1: room size
+    float decaySeconds = 2.0f;  // 0.2 .. 10: time for the tail to fall 60 dB
+    float damping = 0.5f;       // 0 .. 1: how fast the tail loses treble
+    float mix = 0.3f;           // 0 .. 1
+};
+
 struct EngineParams
 {
     std::array<OscParams, 3> osc;
@@ -94,6 +142,14 @@ struct EngineParams
     VoicingParams voicing;
     std::array<LfoParams, 2> lfo;
     ModConnections mod;
+    float ringLevelDb = -60.0f; // osc 1 x osc 2 as an extra source; at minLevelDb or below it is off
+    float fmAmount = 0.0f;      // 0 .. 1: oscillator 1 phase-modulates `fmTarget`; 0 is off
+    FmTarget fmTarget = FmTarget::osc2;
+    DistortionParams distortion;
+    ChorusParams chorus;
+    DelayParams delay;
+    ReverbParams reverb;
+    std::array<EffectKind, numEffects> effectOrder { EffectKind::distortion, EffectKind::chorus, EffectKind::delay, EffectKind::reverb };
     float outputVolumeDb = 0.0f;
 };
 
