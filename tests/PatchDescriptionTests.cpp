@@ -115,3 +115,117 @@ TEST_CASE ("describe: the same patch always reads the same", "[describe]")
     p.mod[3] = { ModSource::lfo2, ModDest::pulseWidth1, -0.4f };
     REQUIRE (describe (p) == describe (p));
 }
+
+TEST_CASE ("describe: unison says how many copies", "[describe][m5]")
+{
+    auto p = oneSaw();
+    p.osc[0].unison = 3;
+    REQUIRE (describe (p).toStdString() == "One saw wave, played as three detuned copies, switched straight on and off by the keys.");
+
+    p.osc[0].unisonDetuneCents = 0.0f;
+    REQUIRE (describe (p).toStdString().find ("played as three identical copies") != std::string::npos);
+
+    auto two = twoSaws();
+    two.osc[0].unison = 5;
+    two.osc[1].unison = 5;
+    REQUIRE (describe (two).toStdString().find ("each played as five detuned copies") != std::string::npos);
+
+    two.osc[1].unison = 2;
+    REQUIRE (describe (two).toStdString().find ("some of it played as several detuned copies") != std::string::npos);
+
+    p.osc[0].unison = 1;
+    REQUIRE (describe (p).toStdString().find ("copies") == std::string::npos);
+}
+
+TEST_CASE ("describe: hard sync, ring modulation, FM and anti-aliasing off", "[describe][m5]")
+{
+    auto synced = twoSaws();
+    synced.osc[1].sync = true;
+    REQUIRE (describe (synced).toStdString().find ("Two saws detuned by 7 cents, with Osc 2 hard-synced to Osc 1") == 0);
+
+    synced.osc[2].enabled = true;
+    synced.osc[2].sync = true;
+    REQUIRE (describe (synced).toStdString().find ("with Osc 2 and Osc 3 hard-synced to Osc 1") != std::string::npos);
+
+    // Sync needs the master: without oscillator 1 there is nothing to sync to.
+    auto orphan = twoSaws();
+    orphan.osc[0].enabled = false;
+    orphan.osc[2].enabled = true;
+    orphan.osc[2].sync = true;
+    REQUIRE (describe (orphan).toStdString().find ("hard-synced") == std::string::npos);
+
+    auto ring = twoSaws();
+    ring.ringLevelDb = -12.0f;
+    REQUIRE (describe (ring).toStdString().find (", with ring modulation between Osc 1 and Osc 2") != std::string::npos);
+    ring.ringLevelDb = engine::minLevelDb; // off
+    REQUIRE (describe (ring).toStdString().find ("ring") == std::string::npos);
+
+    auto fm = twoSaws();
+    fm.fmAmount = 0.5f;
+    REQUIRE (describe (fm).toStdString().find (", with FM from Osc 1 into Osc 2") != std::string::npos);
+    fm.fmAmount = 0.1f;
+    REQUIRE (describe (fm).toStdString().find ("with a touch of FM from Osc 1 into Osc 2") != std::string::npos);
+
+    fm.osc[2].enabled = true;
+    fm.fmTarget = engine::FmTarget::both;
+    fm.fmAmount = 0.9f;
+    REQUIRE (describe (fm).toStdString().find ("with heavy FM from Osc 1 into Osc 2 and Osc 3") != std::string::npos);
+
+    fm.fmTarget = engine::FmTarget::osc3;
+    REQUIRE (describe (fm).toStdString().find ("FM from Osc 1 into Osc 3") != std::string::npos);
+
+    fm.osc[2].enabled = false; // the target is absent: FM does nothing
+    REQUIRE (describe (fm).toStdString().find ("FM") == std::string::npos);
+
+    auto alias = oneSaw();
+    alias.osc[0].antiAlias = false;
+    REQUIRE (describe (alias).toStdString()
+             == "One saw wave, with anti-aliasing switched off, switched straight on and off by the keys.");
+}
+
+TEST_CASE ("describe: effects read in chain order, and only the audible ones", "[describe][m5]")
+{
+    auto p = oneSaw();
+    p.ampEnv.enabled = true;
+    p.distortion.enabled = true;
+    p.delay.enabled = true;
+    p.delay.pingPong = true;
+    p.delay.timeMs = 350.0f;
+    p.reverb.enabled = true;
+
+    REQUIRE (describe (p).toStdString()
+             == "One saw wave, shaped by a snappy amp envelope, then through distortion, a ping-pong delay of 350 ms and a reverb.");
+
+    // Reordering changes the sentence.
+    p.effectOrder = { engine::EffectKind::reverb, engine::EffectKind::delay, engine::EffectKind::chorus, engine::EffectKind::distortion };
+    REQUIRE (describe (p).toStdString()
+             == "One saw wave, shaped by a snappy amp envelope, then through a reverb, a ping-pong delay of 350 ms and distortion.");
+
+    // A dry effect is not audible; an absent one (not enabled, or bypassed away by the processor) is not mentioned.
+    p.delay.mix = 0.0f;
+    p.distortion.enabled = false;
+    REQUIRE (describe (p).toStdString() == "One saw wave, shaped by a snappy amp envelope, then through a reverb.");
+
+    p.chorus.enabled = true;
+    p.reverb.decaySeconds = 6.0f;
+    REQUIRE (describe (p).toStdString()
+             == "One saw wave, shaped by a snappy amp envelope, then through a long reverb and a chorus.");
+
+    p.reverb.enabled = false;
+    p.chorus.enabled = false;
+    REQUIRE (describe (p).toStdString() == "One saw wave, shaped by a snappy amp envelope.");
+}
+
+TEST_CASE ("describe: distortion drive, and the limiter never appears", "[describe][m5]")
+{
+    auto p = oneSaw();
+    p.distortion.enabled = true;
+
+    p.distortion.driveDb = 4.0f;
+    REQUIRE (describe (p).toStdString().find ("then through a touch of distortion.") != std::string::npos);
+
+    p.distortion.driveDb = 30.0f;
+    REQUIRE (describe (p).toStdString().find ("then through heavy distortion.") != std::string::npos);
+
+    REQUIRE (describe (oneSaw()).toStdString().find ("limit") == std::string::npos);
+}

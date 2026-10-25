@@ -5,6 +5,9 @@
 #include "plugin/PatchState.h"
 #include "plugin/PluginEditor.h"
 
+#include <algorithm>
+#include <optional>
+
 namespace scratchpad::plugin
 {
 
@@ -32,6 +35,89 @@ namespace
         auto* p = apvts.getParameter (id);
         return p->convertFrom0to1 (p->getDefaultValue());
     }
+
+    const juce::Identifier& effectOrderId()
+    {
+        static const juce::Identifier id { params::effectOrderProperty };
+        return id;
+    }
+
+    constexpr std::array<engine::EffectKind, engine::numEffects> defaultEffectOrder {
+        engine::EffectKind::distortion, engine::EffectKind::chorus, engine::EffectKind::delay, engine::EffectKind::reverb
+    };
+
+    /** Two bits per position, position 0 lowest. The default order packs to 0xE4. */
+    std::uint32_t packEffectOrder (const std::array<engine::EffectKind, engine::numEffects>& order) noexcept
+    {
+        std::uint32_t packed = 0;
+
+        for (size_t i = 0; i < order.size(); ++i)
+            packed |= (std::uint32_t) order[i] << (2 * i);
+
+        return packed;
+    }
+
+    std::array<engine::EffectKind, engine::numEffects> unpackEffectOrder (std::uint32_t packed) noexcept
+    {
+        std::array<engine::EffectKind, engine::numEffects> order {};
+
+        for (size_t i = 0; i < order.size(); ++i)
+            order[i] = (engine::EffectKind) ((packed >> (2 * i)) & 3u);
+
+        return order;
+    }
+
+    juce::String formatEffectOrder (const std::array<engine::EffectKind, engine::numEffects>& order)
+    {
+        juce::StringArray parts;
+
+        for (const auto kind : order)
+            parts.add (juce::String ((int) kind));
+
+        return parts.joinIntoString (",");
+    }
+
+    /** "0,1,2,3" in some order; anything else is nullopt. */
+    std::optional<std::array<engine::EffectKind, engine::numEffects>> parseEffectOrder (const juce::String& text)
+    {
+        juce::StringArray parts;
+        parts.addTokens (text, ",", "");
+
+        if (parts.size() != engine::numEffects)
+            return std::nullopt;
+
+        std::array<bool, engine::numEffects> seen {};
+        std::array<engine::EffectKind, engine::numEffects> order {};
+
+        for (int i = 0; i < engine::numEffects; ++i)
+        {
+            const auto part = parts[i].trim();
+
+            if (part.length() != 1 || ! juce::CharacterFunctions::isDigit (part[0]))
+                return std::nullopt;
+
+            const int value = part.getIntValue();
+
+            if (value >= engine::numEffects || seen[(size_t) value])
+                return std::nullopt;
+
+            seen[(size_t) value] = true;
+            order[(size_t) i] = (engine::EffectKind) value;
+        }
+
+        return order;
+    }
+
+    Module effectModule (engine::EffectKind kind) noexcept
+    {
+        return (Module) ((int) Module::distortion + (int) kind);
+    }
+}
+
+
+ScratchpadProcessor::~ScratchpadProcessor()
+{
+    apvts.state.removeListener (this);
 }
 
 ScratchpadProcessor::ScratchpadProcessor()
@@ -42,7 +128,9 @@ ScratchpadProcessor::ScratchpadProcessor()
     {
         const auto& ids = params::osc[i];
         oscPointers[i] = { findParam (ids.enabled), findParam (ids.wave), findParam (ids.octave), findParam (ids.semitone),
-                           findParam (ids.fine), findParam (ids.pulseWidth), findParam (ids.level), findParam (ids.phaseReset) };
+                           findParam (ids.fine), findParam (ids.pulseWidth), findParam (ids.level), findParam (ids.phaseReset),
+                           findParam (ids.unison), findParam (ids.unisonDetune), findParam (ids.unisonSpread), findParam (ids.antiAlias),
+                           ids.sync != nullptr ? findParam (ids.sync) : nullptr };
     }
 
     ampPointers = { findParam (params::ampEnv.enabled), findParam (params::ampEnv.attack), findParam (params::ampEnv.decay),
@@ -80,7 +168,7 @@ ScratchpadProcessor::ScratchpadProcessor()
     {
         const auto& ids = params::lfo[i];
         lfoPointers[i] = { findParam (ids.enabled), findParam (ids.shape), findParam (ids.rate),
-                           findParam (ids.retrigger), findParam (ids.fade) };
+                           findParam (ids.retrigger), findParam (ids.fade), findParam (ids.sync), findParam (ids.division) };
     }
 
     const auto changed = [this] (float) { modulationBroadcaster.sendChangeMessage(); };
@@ -97,6 +185,17 @@ ScratchpadProcessor::ScratchpadProcessor()
         choiceWatchers[2 * i] = std::make_unique<juce::ParameterAttachment> (*apvts.getParameter (ids.source), changed);
         choiceWatchers[2 * i + 1] = std::make_unique<juce::ParameterAttachment> (*apvts.getParameter (ids.dest), changed);
     }
+
+    fx = { findParam (params::distortionEnabled), findParam (params::distortionDrive), findParam (params::distortionTone), findParam (params::distortionMix),
+           findParam (params::chorusEnabled), findParam (params::chorusRate), findParam (params::chorusDepth), findParam (params::chorusMix),
+           findParam (params::delayEnabled), findParam (params::delayTime), findParam (params::delaySync), findParam (params::delayDivision),
+           findParam (params::delayFeedback), findParam (params::delayPingPong), findParam (params::delayMix),
+           findParam (params::reverbEnabled), findParam (params::reverbSize), findParam (params::reverbDecay), findParam (params::reverbDamping),
+           findParam (params::reverbMix),
+           findParam (params::ringLevel), findParam (params::fmAmount), findParam (params::fmTarget) };
+
+    apvts.state.addListener (this);
+    refreshEffectOrder();
 }
 
 std::atomic<float>* ScratchpadProcessor::findParam (const char* id) const
@@ -112,8 +211,8 @@ void ScratchpadProcessor::prepareToPlay (double sampleRate, int)
     synthEngine.prepare (sampleRate);
     synthEngine.setParams (readParams());
 
-    // The band-limited oscillators run a fixed number of samples late.
-    setLatencySamples (dsp::Oscillator::latencySamples);
+    // The band-limited oscillators and the oversampled distortion run a fixed number of samples late.
+    setLatencySamples (dsp::Oscillator::latencySamples + synthEngine.getEffectsLatencySamples());
 }
 
 bool ScratchpadProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -134,6 +233,7 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
     const auto fraction = [&] (const std::atomic<float>* p) noexcept { return load (p) * 0.01f; };
 
     engine::EngineParams e;
+    const double bpm = currentBpm.load (std::memory_order_relaxed);
 
     for (size_t i = 0; i < oscPointers.size(); ++i)
     {
@@ -147,6 +247,11 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
         o.pulseWidth = fraction (s.pulseWidth);
         o.levelDb = load (s.level);
         o.phaseReset = on (s.phaseReset);
+        o.unison = juce::jlimit (1, params::maxUnison, juce::roundToInt (load (s.unison)));
+        o.unisonDetuneCents = load (s.unisonDetune);
+        o.unisonSpread = fraction (s.unisonSpread);
+        o.antiAlias = on (s.antiAlias);
+        o.sync = s.sync != nullptr && on (s.sync);
     }
 
     e.noise.enabled = on (noiseEnabled);
@@ -180,7 +285,7 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
         auto& l = e.lfo[i];
         l.enabled = on (s.enabled);
         l.shape = (dsp::LfoShape) index (s.shape, dsp::numLfoShapes);
-        l.rateHz = load (s.rate);
+        l.rateHz = on (s.sync) ? params::lfoSyncRateHz (bpm, index (s.division, (int) params::tempoDivisionBeats.size())) : load (s.rate);
         l.retrigger = on (s.retrigger);
         l.fadeSeconds = load (s.fade);
     }
@@ -197,6 +302,33 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
     e.voicing.voices = juce::jlimit (1, params::maxVoices, juce::roundToInt (load (voicingVoices)));
     e.voicing.glideSeconds = load (voicingGlide);
     e.voicing.bendRange = load (voicingBendRange);
+
+    e.ringLevelDb = load (fx.ringLevel);
+    e.fmAmount = fraction (fx.fmAmount);
+    e.fmTarget = (engine::FmTarget) index (fx.fmTarget, 3);
+
+    e.distortion.enabled = on (fx.distortionEnabled);
+    e.distortion.driveDb = load (fx.distortionDrive);
+    e.distortion.tone = fraction (fx.distortionTone);
+    e.distortion.mix = fraction (fx.distortionMix);
+
+    e.chorus.enabled = on (fx.chorusEnabled);
+    e.chorus.rateHz = load (fx.chorusRate);
+    e.chorus.depth = fraction (fx.chorusDepth);
+    e.chorus.mix = fraction (fx.chorusMix);
+
+    e.delay.enabled = on (fx.delayEnabled);
+    e.delay.timeMs = on (fx.delaySync) ? params::delaySyncMs (bpm, index (fx.delayDivision, (int) params::tempoDivisionBeats.size()))
+                                       : load (fx.delayTime);
+    e.delay.feedback = fraction (fx.delayFeedback);
+    e.delay.pingPong = on (fx.delayPingPong);
+    e.delay.mix = fraction (fx.delayMix);
+
+    e.reverb.enabled = on (fx.reverbEnabled);
+    e.reverb.size = fraction (fx.reverbSize);
+    e.reverb.decaySeconds = load (fx.reverbDecay);
+    e.reverb.damping = fraction (fx.reverbDamping);
+    e.reverb.mix = fraction (fx.reverbMix);
 
     e.outputVolumeDb = load (outVolume);
 
@@ -221,6 +353,23 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
     e.filterEnv.enabled = e.filterEnv.enabled && ! bypassed (6);
     e.lfo[0].enabled = e.lfo[0].enabled && ! bypassed (7);
     e.lfo[1].enabled = e.lfo[1].enabled && ! bypassed (8);
+
+    // Ring modulation is a source of oscillators 1 and 2: it goes quiet when either is muted. FM needs oscillator 1 playing.
+    if (muted (0) || muted (1))
+        e.ringLevelDb = engine::minLevelDb;
+
+    if (bypassed (0))
+        e.fmAmount = 0.0f;
+
+    // Effects: a bypassed effect is simply absent. Tempo sync is resolved here, so the engine only sees milliseconds.
+    constexpr size_t firstEffect = (size_t) (params::numBypassable - params::numEffectKinds);
+    e.distortion.enabled = e.distortion.enabled && ! bypassed (firstEffect);
+    e.chorus.enabled = e.chorus.enabled && ! bypassed (firstEffect + 1);
+    e.delay.enabled = e.delay.enabled && ! bypassed (firstEffect + 2);
+    e.reverb.enabled = e.reverb.enabled && ! bypassed (firstEffect + 3);
+
+    const auto packed = packedEffectOrder.load (std::memory_order_relaxed);
+    e.effectOrder = unpackEffectOrder (packed);
     return e;
 }
 
@@ -252,6 +401,18 @@ void ScratchpadProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
+
+    {
+        // Tempo: the host's when it says, else 120. Read before the block's parameters so sync uses this block's tempo.
+        double bpm = params::defaultBpm;
+
+        if (auto* playHead = getPlayHead())
+            if (const auto position = playHead->getPosition())
+                if (const auto hostBpm = position->getBpm())
+                    bpm = *hostBpm;
+
+        currentBpm.store (bpm > 0.0 ? bpm : params::defaultBpm, std::memory_order_relaxed);
+    }
 
     synthEngine.setParams (readParams());
 
@@ -352,6 +513,9 @@ void ScratchpadProcessor::newPatch()
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             setParamValue (apvts, ranged->paramID.toRawUTF8(), defaultOf (apvts, ranged->paramID.toRawUTF8()));
+
+    if (getEffectOrder() != defaultEffectOrder)
+        setEffectOrderProperty (defaultEffectOrder);
 }
 
 namespace
@@ -362,7 +526,13 @@ namespace
         const auto oscillator = [] (size_t i)
         {
             const auto& o = params::osc[i];
-            return std::vector<const char*> { o.enabled, o.wave, o.octave, o.semitone, o.fine, o.pulseWidth, o.level, o.phaseReset };
+            std::vector<const char*> ids { o.enabled, o.wave, o.octave, o.semitone, o.fine, o.pulseWidth, o.level, o.phaseReset,
+                                           o.unison, o.unisonDetune, o.unisonSpread, o.antiAlias };
+
+            if (o.sync != nullptr)
+                ids.push_back (o.sync);
+
+            return ids;
         };
 
         switch (m)
@@ -380,8 +550,13 @@ namespace
             case Module::lfo2:
             {
                 const auto& l = params::lfo[m == Module::lfo1 ? 0u : 1u];
-                return { l.enabled, l.shape, l.rate, l.retrigger, l.fade };
+                return { l.enabled, l.shape, l.rate, l.retrigger, l.fade, l.sync, l.division };
             }
+            case Module::distortion: return { params::distortionEnabled, params::distortionDrive, params::distortionTone, params::distortionMix };
+            case Module::chorus:     return { params::chorusEnabled, params::chorusRate, params::chorusDepth, params::chorusMix };
+            case Module::delay:      return { params::delayEnabled, params::delayTime, params::delaySync, params::delayDivision,
+                                              params::delayFeedback, params::delayPingPong, params::delayMix };
+            case Module::reverb:     return { params::reverbEnabled, params::reverbSize, params::reverbDecay, params::reverbDamping, params::reverbMix };
         }
         return {};
     }
@@ -390,14 +565,18 @@ namespace
     {
         switch (m)
         {
-            case Module::osc2:      return "osc2";
-            case Module::osc3:      return "osc3";
-            case Module::noise:     return "noise";
-            case Module::filter:    return "filter";
-            case Module::ampEnv:    return "ampEnv";
-            case Module::filterEnv: return "filterEnv";
-            case Module::lfo1:      return "lfo1";
-            case Module::lfo2:      return "lfo2";
+            case Module::osc2:       return "osc2";
+            case Module::osc3:       return "osc3";
+            case Module::noise:      return "noise";
+            case Module::filter:     return "filter";
+            case Module::ampEnv:     return "ampEnv";
+            case Module::filterEnv:  return "filterEnv";
+            case Module::lfo1:       return "lfo1";
+            case Module::lfo2:       return "lfo2";
+            case Module::distortion: return "distortion";
+            case Module::chorus:     return "chorus";
+            case Module::delay:      return "delay";
+            case Module::reverb:     return "reverb";
         }
         return {};
     }
@@ -412,14 +591,18 @@ juce::String ScratchpadProcessor::moduleName (Module m)
 {
     switch (m)
     {
-        case Module::osc2:      return "Oscillator 2";
-        case Module::osc3:      return "Oscillator 3";
-        case Module::noise:     return "Noise";
-        case Module::filter:    return "Filter";
-        case Module::ampEnv:    return "Amp Envelope";
-        case Module::filterEnv: return "Filter Envelope";
-        case Module::lfo1:      return "LFO 1";
-        case Module::lfo2:      return "LFO 2";
+        case Module::osc2:       return "Oscillator 2";
+        case Module::osc3:       return "Oscillator 3";
+        case Module::noise:      return "Noise";
+        case Module::filter:     return "Filter";
+        case Module::ampEnv:     return "Amp Envelope";
+        case Module::filterEnv:  return "Filter Envelope";
+        case Module::lfo1:       return "LFO 1";
+        case Module::lfo2:       return "LFO 2";
+        case Module::distortion: return "Distortion";
+        case Module::chorus:     return "Chorus";
+        case Module::delay:      return "Delay";
+        case Module::reverb:     return "Reverb";
     }
     return {};
 }
@@ -631,6 +814,11 @@ namespace
         if (key == "filter")         return "Filter";
         if (key == "ampEnv")         return "Amp Envelope";
         if (key == "filterEnv")      return "Filter Envelope";
+
+        for (size_t i = 0; i < params::effectKeys.size(); ++i)
+            if (key == params::effectKeys[i])
+                return ScratchpadProcessor::moduleName (effectModule ((engine::EffectKind) i));
+
         return "LFO " + key.substring (3);
     }
 }
@@ -659,6 +847,61 @@ void ScratchpadProcessor::setSoloed (const juce::String& key, bool shouldSolo)
                 setParamValue (apvts, (juce::String (params::bypassKeys[(size_t) i]) + ".solo").toRawUTF8(), 0.0f);
 
     setParamValue (apvts, (key + ".solo").toRawUTF8(), shouldSolo ? 1.0f : 0.0f);
+}
+
+//==============================================================================
+std::array<engine::EffectKind, engine::numEffects> ScratchpadProcessor::getEffectOrder() const
+{
+    return unpackEffectOrder (packedEffectOrder.load (std::memory_order_relaxed));
+}
+
+void ScratchpadProcessor::setEffectOrderProperty (const std::array<engine::EffectKind, engine::numEffects>& order)
+{
+    apvts.state.setProperty (effectOrderId(), formatEffectOrder (order), &undoManager);
+}
+
+void ScratchpadProcessor::refreshEffectOrder()
+{
+    const auto parsed = parseEffectOrder (apvts.state.getProperty (effectOrderId()).toString());
+    packedEffectOrder.store (packEffectOrder (parsed.value_or (defaultEffectOrder)), std::memory_order_relaxed);
+    effectsBroadcaster.sendChangeMessage();
+}
+
+void ScratchpadProcessor::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property)
+{
+    if (tree == apvts.state && property == effectOrderId())
+        refreshEffectOrder();
+}
+
+void ScratchpadProcessor::valueTreeRedirected (juce::ValueTree& tree)
+{
+    if (tree == apvts.state)
+        refreshEffectOrder();
+}
+
+void ScratchpadProcessor::moveEffect (int fromPosition, int toPosition)
+{
+    constexpr int n = engine::numEffects;
+
+    if (fromPosition < 0 || fromPosition >= n || toPosition < 0 || toPosition >= n || fromPosition == toPosition)
+        return;
+
+    auto order = getEffectOrder();
+    const auto moved = order[(size_t) fromPosition];
+
+    if (fromPosition < toPosition)
+        std::rotate (order.begin() + fromPosition, order.begin() + fromPosition + 1, order.begin() + toPosition + 1);
+    else
+        std::rotate (order.begin() + toPosition, order.begin() + fromPosition, order.begin() + fromPosition + 1);
+
+    const auto name = moduleName (effectModule (moved));
+    const auto description = toPosition + 1 < n
+                               ? "Moved " + name + " before " + moduleName (effectModule (order[(size_t) toPosition + 1]))
+                               : "Moved " + name + " after " + moduleName (effectModule (order[(size_t) toPosition - 1]));
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction (description);
+    setEffectOrderProperty (order);
 }
 
 void ScratchpadProcessor::getStateInformation (juce::MemoryBlock& destData)
@@ -690,6 +933,7 @@ void ScratchpadProcessor::setStateInformation (const void* data, int sizeInBytes
         parameter->setValueNotifyingHost (parameter->getDefaultValue());
 
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    refreshEffectOrder();
 }
 
 } // namespace scratchpad::plugin

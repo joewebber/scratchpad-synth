@@ -5,9 +5,10 @@ namespace scratchpad::plugin
 
 namespace
 {
-    constexpr std::array<Module, 8> path {
+    constexpr std::array<Module, 12> path {
         Module::ampEnv, Module::osc2, Module::filter, Module::filterEnv,
-        Module::lfo1, Module::noise, Module::osc3, Module::lfo2
+        Module::lfo1, Module::noise, Module::osc3, Module::lfo2,
+        Module::delay, Module::reverb, Module::chorus, Module::distortion
     };
 }
 
@@ -23,6 +24,10 @@ const char* reasonFor (Module m)
         case Module::noise:     return "Add Noise for breath and grit that the filter and envelope can shape.";
         case Module::osc3:      return "Add a third oscillator to fatten the sound further, or to play a second pitch.";
         case Module::lfo2:      return "Add LFO 2 so a second thing can move at its own speed.";
+        case Module::delay:      return "Add a Delay to make the sound echo: each repeat is a quieter copy of the last.";
+        case Module::reverb:     return "Add a Reverb to place the sound in a room, so notes ring on after you let go.";
+        case Module::chorus:     return "Add a Chorus to widen and shimmer the sound with slowly moving copies of itself.";
+        case Module::distortion: return "Add Distortion to squash the peaks and add harmonics: from warm crunch to fuzz.";
     }
     return "";
 }

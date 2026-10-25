@@ -8,22 +8,28 @@
 #include "dsp/Oscillator.h"
 #include "engine/BlockLevels.h"
 #include "engine/EngineParams.h"
+#include "engine/OscSection.h"
 
 #include <array>
 #include <cstdint>
+#include <memory>
 
 namespace scratchpad::engine
 {
 
 /** One note of the per-voice chain:
 
-        osc 1 + osc 2 + osc 3 + noise -> filter -> amp (envelope, or the 2 ms gate)
+        osc 1 + osc 2 + osc 3 + ring + noise -> filter -> amp (envelope, or the 2 ms gate) -> pan
 
-    The filter is bypassed (10 ms crossfade) unless `filter.enabled`. The amp
-    stage is the amp envelope if `ampEnv.enabled` (scaled by velocity), the
-    fixed declick gate otherwise; toggling it mid-note crossfades over 10 ms.
-    The filter envelope always runs; `filterEnv.enabled` only decides whether
-    its amount is applied.
+    The oscillators (`OscSection`) make stereo audio: unison copies are panned, so from there on
+    the voice is stereo. The filter is bypassed (10 ms crossfade) unless `filter.enabled`; it runs
+    once while the signal is mono and once per channel while unison spread makes it stereo. The amp stage is the amp envelope if `ampEnv.enabled` (scaled by
+    velocity), the fixed declick gate otherwise; toggling it mid-note crossfades over 10 ms.
+    The filter envelope always runs; `filterEnv.enabled` only decides whether its amount is applied.
+
+    Ring modulation (osc 1 x osc 2) joins the mix as a source at its own level. FM runs the
+    oscillators in a second `OscSection` at twice the sample rate while the FM amount is above
+    zero; the two sections are crossfaded over 10 ms when FM comes and goes.
 
     A wave-picker preview voice is a different, fixed chain: one oscillator of
     the wave it was started with, straight through the gate.
@@ -58,8 +64,8 @@ public:
     };
 
     static constexpr int blockSize = 32; // the longest block `render` is meant for
-    static constexpr double waveSwitchSeconds = 0.010;
     static constexpr double ampSwitchSeconds = 0.010;
+    static constexpr int overWarmSamples = 16; // the decimator's history, in base-rate samples
     static constexpr double filterBypassSeconds = 0.010;
     static constexpr double velocitySlewSeconds = 0.005;
 
@@ -118,15 +124,10 @@ public:
     Pending pending;
 
 private:
-    struct OscState
+    /** The oscillators run at the base rate, or (second) at twice that whenever FM is on. */
+    struct Oscillators
     {
-        dsp::Oscillator osc;
-        dsp::Wave wave = dsp::Wave::sine;
-        dsp::Wave waveFrom = dsp::Wave::sine;
-        int fadeRemaining = 0;
-        double increment = 0.0;
-        float pulseWidth = 0.5f;
-        bool running = false; // false while the oscillator is disabled, so it restarts cleanly
+        std::array<OscSection, 2> section;
     };
 
     struct EnvelopeCache
@@ -152,9 +153,17 @@ private:
 
     static void syncEnvelope (dsp::Envelope& env, EnvelopeCache& cache, const EnvelopeParams& e) noexcept;
 
-    std::array<OscState, 3> oscs;
+    std::unique_ptr<Oscillators> oscillators; // large; kept off the stack
+    dsp::Oscillator previewOsc;               // the wave-picker preview's single oscillator
+    double previewIncrement = 0.0;
+    bool previewRunning = false;
+    bool sectionLive[2] { false, false };     // 1x and 2x sections: running since the last note started
+    float oversampleMix = 0.0f;               // 0: all from the base-rate section, 1: all from the 2x section
+    float oversampleStep = 0.01f;
+    bool stereoFilter = false;
+    int warmSamples = 0;                      // samples the 2x section still runs unheard, filling its decimator
     dsp::Noise noise;
-    dsp::MultimodeFilter filter;
+    dsp::MultimodeFilter filter, filterR;
     dsp::Envelope ampEnv, filterEnv;
     dsp::Gate gate;
     EnvelopeCache ampCache, filterCache;
@@ -185,7 +194,6 @@ private:
     bool restartLfos = false;
     double age = 0.0;            // seconds since the note started, for the LFO fade-in
 
-    int waveFadeLength = 480;
     float ampMixStep = 0.01f;
     float filterWetStep = 0.01f;
     float velocityStep = 0.01f;

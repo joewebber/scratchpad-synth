@@ -1,6 +1,8 @@
 #pragma once
 
+#include "dsp/Limiter.h"
 #include "engine/BlockLevels.h"
+#include "engine/EffectsChain.h"
 #include "engine/EngineParams.h"
 #include "engine/VoiceAllocator.h"
 
@@ -67,6 +69,13 @@ public:
     float getModWheel() const noexcept { return modWheel; }
     float getAftertouch() const noexcept { return aftertouch; }
 
+    /** How far the safety limiter is pulling the output down, in dB (0 when it is idle). Smoothed; any thread. */
+    float getLimiterReductionDb() const noexcept { return limiterReductionDb.load (std::memory_order_relaxed); }
+
+    /** Delay the effects add (distortion's oversampling), in samples. Constant for a sample rate and reported
+        even while distortion is off, so latency never jumps. Valid after `prepare`. */
+    int getEffectsLatencySamples() const noexcept { return effects.getLatencySamples(); }
+
 private:
     using Smoother = juce::SmoothedValue<float>;
 
@@ -82,7 +91,8 @@ private:
     EngineParams params;
 
     std::array<Smoother, 3> oscGain;
-    Smoother noiseGain, previewGain, cutoffLog2, resonance, driveDb, filterEnvAmount;
+    Smoother noiseGain, ringGain, previewGain, cutoffLog2, resonance, driveDb, filterEnvAmount;
+    std::array<Smoother, 2> fmGain; // FM amount into oscillators 2 and 3
     Smoother outputGain;
     Smoother modWheelSmoother, aftertouchSmoother;
 
@@ -95,6 +105,11 @@ private:
     juce::AbstractFifo scopeFifo { scopeFifoSize };
     std::array<float, scopeFifoSize> scopeData {};
     std::array<float, subBlockSize> tapOsc {}, tapFilter {};
+    std::array<float, subBlockSize> tapAmp {}, tapEffects {};
+
+    EffectsChain effects;
+    dsp::Limiter limiter;
+    std::atomic<float> limiterReductionDb { 0.0f };
 
     std::array<float, subBlockSize> monoLeft {}, monoRight {};
 

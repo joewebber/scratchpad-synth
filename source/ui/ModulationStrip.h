@@ -48,8 +48,9 @@ private:
     bool ignoreClick = false;
 };
 
-/** An LFO: handle, shape, rate, fade-in, retrigger, and a picture of the wave with a dot
-    that follows its phase. */
+/** An LFO: handle, shape, rate, note length, fade-in, retrigger, tempo sync, and a picture of the wave with a
+    dot that follows its phase. With Sync on the rate follows the tempo (the note length picks how many beats a
+    cycle takes), so the Rate knob dims and the picture shows the rate that results. */
 class LfoCard final : public ModuleCard,
                       private ModulationModel::Listener
 {
@@ -63,22 +64,26 @@ public:
 
     SourceHandle& getHandle() noexcept { return handle; }
 
-    static constexpr int width = 285, height = 116;
+    static constexpr int width = 288, height = 116;
 
 private:
     void liveUpdated() override;
     void applyColours();
+    void refreshSync();
 
     ModulationModel& model;
     const int index;
     SourceHandle handle;
     ChoiceSegments shape;
-    ToggleChip retrigger;
-    Knob rate, fade;
-    juce::ParameterAttachment shapeWatcher;
+    ToggleChip retrigger, sync;
+    Knob rate, division, fade;
+    juce::ParameterAttachment shapeWatcher, syncWatcher, divisionWatcher;
     int shapeIndex = 0;
     float shownPhase = -1.0f;
     bool secondCycle = false;
+    bool synced = false;
+    int divisionIndex = 0;
+    float shownHz = -1.0f;
 
     juce::Rectangle<int> headerRow, vizWell;
 };

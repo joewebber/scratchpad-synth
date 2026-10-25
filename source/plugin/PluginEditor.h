@@ -13,7 +13,8 @@
 namespace scratchpad::plugin
 {
 
-/** One window, 1500 x 840: the design's 1200 x 760 plus room for the Explain panel and the wider cards. Until a wave is picked the whole window below the
+/** One window, 1500 x 900: the design's 1200 x 760 plus room for the Explain panel, the wider cards and (M5) the row
+    of effects under the signal chain. Until a wave is picked the whole window below the
     top bar is the wave picker; after that it is the signal chain over the
     keyboard. Which one shows follows the `osc1.enabled` parameter, so New
     patch, undo and loading a session all land in the right place. */
@@ -22,7 +23,7 @@ class ScratchpadEditor final : public juce::AudioProcessorEditor,
 {
 public:
     static constexpr int baseWidth = 1500;
-    static constexpr int baseHeight = 840;
+    static constexpr int baseHeight = 900;
 
     explicit ScratchpadEditor (ScratchpadProcessor&);
     ~ScratchpadEditor() override;

@@ -63,4 +63,75 @@ private:
     juce::VBlankAttachment vblank;
 };
 
+
+/** The safety limiter's light: lit while the limiter is pulling the level down (more than 0.1 dB), and for a
+    short hold afterwards so a brief touch is still seen. Polled on the display's vertical blank like the
+    meter. The text "LIM" is always there, so the light is never the only carrier. */
+class LimiterLight final : public juce::Component
+{
+public:
+    explicit LimiterLight (std::function<float()> readReductionDbFn)
+        : readReductionDb (std::move (readReductionDbFn)),
+          vblank (this, [this] { tick(); })
+    {
+        setTitle ("Safety limiter");
+        setDescription ("Idle");
+        getProperties().set ("explainId", "control.limiter");
+        setInterceptsMouseClicks (true, false);
+    }
+
+    bool isLit() const noexcept { return lit; }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto& p = paletteOf (*this);
+        const auto bounds = getLocalBounds().toFloat();
+        const auto dot = juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ bounds.getX() + 7.0f, bounds.getCentreY() });
+
+        if (lit)
+        {
+            g.setColour (p.accent.withAlpha (0.25f));
+            g.fillEllipse (dot.expanded (3.0f));
+            g.setColour (p.accent);
+            g.fillEllipse (dot);
+        }
+        else
+        {
+            drawInset (g, dot, 5.0f, p, p.well);
+        }
+
+        auto font = uiFont (11.0f, Weight::medium);
+        font.setExtraKerningFactor (0.1f);
+        g.setFont (font);
+        g.setColour (lit ? p.ink : p.mute);
+        g.drawText ("LIM", bounds.withTrimmedLeft (18.0f), juce::Justification::centredLeft, false);
+    }
+
+private:
+    void tick()
+    {
+        // About a quarter of a second at 60 Hz.
+        constexpr int holdFrames = 15;
+
+        if (readReductionDb() > 0.1f)
+            framesLeft = holdFrames;
+        else if (framesLeft > 0)
+            --framesLeft;
+
+        const bool shouldLight = framesLeft > 0;
+
+        if (shouldLight != lit)
+        {
+            lit = shouldLight;
+            setDescription (lit ? "Limiting: turning the level down" : "Idle");
+            repaint();
+        }
+    }
+
+    std::function<float()> readReductionDb;
+    bool lit = false;
+    int framesLeft = 0;
+    juce::VBlankAttachment vblank;
+};
+
 } // namespace scratchpad::ui

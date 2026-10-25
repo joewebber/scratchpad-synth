@@ -1,4 +1,4 @@
-# Architecture notes (M4)
+# Architecture notes (M5)
 
 ## Shape
 
@@ -144,7 +144,7 @@ Eight fixed connection slots, `modN.source`, `modN.dest` (non-automatable choice
   xorshift value at each wrap. An LFO that does not retrigger is one shared phase, advanced by the engine;
   one that does keeps a phase per voice and restarts it (and its fade-in) on every note, including a mono
   retrigger. Fade-in is per voice either way: depth rises from 0 over `lfoN.fade` seconds after the note starts.
-  Tempo sync is not here: the brief puts host tempo in M5.
+  LFO tempo sync is resolved in the processor (see "Effects and output (M5)").
 - **LFO rate as a destination.** The shared LFOs can only follow sources every voice agrees on (the LFOs
   themselves, as of the last block, the mod wheel and aftertouch); envelopes, velocity and key do nothing to
   them. A retriggering LFO sees every source. An LFO cannot move its own rate.
@@ -185,9 +185,9 @@ is armed, and owns the arcs at rest (drag one to change the amount, right-click 
   the same 10 ms fade as removing it. Soloing a source un-solos the others in the same undo step.
 - **Patch description.** `describe (EngineParams)` is a pure function of the audible patch; reference patches
   are pinned in `PatchDescriptionTests`.
-- **Scope.** The engine writes the selected tap (after the oscillators, after the filter, after the amp) into
-  an 8,192-sample `AbstractFifo` once per sub-block; the amp tap is the final mix. The "FX" tap is the amp tap
-  until effects exist (M5). The editor drains it at 30 Hz and runs a 2,048-point Hann FFT on the message
+- **Scope.** The engine writes the selected tap (after the oscillators, after the filter, after the amp, after the
+  effects and the safety limiter) into an 8,192-sample `AbstractFifo` once per sub-block; the amp tap is the voices'
+  mix before any effect, the FX tap is what reaches the output. The editor drains it at 30 Hz and runs a 2,048-point Hann FFT on the message
   thread. The tap is a view, saved nowhere. `ScopeTests` checks that the spectrum at the filter tap loses its
   harmonics as the cutoff closes and that the oscillator tap does not.
 - **Visualisations.** The oscillator card draws its wave; `FilterCurve` is computed from the parameter
@@ -198,12 +198,113 @@ is armed, and owns the arcs at rest (drag one to change the amount, right-click 
   of reason. The Add menu shows it first, in an accent block; its dashed slot on the canvas gets an accent
   outline and the reason as tooltip. Nothing is locked.
 
-## Not in M4
+## Editor structure (M5)
 
-Oscillator sync, ring modulation, FM and unison, the anti-aliasing switch, effects (so the scope's FX tap
-repeats the amp tap), the safety limiter, tempo-synced LFO rates, patch save and open, resizing, the light
-theme switch, the reduced-motion setting and Steinberg validator in CI. Aftertouch has no on-screen control; it
-arrives from MIDI channel pressure.
+The window is now 1500 x 900 (it was 840 high). The effects row cannot sit beside the stages: the chain row is 1,140 px
+of the 1,158 the panel offers. Under them there was room for only about 58 px, and the row needs 124 (a 14 px caption,
+the 102 px effect cards and their margins), so the chain panel grows from 506 to 566 px (the tallest column, amp, amp
+envelope and voicing, is 380 px; the well adds 18 px above it and 6 below). Nothing else moved. The well's metrics are
+constants in `PatchView.cpp` (`effectsBlock` is what the row needs), and a `static_assert` there keeps the four effect
+places as wide as an effect card. The LFO cards are 288 px wide (were 285) for their third knob; the connections panel
+takes the difference.
 
-With no limiter yet, eight voices at full level can exceed 0 dBFS: the oscillator defaults to −6 dB and the
-output meter shows it.
+- **Oscillator extras.** Each oscillator card has a chevron (`MoreButton`, `control.oscMore`) beside Phase reset. It opens
+  `OscillatorExtras` (unison copies, detune, spread, anti-aliasing, and on Oscillators 2 and 3 hard sync) as a drawer
+  over the cards under it, so the column keeps its height and a full patch still fits. One drawer is open at a time; the
+  state lives in `PatchView::openExtras`, not in the patch, and closes with its oscillator. Ring level, FM amount and FM
+  target sit in Oscillator 1's drawer because they are Oscillator 1 acting on the others (their copy says "osc1"); they dim,
+  and the line at the foot of the drawer says why, while Oscillator 2 (ring) or the FM target is not in the patch.
+  The chevron wears a dot when the extras are doing something (unison above 1, sync, ring or FM) and an accent dot when
+  anti-aliasing is off; with AA off the wave well also gets an accent outline and an "AA off" tag, which is the calm
+  warning the brief asks for. Listeners read the parameter's own value, not the cached atomic (see State and undo).
+- **Effect cards.** `EffectCard` (header with grip, name, "?", bypass and remove; a computed picture, `EffectDisplay`;
+  the knobs) for distortion, chorus, delay and reverb. The delay shows a note-length knob in place of the time knob
+  while Sync is on. The pictures are drawn from the parameters (transfer curve, swaying delay, echo bars with the
+  tempo-synced time, decay line), like `FilterCurve`. Effects have no solo and no modulation destinations.
+- **Order.** The effects row has four equal places. Present effects fill them from the left in the order of
+  `ScratchpadProcessor::getEffectOrder()`; the dashed slots of absent effects follow. The editor never touches the engine:
+  dragging a grip (`control.effectGrip`) or pressing Left / Right (Up / Down) while it has focus calls `moveEffect`
+  with positions in the full four-entry order (a drop on a present neighbour's place maps to that neighbour's position,
+  skipping absent effects). A drop indicator is drawn in the gap while dragging. Cards re-lay out when
+  `getEffectsBroadcaster()` fires, so undo, loading and a new patch reorder them too.
+- **LFO tempo sync.** Each LFO card has a Sync chip in its header and a note-length knob beside Rate. With Sync on, Rate dims
+  and the wave picture shows the rate the tempo gives (`params::lfoSyncRateHz`, following `getBpm()`).
+- **Limiter light.** `LimiterLight` (top bar, left of the meter, `control.limiter`) polls
+  `getLimiterReductionDb()` on the vertical blank like the meter and lights while it is above 0.1 dB, with a quarter-second
+  hold so a brief touch is seen.
+- **Learning-layer test.** The test that walks the editor still requires an `explainId` on every button, slider and
+  keyboard. New controls get theirs from the parameter ID (knobs, chips, segments), from `control.limiter`,
+  `control.effectGrip`, `control.oscMore`, `control.addModule` (the effect slots), or from a module key.
+
+## Oscillator extras (M5)
+
+`OscSection` (`source/engine/OscSection.*`) holds the three oscillators of a voice with everything that links them; the
+voice owns two of them on the heap (`Voice` stays small on the stack). It makes stereo audio per oscillator; levels, ring
+modulation and the mix stay in the voice.
+
+- **Unison.** 1 to 7 copies per oscillator. Copy `c` of `n` sits at `u = 2c/(n-1) - 1`, is detuned by `u * detuneCents` and
+  panned to `u * spread` with an equal-power law; a centred copy is left and right at unity, so unison 1 is exactly the single
+  oscillator and the defaults render what they did before. Copies are scaled by `1/sqrt(n)`. Copy 0 starts at phase 0 when
+  Phase reset is on, the others at random phases drawn from the voice's seed, so a patch repeats from run to run. Gains
+  (3 ms one-pole) and detune (a line across the block) move smoothly: a copy that joins fades in from silence, one that
+  leaves fades out first. The filter and envelopes are shared. The signal stays mono until a copy is off centre; the voice
+  then runs a second filter state for the right channel (copied from the first when the voice turns stereo).
+  Everything is pre-allocated for 16 voices x 3 oscillators x 7 copies.
+- **Anti-aliasing off.** The BLEP/BLAMP gain moves to 0 over 10 ms (and back). The delay ring stays, so the naive wave
+  arrives with the same latency and the switch costs nothing extra and does not click.
+- **Hard sync** (oscillators 2 and 3). A slave copy restarts its cycle when the matching oscillator-1 copy wraps. The restart
+  is placed to a fraction of a sample and corrected with a BLEP (and a BLAMP for the slope) at the jump, so the tearing is
+  band-limited. Sync together with FM on the same oscillator restarts without the correction and can alias.
+- **Ring modulation.** Oscillator 1 x oscillator 2 (stereo, before their levels) is an extra mixer source at `ringLevelDb`.
+  Both oscillators run even when their own levels are -inf. The sine now goes through the same 16-sample delay ring as the
+  other shapes so a sync restart in a sine slave can be corrected; the ring product uses the delayed outputs.
+- **FM.** Oscillator 1 phase-modulates `fmTarget` (oscillator 2, 3 or both), DX style: the carrier's phase is advanced
+  by `fmMaxIndex * amount * m / (2 pi)` cycles with `fmMaxIndex = 10` rad, so 100 % is a modulation index of 10 and the
+  sidebands are `fc +- k*fm` weighted by Bessel `J_k(index)` (tested for index 3). `m` is oscillator 1's naive wave, not the
+  band-limited one: that arrives 16 samples late and the carrier would then be late twice.
+- **Oversampling.** While any FM amount is above 0 the second `OscSection` runs at 2x with a 33-tap half-band decimator
+  after each oscillator, and the voice crossfades from the 1x section to it over 10 ms (and back). The 2x section starts from
+  the 1x section's state and runs unheard for 16 samples to fill the decimator. FM amount 0 is bit-identical to FM off.
+- **Latency.** Unchanged at `Oscillator::latencySamples` (16): the 2x oscillators' own delay is 8 base-rate samples and the
+  decimator's is 8, so the 1x and 2x paths are in step and oscillators, ring, FM and unison all line up.
+- **The safety limiter and the tests.** The limiter acts from -0.9 dBFS, so tests that compare waveforms exactly or expect a
+  linear response play at -12 dB or below; a full-scale sine, saw or ring product would legitimately touch it.
+
+## Effects and output (M5)
+
+- **Chain.** `EffectsChain` (`engine/EffectsChain.*`) runs distortion, chorus, delay and reverb on the summed stereo mix, in
+  `EngineParams::effectOrder` (default in that order), only the effects that are `enabled`. Each effect lives in `dsp/` and
+  smooths its own parameters; nothing steps. The chain works in 32-sample chunks. After it come the output volume, then the
+  limiter; both are in `SynthEngine::render`.
+- **Switching on and off.** An effect that is switched on or off is crossfaded with the signal arriving at it over 15 ms; it
+  keeps running (tail and all) until the fade is finished, then is skipped and costs nothing. Its memory is cleared the next
+  time it is switched on, and a patch that arrives with effects on has them fully on from the first sample.
+- **Reordering.** Reordering effects that are running (a reorder that leaves the audible order unchanged is applied at once,
+  silently) ducks the whole chain's output to silence over 10 ms, swaps the order while it is silent, and fades back in over
+  10 ms. Tails are not cleared: at one delay time later the delay line replays what it held, which was made by the old order
+  and, at most, is out of step with the new one by the distortion's latency. `EffectsTests` pins that the swap itself does not
+  step (it fails if the duck is removed).
+- **Limiter.** `dsp::Limiter` is always on, after the output volume: no look-ahead and no latency, one gain for both channels
+  from the louder of the pair. Unity up to -0.9 dBFS (0.9), a quadratic soft knee that reaches the ceiling with slope 0, a flat
+  ceiling at -0.3 dBFS (0.966); the gain falls at once and recovers with a 100 ms one-pole release, and a final clamp makes the
+  ceiling absolute. A signal that never reaches the knee passes bit for bit. Its reduction (deepest of each block, falling
+  about 58 dB per second) goes to the top bar's limiter light through `getLimiterReductionDb()`.
+- **Latency.** Distortion oversamples 2x, which delays its wet path; inside it the dry path is delayed to match, so a mix is
+  aligned. `getEffectsLatencySamples()` is that delay, constant for a sample rate, and is added to the oscillators' 16 samples
+  for `setLatencySamples` at `prepareToPlay`. The audio is late only while distortion is on, but the host is always told, so
+  the reported latency never changes mid-session.
+- **Scope taps.** The scope has four taps: after the oscillators, after the filter, after the amp (the voices' mix times the
+  output volume, before any effect) and after the effects (what reaches the host: effects, volume and the limiter, so the
+  limited signal is what is drawn). The tap is not part of the patch.
+- **What the processor resolves.** The engine only sees what is audible. The processor builds `EngineParams` once per block
+  and, for effects, folds in bypass (a bypassed effect has `enabled = false`, so it fades out like one switched off) and tempo
+  sync: with sync on, the delay time is `params::delaySyncMs (bpm, division)` in milliseconds, and an LFO's rate is
+  `params::lfoSyncRateHz`. The tempo is the host's (`getBpm`) when it reports one, otherwise 120, read before the block's
+  parameters so sync uses this block's tempo. The engine has no idea what a beat is.
+- **Tests and the limiter.** The limiter touches anything above -0.9 dBFS, so engine tests that measure levels, ratios or
+  waveform shape play at -6 dB or below (sums of notes and noise at -12 dB) and scale what they expect.
+
+## Not yet (M6)
+
+Patch save and open, resizing, the light theme switch, the reduced-motion setting and the Steinberg validator in CI.
+Aftertouch has no on-screen control; it arrives from MIDI channel pressure.

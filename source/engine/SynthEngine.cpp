@@ -20,7 +20,10 @@ void SynthEngine::prepare (double sampleRate)
     for (auto& s : oscGain)
         s.reset (sampleRate, smoothingSeconds);
 
-    for (auto* s : { &noiseGain, &previewGain, &cutoffLog2, &resonance, &driveDb, &filterEnvAmount, &outputGain })
+    for (auto& s : fmGain)
+        s.reset (sampleRate, smoothingSeconds);
+
+    for (auto* s : { &noiseGain, &ringGain, &previewGain, &cutoffLog2, &resonance, &driveDb, &filterEnvAmount, &outputGain })
         s->reset (sampleRate, smoothingSeconds);
 
     // A wheel moves in 128 steps; smooth them so modulating with it never zippers.
@@ -35,6 +38,10 @@ void SynthEngine::prepare (double sampleRate)
     }
 
     lfoValue = {};
+
+    effects.prepare (sampleRate);
+    limiter.prepare (sampleRate);
+    limiterReductionDb.store (0.0f, std::memory_order_relaxed);
 
     updateTargets (true);
 
@@ -59,6 +66,7 @@ void SynthEngine::setParams (const EngineParams& p) noexcept
             sharedLfo[i].reset (0.0);
 
     params = p;
+    effects.setParams (p);
     allocator.setVoicing (p.voicing);
 
     if (prepared)
@@ -81,6 +89,9 @@ void SynthEngine::updateTargets (bool jump) noexcept
         set (oscGain[i], target.osc[i].end);
 
     set (noiseGain, target.noise.end);
+    set (ringGain, target.ring.end);
+    set (fmGain[0], target.fm[0].end);
+    set (fmGain[1], target.fm[1].end);
     set (previewGain, target.preview.end);
     set (cutoffLog2, target.cutoffLog2.end);
     set (resonance, target.resonance.end);
@@ -104,6 +115,8 @@ BlockLevels SynthEngine::advanceLevels (int numSamples) noexcept
         levels.osc[i] = advance (oscGain[i]);
 
     levels.noise = advance (noiseGain);
+    levels.ring = advance (ringGain);
+    levels.fm = { advance (fmGain[0]), advance (fmGain[1]) };
     levels.preview = advance (previewGain);
     levels.cutoffLog2 = advance (cutoffLog2);
     levels.resonance = advance (resonance);
@@ -240,27 +253,52 @@ void SynthEngine::render (float* left, float* right, int numSamples) noexcept
 
         allocator.render (monoLeft.data(), monoRight.data(), n, params, levels, bendSemitones(), taps);
 
+        // The voices' mix, for the amp tap, before the effects and the volume touch it.
+        if (tap == ScopeTap::amp)
         {
-            const auto write = scopeFifo.write (n);
-            const float* source = tap == ScopeTap::oscillators ? tapOsc.data() : tap == ScopeTap::filter ? tapFilter.data() : nullptr;
-
-            for (int i = 0; i < write.blockSize1 + write.blockSize2; ++i)
-            {
-                const int slot = i < write.blockSize1 ? write.startIndex1 + i : write.startIndex2 + i - write.blockSize1;
-                scopeData[(size_t) slot] = source != nullptr ? source[i]
-                                                             : 0.5f * (monoLeft[(size_t) i] + monoRight[(size_t) i]) * outputGain.getTargetValue();
-            }
+            for (int i = 0; i < n; ++i)
+                tapAmp[(size_t) i] = 0.5f * (monoLeft[(size_t) i] + monoRight[(size_t) i]) * outputGain.getTargetValue();
         }
+
+        // Output stage: effects, volume, then the safety limiter.
+        effects.process (monoLeft.data(), monoRight.data(), n);
+
+        float* outLeft = left + done;
+        float* outRight = right + done;
 
         for (int i = 0; i < n; ++i)
         {
             const float gain = outputGain.getNextValue();
-            left[done + i] = monoLeft[(size_t) i] * gain;
-            right[done + i] = monoRight[(size_t) i] * gain;
+            outLeft[i] = monoLeft[(size_t) i] * gain;
+            outRight[i] = monoRight[(size_t) i] * gain;
+        }
+
+        limiter.process (outLeft, outRight, n);
+
+        if (tap == ScopeTap::effects)
+        {
+            for (int i = 0; i < n; ++i)
+                tapEffects[(size_t) i] = 0.5f * (outLeft[i] + outRight[i]);
+        }
+
+        {
+            const auto write = scopeFifo.write (n);
+            const float* source = tap == ScopeTap::oscillators ? tapOsc.data()
+                                : tap == ScopeTap::filter      ? tapFilter.data()
+                                : tap == ScopeTap::amp         ? tapAmp.data()
+                                                               : tapEffects.data();
+
+            for (int i = 0; i < write.blockSize1 + write.blockSize2; ++i)
+            {
+                const int slot = i < write.blockSize1 ? write.startIndex1 + i : write.startIndex2 + i - write.blockSize1;
+                scopeData[(size_t) slot] = source[i];
+            }
         }
 
         done += n;
     }
+
+    limiterReductionDb.store (limiter.getReductionDb(), std::memory_order_relaxed);
 
     publishLive();
 }

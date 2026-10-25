@@ -50,10 +50,11 @@
   },
   "aliasing": {
     "term": "Aliasing",
-    "definition": "Harsh, out-of-tune whistles that appear when a digital sound contains frequencies too high to represent. It is most noticeable on high notes.",
+    "definition": "Harsh, out-of-tune whistles that appear when a digital sound contains frequencies too high to represent. It is most noticeable on high notes. Anti-aliasing is what prevents it.",
     "seeAlso": [
       "frequency",
-      "harmonic"
+      "harmonic",
+      "anti-aliasing"
     ]
   },
   "cutoff": {
@@ -394,6 +395,138 @@
     "definition": "When all voices are in use and you play another note, the synth cuts off an older note to free a voice.",
     "seeAlso": [
       "polyphony"
+    ]
+  },
+  "anti-aliasing": {
+    "term": "Anti-aliasing",
+    "definition": "Techniques that stop frequencies above the limit of digital sound folding back as whistles. They keep high notes clean.",
+    "seeAlso": [
+      "aliasing",
+      "oversampling"
+    ]
+  },
+  "oversampling": {
+    "term": "Oversampling",
+    "definition": "Running a process at a higher rate for a moment, so it creates fewer unwanted whistles, then bringing it back down. FM and distortion use it.",
+    "seeAlso": [
+      "aliasing",
+      "anti-aliasing"
+    ]
+  },
+  "hard-sync": {
+    "term": "Hard sync",
+    "definition": "A second oscillator restarts its cycle every time the first one restarts. The pitch follows the first, but the shape is cut short, giving a sharp, tearing tone when you sweep the second's pitch.",
+    "seeAlso": [
+      "oscillator",
+      "harmonic"
+    ]
+  },
+  "ring-modulation": {
+    "term": "Ring modulation",
+    "definition": "Multiplying two waves. The result has their sum and difference frequencies instead of the originals, so it sounds clangy and bell-like.",
+    "seeAlso": [
+      "frequency",
+      "fm"
+    ]
+  },
+  "fm": {
+    "term": "FM (frequency modulation)",
+    "definition": "One oscillator, the modulator, bends the pitch of another, the carrier, at audio speed. It creates extra sidebands around the carrier, spaced by the modulator's frequency. Whole-number ratios sound tuned.",
+    "seeAlso": [
+      "frequency",
+      "harmonic",
+      "ring-modulation"
+    ]
+  },
+  "unison": {
+    "term": "Unison",
+    "definition": "Several copies of one oscillator played together, each tuned slightly differently and placed across the stereo field. It sounds thicker and wider.",
+    "seeAlso": [
+      "detune",
+      "cents"
+    ]
+  },
+  "distortion": {
+    "term": "Distortion",
+    "definition": "Squashing or clipping a wave so it gains new harmonics. More drive gives a grittier sound.",
+    "seeAlso": [
+      "drive",
+      "harmonic"
+    ]
+  },
+  "chorus": {
+    "term": "Chorus",
+    "definition": "An effect that mixes the sound with slightly delayed and detuned copies of itself, so it sounds like more than one player.",
+    "seeAlso": [
+      "detune",
+      "delay"
+    ]
+  },
+  "delay": {
+    "term": "Delay",
+    "definition": "An effect that repeats the sound after a gap of time, making an echo.",
+    "seeAlso": [
+      "feedback",
+      "tempo-sync"
+    ]
+  },
+  "feedback": {
+    "term": "Feedback",
+    "definition": "Sending some of an effect's output back into its input. In a delay, it makes the echoes repeat and fade.",
+    "seeAlso": [
+      "delay"
+    ]
+  },
+  "reverb": {
+    "term": "Reverb",
+    "definition": "An effect that adds the dense reflections of a room, so the sound seems to happen in a space. The tail after the note is the reverb.",
+    "seeAlso": [
+      "damping",
+      "decay"
+    ]
+  },
+  "damping": {
+    "term": "Damping",
+    "definition": "How quickly high frequencies die away. In reverb, more damping makes a darker, softer tail.",
+    "seeAlso": [
+      "reverb",
+      "spectrum"
+    ]
+  },
+  "limiter": {
+    "term": "Limiter",
+    "definition": "A safety stage that turns down only the peaks that would go above its ceiling, so the sound does not clip.",
+    "seeAlso": [
+      "decibel"
+    ]
+  },
+  "tempo-sync": {
+    "term": "Tempo sync",
+    "definition": "Setting a time or rate as a musical note length, such as 1/4, instead of seconds or Hz, so it follows the tempo.",
+    "seeAlso": [
+      "bpm"
+    ]
+  },
+  "bpm": {
+    "term": "BPM",
+    "definition": "Beats per minute: the tempo. In a plugin it comes from your host; standalone it is 120.",
+    "seeAlso": [
+      "tempo-sync"
+    ]
+  },
+  "ping-pong": {
+    "term": "Ping-pong",
+    "definition": "A delay that bounces its echoes between the left and right speakers.",
+    "seeAlso": [
+      "delay"
+    ]
+  },
+  "wet-dry": {
+    "term": "Wet / dry (mix)",
+    "definition": "The balance between the original sound (dry) and the effect's processed sound (wet). 0% is all dry; 100% is all wet.",
+    "seeAlso": [
+      "delay",
+      "reverb"
     ]
   }
 }

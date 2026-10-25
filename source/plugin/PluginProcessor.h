@@ -11,16 +11,18 @@
 #include <array>
 #include <atomic>
 #include <functional>
+#include <cstdint>
 #include <memory>
 
 namespace scratchpad::plugin
 {
 
-class ScratchpadProcessor final : public juce::AudioProcessor
+class ScratchpadProcessor final : public juce::AudioProcessor,
+                                  private juce::ValueTree::Listener
 {
 public:
     ScratchpadProcessor();
-    ~ScratchpadProcessor() override = default;
+    ~ScratchpadProcessor() override;
 
     // AudioProcessor
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -116,6 +118,20 @@ public:
     juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
 
+    /** Effects (message thread). `getEffectOrder()` lists the effects first to last; positions are indices into it.
+        `moveEffect` is one named undo step ("Moved Delay before Chorus") and keeps absent effects' slots: the order
+        is a patch property, not a presence. `getEffectsBroadcaster()` fires after every change to the order, by any
+        route (move, undo, new patch, loaded state). */
+    std::array<engine::EffectKind, engine::numEffects> getEffectOrder() const;
+    void moveEffect (int fromPosition, int toPosition);
+    juce::ChangeBroadcaster& getEffectsBroadcaster() noexcept { return effectsBroadcaster; }
+
+    /** The safety limiter's smoothed gain reduction in dB (0 = not touching the signal). */
+    float getLimiterReductionDb() const noexcept { return synthEngine.getLimiterReductionDb(); }
+
+    /** The tempo last used for tempo sync: the host's, or 120 when there is none. */
+    double getBpm() const noexcept { return currentBpm.load (std::memory_order_relaxed); }
+
     // Standalone hooks, set by the plugin entry point. Empty in other formats.
     std::function<void()> openAudioSettings;
     std::function<bool()> audioDeviceMissing;
@@ -131,6 +147,7 @@ private:
     struct OscPointers
     {
         std::atomic<float> *enabled, *wave, *octave, *semitone, *fine, *pulseWidth, *level, *phaseReset;
+        std::atomic<float> *unison, *unisonDetune, *unisonSpread, *antiAlias, *sync; // sync: null for oscillator 1
     };
 
     struct EnvPointers
@@ -161,7 +178,7 @@ private:
 
     struct LfoPointers
     {
-        std::atomic<float> *enabled, *shape, *rate, *retrigger, *fade;
+        std::atomic<float> *enabled, *shape, *rate, *retrigger, *fade, *sync, *division;
     };
 
     struct ModPointers
@@ -171,6 +188,17 @@ private:
 
     std::array<LfoPointers, params::numLfos> lfoPointers {};
     std::array<ModPointers, params::numModSlots> modPointers {};
+
+    struct EffectPointers
+    {
+        std::atomic<float> *distortionEnabled, *distortionDrive, *distortionTone, *distortionMix;
+        std::atomic<float> *chorusEnabled, *chorusRate, *chorusDepth, *chorusMix;
+        std::atomic<float> *delayEnabled, *delayTime, *delaySync, *delayDivision, *delayFeedback, *delayPingPong, *delayMix;
+        std::atomic<float> *reverbEnabled, *reverbSize, *reverbDecay, *reverbDamping, *reverbMix;
+        std::atomic<float> *ringLevel, *fmAmount, *fmTarget;
+    };
+
+    EffectPointers fx {};
 
     struct ModParams
     {
@@ -191,8 +219,19 @@ private:
     std::array<std::atomic<float>*, params::numBypassable> bypassPointers {};
     std::array<std::atomic<float>*, params::numSoloable> soloPointers {};
     std::atomic<double> currentSampleRate { 48000.0 };
+    std::atomic<double> currentBpm { params::defaultBpm };
 
     std::atomic<float> outputPeak { 0.0f };
+
+    // Effect order. The tree property `effectOrder` is the saved truth; the audio thread only sees this packed copy
+    // (two bits per position, position 0 in the lowest bits), refreshed by `valueTreePropertyChanged` and `valueTreeRedirected`.
+    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
+    void valueTreeRedirected (juce::ValueTree&) override;
+    void refreshEffectOrder();
+    void setEffectOrderProperty (const std::array<engine::EffectKind, engine::numEffects>&);
+
+    std::atomic<std::uint32_t> packedEffectOrder { 0xE4u };
+    juce::ChangeBroadcaster effectsBroadcaster;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScratchpadProcessor)
 };

@@ -47,6 +47,7 @@ inline constexpr float unisonDetuneDefaultCents = 20.0f, unisonDetuneMaxCents = 
     Their saved order is the non-parameter tree property `effectOrder` (see ScratchpadProcessor). */
 inline constexpr int numEffectKinds = 4;
 inline constexpr std::array<const char*, numEffectKinds> effectKeys { "distortion", "chorus", "delay", "reverb" };
+inline constexpr const char* effectOrderProperty = "effectOrder"; // string "0,1,2,3": a permutation of EffectKind, on the state tree
 
 inline constexpr const char* distortionEnabled = "distortion.enabled";
 inline constexpr const char* distortionDrive   = "distortion.drive";   // dB, 0 .. 40, default 12
@@ -150,6 +151,13 @@ inline constexpr float oscLevelMinDb = -60.0f;
 inline constexpr float oscLevelMaxDb = 0.0f;
 inline constexpr float oscLevelDefaultDb = -6.0f;
 inline constexpr float noiseLevelDefaultDb = -18.0f;
+
+inline constexpr float ringLevelDefaultDb = -60.0f; // the bottom of the range is off
+
+inline constexpr float distortionDriveMaxDb = 40.0f, distortionDriveDefaultDb = 12.0f;
+inline constexpr float chorusRateMinHz = 0.1f, chorusRateMaxHz = 8.0f, chorusRateDefaultHz = 0.8f;
+inline constexpr float delayTimeMinMs = 1.0f, delayTimeMaxMs = 2000.0f, delayTimeDefaultMs = 350.0f;
+inline constexpr float reverbDecayMinSeconds = 0.2f, reverbDecayMaxSeconds = 10.0f, reverbDecayDefaultSeconds = 2.0f;
 inline constexpr float newOscillatorFineCents = 7.0f; // a new Osc 2 or 3 starts detuned so it is audible at once
 
 inline constexpr float volumeMinDb = -60.0f;
@@ -211,6 +219,13 @@ juce::String timeText (float seconds);
 
 /** "2.0 kHz", "440 Hz". */
 juce::String frequencyText (float hz);
+
+/** Tempo sync. A division's length is `tempoDivisionBeats[index]` quarter notes. The LFO rate in Hz is
+    bpm / 60 / beats (limited to the LFO's own range); the delay time in ms is 60000 / bpm * beats (limited to
+    1..2000 ms). A tempo that is zero, negative or not a number (a host with no transport) counts as 120. */
+float lfoSyncRateHz (double bpm, int divisionIndex) noexcept;
+float delaySyncMs (double bpm, int divisionIndex) noexcept;
+inline constexpr double defaultBpm = 120.0;
 
 /** "50%" for a value already in percent. */
 juce::String percentText (float percent);

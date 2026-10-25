@@ -202,8 +202,83 @@ void ModuleCard::drawHeader (juce::Graphics& g, const Palette& p, juce::Rectangl
 }
 
 //==============================================================================
+MoreButton::MoreButton (const juce::String& oscillatorName)
+    : juce::Button (oscillatorName + " more options"), name (oscillatorName)
+{
+    setPaintingIsUnclipped (true);
+    setClickingTogglesState (false);
+    getProperties().set ("explainId", "control.oscMore");
+    refreshTitle();
+}
+
+void MoreButton::refreshTitle()
+{
+    setTitle (name + " more options, " + (open ? "open" : "closed"));
+    setDescription (marker == Marker::warning ? "Anti-aliasing is off" : marker == Marker::inUse ? "Extras in use" : juce::String());
+}
+
+void MoreButton::setOpen (bool shouldBeOpen)
+{
+    if (open != shouldBeOpen)
+    {
+        open = shouldBeOpen;
+        refreshTitle();
+        repaint();
+    }
+}
+
+void MoreButton::setMarker (Marker newMarker)
+{
+    if (marker != newMarker)
+    {
+        marker = newMarker;
+        refreshTitle();
+        repaint();
+    }
+}
+
+void MoreButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    const auto& p = paletteOf (*this);
+    const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+
+    auto fill = open ? p.well : p.surface;
+    if (down)
+        fill = fill.interpolatedWith (p.well, 0.5f);
+    else if (highlighted)
+        fill = fill.interpolatedWith (p.ink, 0.06f);
+
+    if (open)
+        drawInset (g, bounds, 7.0f, p, fill);
+    else
+        drawRaised (g, bounds, 7.0f, p, Elevation::small, fill);
+
+    const auto centre = bounds.getCentre();
+    const float dir = open ? -1.0f : 1.0f;
+    juce::Path chevron;
+    chevron.startNewSubPath (centre.x - 3.5f, centre.y - 1.5f * dir);
+    chevron.lineTo (centre.x, centre.y + 2.0f * dir);
+    chevron.lineTo (centre.x + 3.5f, centre.y - 1.5f * dir);
+    g.setColour (p.ink2);
+    g.strokePath (chevron, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    if (marker != Marker::none)
+    {
+        const auto dot = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ bounds.getRight() - 2.0f, bounds.getY() + 2.0f });
+        g.setColour (p.surface);
+        g.fillEllipse (dot.expanded (1.5f));
+        g.setColour (marker == Marker::warning ? p.accent : p.srcInk);
+        g.fillEllipse (dot);
+    }
+
+    if (hasKeyboardFocus (false))
+        ScratchpadLookAndFeel::drawFocusRing (g, bounds, 7.0f, p.ink);
+}
+
+//==============================================================================
 OscillatorCard::OscillatorCard (plugin::ScratchpadProcessor& p, ModulationModel& model, int oscillatorIndex)
     : index (oscillatorIndex),
+      processor (p),
       waveSelector (p.apvts, params::osc[(size_t) oscillatorIndex].wave, oscName (oscillatorIndex) + " wave", p.undoManager, &Palette::src),
       phaseReset (p.apvts, params::osc[(size_t) oscillatorIndex].phaseReset, "Phase reset",
                   oscName (oscillatorIndex) + " phase reset", p.undoManager, &Palette::srcInk),
@@ -212,6 +287,7 @@ OscillatorCard::OscillatorCard (plugin::ScratchpadProcessor& p, ModulationModel&
       fine (p.apvts, params::osc[(size_t) oscillatorIndex].fine, "Fine", p.undoManager, oscName (oscillatorIndex) + " fine tune"),
       level (p.apvts, params::osc[(size_t) oscillatorIndex].level, "Level", p.undoManager, oscName (oscillatorIndex) + " level"),
       pulseWidth (p.apvts, params::osc[(size_t) oscillatorIndex].pulseWidth, "Pulse", p.undoManager, oscName (oscillatorIndex) + " pulse width"),
+      moreButton (oscName (oscillatorIndex)),
       waveWatcher (*p.apvts.getParameter (params::osc[(size_t) oscillatorIndex].wave),
                    [this] (float v) { setWave ((int) std::lround (v)); })
 {
@@ -236,11 +312,50 @@ OscillatorCard::OscillatorCard (plugin::ScratchpadProcessor& p, ModulationModel&
     level.setModulation (model, { engine::levelDest ((size_t) index) });
     pulseWidth.setModulation (model, { engine::pulseWidthDest ((size_t) index) });
 
-    for (auto* c : std::initializer_list<juce::Component*> { &waveSelector, &phaseReset, &octave, &semitone, &fine, &level, &pulseWidth })
+    moreButton.onClick = [this] { if (onMoreClicked) onMoreClicked(); };
+
+    for (auto* c : std::initializer_list<juce::Component*> { &waveSelector, &phaseReset, &octave, &semitone, &fine, &level, &pulseWidth, &moreButton })
         addAndMakeVisible (c);
+
+    // The chevron's dot and the wave well's warning follow the extras' parameters, however they change.
+    const auto& ids = params::osc[(size_t) index];
+    std::vector<const char*> watched { ids.antiAlias, ids.unison };
+    if (ids.sync != nullptr)
+        watched.push_back (ids.sync);
+    if (index == 0)
+    {
+        watched.push_back (params::ringLevel);
+        watched.push_back (params::fmAmount);
+    }
+    for (auto* id : watched)
+        extrasWatchers.push_back (std::make_unique<juce::ParameterAttachment> (*p.apvts.getParameter (id), [this] (float) { refreshExtras(); }));
 
     applyColours();
     waveWatcher.sendInitialUpdate();
+    refreshExtras();
+}
+
+float OscillatorCard::raw (const char* id) const
+{
+    // The parameter's own value: a listener runs before the cached atomic is updated.
+    auto* param = processor.apvts.getParameter (id);
+    return param->convertFrom0to1 (param->getValue());
+}
+
+void OscillatorCard::refreshExtras()
+{
+    const auto& ids = params::osc[(size_t) index];
+
+    aliasingOff = raw (ids.antiAlias) < 0.5f;
+
+    bool inUse = raw (ids.unison) > 1.5f;
+    if (ids.sync != nullptr)
+        inUse = inUse || raw (ids.sync) > 0.5f;
+    if (index == 0)
+        inUse = inUse || raw (params::ringLevel) > params::ringLevelDefaultDb + 0.5f || raw (params::fmAmount) > 0.5f;
+
+    moreButton.setMarker (aliasingOff ? MoreButton::Marker::warning : inUse ? MoreButton::Marker::inUse : MoreButton::Marker::none);
+    repaint (waveWell.expanded (4));
 }
 
 void OscillatorCard::applyColours()
@@ -264,14 +379,15 @@ void OscillatorCard::setWave (int newWave)
 
 void OscillatorCard::resized()
 {
-    constexpr int top = 4, midX = 70, midWidth = 104, knobsX = 180;
+    constexpr int top = 4, midX = 70, midWidth = 104, knobsX = 182, resetWidth = 88, moreWidth = 20;
 
     waveWell = { pad, top, 56, 46 };
     placeBypassSolo ({ pad + 4, top + 50 });
     headerRow = { midX, top, midWidth, 20 };
     placeRemoveButton (headerRow);
     waveSelector.setBounds (midX, top + 25, midWidth, 24);
-    phaseReset.setBounds (midX, top + 54, midWidth, 20);
+    phaseReset.setBounds (midX, top + 54, resetWidth, 20);
+    moreButton.setBounds (midX + resetWidth + 1, top + 54, moreWidth, 20);
 
     int x = knobsX;
     for (auto* k : { &octave, &semitone, &fine, &level, &pulseWidth })
@@ -286,7 +402,7 @@ void OscillatorCard::paint (juce::Graphics& g)
     ModuleCard::paint (g);
 
     const auto& p = paletteOf (*this);
-    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (index > 0 ? 51.0f : 25.0f), p.src, headerGlyph ((Wave) wave),
+    drawHeader (g, p, headerRow.toFloat().withTrimmedRight (index > 0 ? 26.0f : 25.0f), p.src, headerGlyph ((Wave) wave),
                 "Osc " + juce::String (index + 1));
 
     drawInset (g, waveWell.toFloat(), 10.0f, p, p.well);
@@ -297,6 +413,192 @@ void OscillatorCard::paint (juce::Graphics& g)
     g.setColour (p.srcInk);
     g.strokePath (wavePath ((Wave) wave, drawArea, 1.5f, 0.6f),
                   juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+
+    // Anti-aliasing off is a state to notice, not an alarm: an accent outline and a small tag on the picture.
+    if (aliasingOff)
+    {
+        g.setColour (p.accent);
+        g.drawRoundedRectangle (waveWell.toFloat().reduced (0.75f), 10.0f, 1.5f);
+
+        const auto font = uiFont (11.0f, Weight::medium);
+        const float tagWidth = textWidth (font, "AA off") + 10.0f;
+        const auto tag = juce::Rectangle<float> (tagWidth, 14.0f).withCentre ({ (float) waveWell.getCentreX(), (float) waveWell.getBottom() - 11.0f });
+        g.setColour (p.accent);
+        g.fillRoundedRectangle (tag, 7.0f);
+        g.setColour (p.onAccent);
+        g.setFont (font);
+        g.drawText ("AA off", tag, juce::Justification::centred, false);
+    }
+}
+
+//==============================================================================
+OscillatorExtras::OscillatorExtras (plugin::ScratchpadProcessor& p, int oscillatorIndex)
+    : processor (p),
+      index (oscillatorIndex),
+      unison (p.apvts, params::osc[(size_t) oscillatorIndex].unison, "Unison", p.undoManager, oscName (oscillatorIndex) + " unison voices"),
+      detune (p.apvts, params::osc[(size_t) oscillatorIndex].unisonDetune, "Detune", p.undoManager, oscName (oscillatorIndex) + " unison detune"),
+      spread (p.apvts, params::osc[(size_t) oscillatorIndex].unisonSpread, "Spread", p.undoManager, oscName (oscillatorIndex) + " unison spread"),
+      antiAlias (p.apvts, params::osc[(size_t) oscillatorIndex].antiAlias, "Anti-aliasing",
+                 oscName (oscillatorIndex) + " anti-aliasing", p.undoManager, &Palette::srcInk)
+{
+    setTitle (oscName (index) + " extras");
+    setExplainKey ("osc" + juce::String (index + 1));
+
+    for (auto* c : std::initializer_list<juce::Component*> { &unison, &detune, &spread, &antiAlias })
+        addAndMakeVisible (c);
+
+    watch (params::osc[(size_t) index].antiAlias);
+    watch (params::osc[(size_t) index].unison);
+
+    if (index > 0)
+    {
+        const auto& ids = params::osc[(size_t) index];
+        sync = std::make_unique<ToggleChip> (p.apvts, ids.sync, "Sync to Osc 1", oscName (index) + " hard sync", p.undoManager, &Palette::srcInk);
+        addAndMakeVisible (*sync);
+        watch (ids.sync);
+    }
+    else
+    {
+        // Oscillator 1 acts on the others, so ring and FM live here, with the oscillators they need as watched presence.
+        ring = std::make_unique<Knob> (p.apvts, params::ringLevel, "Ring", p.undoManager, "Ring modulation level");
+        fm = std::make_unique<Knob> (p.apvts, params::fmAmount, "FM", p.undoManager, "FM amount");
+        fmTarget = std::make_unique<ChoiceSegments> (p.apvts, params::fmTarget, "FM target", p.undoManager, &Palette::src);
+
+        for (auto* c : std::initializer_list<juce::Component*> { ring.get(), fm.get(), fmTarget.get() })
+            addAndMakeVisible (c);
+
+        watch (params::ringLevel);
+        watch (params::fmAmount);
+        watch (params::fmTarget);
+        watch (params::osc[1].enabled);
+        watch (params::osc[2].enabled);
+    }
+
+    applyColours();
+    refreshState();
+}
+
+float OscillatorExtras::raw (const char* id) const
+{
+    auto* param = processor.apvts.getParameter (id);
+    return param->convertFrom0to1 (param->getValue());
+}
+
+void OscillatorExtras::watch (const char* id)
+{
+    watchers.push_back (std::make_unique<juce::ParameterAttachment> (*processor.apvts.getParameter (id), [this] (float) { refreshState(); }));
+}
+
+void OscillatorExtras::applyColours()
+{
+    const auto ink = paletteOf (*this).srcInk;
+    for (auto* k : { &unison, &detune, &spread })
+        k->setFamilyColour (ink);
+
+    if (ring != nullptr)
+    {
+        ring->setFamilyColour (ink);
+        fm->setFamilyColour (ink);
+    }
+}
+
+void OscillatorExtras::lookAndFeelChanged()
+{
+    applyColours();
+}
+
+void OscillatorExtras::refreshState()
+{
+    const auto& ids = params::osc[(size_t) index];
+    const bool aliasingOff = raw (ids.antiAlias) < 0.5f;
+
+    if (index == 0)
+    {
+        // Ring and FM work on other oscillators: with none to work on, they dim and the line below says why.
+        const bool hasOsc2 = processor.isModulePresent (plugin::Module::osc2), hasOsc3 = processor.isModulePresent (plugin::Module::osc3);
+        const int target = (int) std::lround (raw (params::fmTarget));
+        const bool targetPresent = target == 0 ? hasOsc2 : target == 1 ? hasOsc3 : (hasOsc2 || hasOsc3);
+
+        ring->setEnabled (hasOsc2);
+        fm->setEnabled (targetPresent);
+
+        if (aliasingOff)
+            status = "Anti-aliasing is off: expect harsh, glassy extra tones, most of all on high notes.";
+        else if (! hasOsc2 && ! hasOsc3)
+            status = "Ring modulation and FM act on Oscillator 2 or 3: add one to hear them.";
+        else if (! hasOsc2 && raw (params::ringLevel) > params::ringLevelDefaultDb + 0.5f)
+            status = "Ring modulation needs Oscillator 2 in the patch.";
+        else if (! targetPresent)
+            status = "FM has no target in the patch: pick another, or add that oscillator.";
+        else
+            status = "Ring and FM mix Oscillator 1 into the others. Unison thickens it.";
+    }
+    else if (aliasingOff)
+        status = "Anti-aliasing is off: expect harsh, glassy extra tones, most of all on high notes.";
+    else if (raw (ids.sync) > 0.5f)
+        status = "Sync restarts this oscillator with Oscillator 1: tight, tearing tones as you detune it.";
+    else if (raw (ids.unison) > 1.5f)
+        status = juce::String ((int) std::lround (raw (ids.unison))) + " copies, detuned and spread across the stereo field.";
+    else
+        status = "Unison stacks detuned copies for a thicker, wider sound.";
+
+    statusIsWarning = aliasingOff;
+    repaint();
+}
+
+void OscillatorExtras::resized()
+{
+    constexpr int top = 6;
+
+    int x = pad;
+    for (auto* k : { &unison, &detune, &spread })
+    {
+        k->setBounds (x, top, Knob::knobWidth, Knob::knobHeight);
+        x += knobPitch;
+    }
+
+    if (index == 0)
+    {
+        for (auto* k : { ring.get(), fm.get() })
+        {
+            k->setBounds (x, top, Knob::knobWidth, Knob::knobHeight);
+            x += knobPitch;
+        }
+
+        const int rightX = x + 10, rightWidth = width - pad - rightX;
+        fmTarget->setBounds (rightX, top + 16, rightWidth, 24);
+        antiAlias.setBounds (rightX, top + 48, rightWidth, 20);
+    }
+    else
+    {
+        const int rightX = x + 14;
+        antiAlias.setBounds (rightX, top + 8, 108, 20);
+        sync->setBounds (rightX + 120, top + 8, width - pad - (rightX + 120), 20);
+    }
+
+    statusArea = { pad, top + Knob::knobHeight + 4, width - 2 * pad, 16 };
+}
+
+void OscillatorExtras::paint (juce::Graphics& g)
+{
+    const auto& p = paletteOf (*this);
+    drawRaised (g, getLocalBounds().toFloat(), 12.0f, p, Elevation::lifted, p.surface);
+
+    if (index == 0)
+        drawCaption (g, "FM target", juce::Rectangle<float> ((float) fmTarget->getX(), (float) fmTarget->getY() - 14.0f, (float) fmTarget->getWidth(), 12.0f), p.ink2);
+
+    auto area = statusArea.toFloat();
+
+    if (statusIsWarning)
+    {
+        g.setColour (p.accent);
+        g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ area.getX() + 4.0f, area.getCentreY() }));
+        area.removeFromLeft (14.0f);
+    }
+
+    g.setColour (statusIsWarning ? p.ink : p.mute);
+    g.setFont (uiFont (11.0f));
+    g.drawText (status, area, juce::Justification::centredLeft, true);
 }
 
 //==============================================================================

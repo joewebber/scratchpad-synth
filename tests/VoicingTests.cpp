@@ -97,7 +97,10 @@ TEST_CASE ("Poly mode plays no more notes than the voice limit", "[voicing][poly
 
 TEST_CASE ("Poly mode plays every held note at once", "[voicing][poly]")
 {
-    Rig rig;
+    // Each note at -12 dB, so three together stay clear of the output limiter's knee.
+    auto p = sineParams();
+    p.osc[0].levelDb = -12.0f;
+    Rig rig (p);
 
     for (int n : { 60, 64, 67 })
         rig.noteOn (n);
@@ -109,9 +112,9 @@ TEST_CASE ("Poly mode plays every held note at once", "[voicing][poly]")
     for (int n : { 60, 64, 67 })
     {
         const double hz = testutil::midiToHz ((double) n);
-        REQUIRE (bandLevel (x, hz - 6.0, hz + 6.0) > 0.1);
+        REQUIRE (bandLevel (x, hz - 6.0, hz + 6.0) > 0.025);
     }
-    REQUIRE (peak (x) > 1.5f);
+    REQUIRE (peak (x) > 0.375f); // more than one note's worth (0.25), which is 1.5 of 1.0 at full level
 }
 
 TEST_CASE ("Mono plays one note at a time and follows the most recent held key", "[voicing][mono]")

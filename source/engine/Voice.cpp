@@ -15,6 +15,7 @@ void Voice::prepare (double sr, std::uint32_t noiseSeed) noexcept
     ampEnv.setSampleRate (sr);
     filterEnv.setSampleRate (sr);
     filter.prepare (sr);
+    filterR.prepare (sr);
     noise.seed (noiseSeed);
 
     for (size_t i = 0; i < lfos.size(); ++i)
@@ -23,7 +24,12 @@ void Voice::prepare (double sr, std::uint32_t noiseSeed) noexcept
         lfos[i].seed (noiseSeed * 2654435761u + (std::uint32_t) i * 40503u + 1u);
     }
 
-    waveFadeLength = std::max (1, (int) (waveSwitchSeconds * sr));
+    if (oscillators == nullptr)
+        oscillators = std::make_unique<Oscillators>();
+
+    oscillators->section[0].prepare (sr, 1, noiseSeed);
+    oscillators->section[1].prepare (sr, 2, noiseSeed ^ 0x5bd1e995u);
+    oversampleStep = (float) (1.0 / std::max (1.0, OscSection::switchSeconds * sr));
     ampMixStep = (float) (1.0 / std::max (1.0, ampSwitchSeconds * sr));
     filterWetStep = (float) (1.0 / std::max (1.0, filterBypassSeconds * sr));
     velocityStep = (float) (1.0 / std::max (1.0, velocitySlewSeconds * sr));
@@ -36,14 +42,21 @@ void Voice::kill() noexcept
 {
     silence();
 
-    for (auto& o : oscs)
+    if (oscillators != nullptr)
     {
-        o.osc.reset (0.0);
-        o.fadeRemaining = 0;
-        o.running = false;
+        for (auto& s : oscillators->section)
+            s.clear();
     }
 
+    sectionLive[0] = sectionLive[1] = false;
+    oversampleMix = 0.0f;
+    previewOsc.reset (0.0);
+    previewRunning = false;
+    stereoFilter = false;
+    warmSamples = 0;
+
     filter.reset();
+    filterR.reset();
     ampCache = {};
     filterCache = {};
     glideRemaining = 0;
@@ -155,11 +168,15 @@ void Voice::init (const EngineParams& p) noexcept
     // long keeps the first sound from arriving with the attack already over.
     ampHold = dsp::Oscillator::latencySamples;
 
-    for (auto& o : oscs)
-    {
-        o.running = false; // restarts, with or without a phase reset, when its block runs
-        o.fadeRemaining = 0;
-    }
+    // The oscillators restart, with or without a phase reset, when their block runs.
+    for (auto& s : oscillators->section)
+        s.stop();
+
+    sectionLive[0] = sectionLive[1] = false;
+    oversampleMix = 0.0f;
+    previewRunning = false;
+    stereoFilter = false;
+    warmSamples = 0;
 
     modPrimed = false;
     modEnd = {};
@@ -172,6 +189,8 @@ void Voice::init (const EngineParams& p) noexcept
 
     filter.setMode (p.filter.mode);
     filter.reset();
+    filterR.setMode (p.filter.mode);
+    filterR.reset();
     filterLive = false;
 }
 
@@ -295,49 +314,95 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
             + modCutoffOctaves * cutoffMod.end
     };
 
+    auto& sections = oscillators->section;
     std::array<bool, 3> on {};
-    std::array<double, 3> incrementStep {};
-    std::array<float, 3> widthStep {};
+    std::array<bool, 3> synced {};
+    std::array<BankSettings, 3> banks {};
     std::array<Ramp, 3> oscFactor {};
 
-    for (size_t k = 0; k < oscs.size(); ++k)
+    const auto present = [] (const Ramp& r) noexcept { return ! (dsp::same (r.start, 0.0f) && dsp::same (r.end, 0.0f)); };
+
+    // An oscillator runs while it is audible, or while ring modulation, FM or sync needs it
+    // (they work on oscillators whose own level is -inf).
+    for (size_t k = 0; k < on.size(); ++k)
+        on[k] = present (lv.osc[k]);
+
+    const bool ringOn = present (lv.ring);
+    if (ringOn)
+        on[0] = on[1] = true;
+
+    const std::array<bool, 2> fmOn { present (lv.fm[0]) && on[1], present (lv.fm[1]) && on[2] };
+    const bool fmWanted = fmOn[0] || fmOn[1];
+    if (fmWanted)
+        on[0] = true;
+
+    for (size_t k = 1; k < synced.size(); ++k)
     {
-        auto& st = oscs[k];
-        const auto& op = p.osc[k];
-        const Ramp g = lv.osc[k];
+        synced[k] = p.osc[k].sync && on[k] && p.osc[0].enabled;
+        if (synced[k])
+            on[0] = true;
+    }
 
-        on[k] = ! (dsp::same (g.start, 0.0f) && dsp::same (g.end, 0.0f));
-
+    for (size_t k = 0; k < oscFactor.size(); ++k)
+    {
         if (! on[k])
-        {
-            st.running = false;
             continue;
-        }
 
+        const auto& op = p.osc[k];
         const double pitchMod = (double) modPitchSemitones * (double) (modEnd[index (ModDest::pitchAll)] + modEnd[index (pitchDest (k))]);
-        const double target = incrementFor (op, pitchEnd, bend + pitchMod);
-        const float width = std::clamp (op.pulseWidth + modPulseWidth * modEnd[index (pulseWidthDest (k))], 0.05f, 0.95f);
 
-        if (! st.running)
-        {
-            st.osc.reset (op.phaseReset ? 0.0 : st.osc.getPhase());
-            st.wave = op.wave;
-            st.fadeRemaining = 0;
-            st.increment = target;
-            st.pulseWidth = width;
-            st.running = true;
-        }
-        else if (op.wave != st.wave)
-        {
-            st.waveFrom = st.wave;
-            st.wave = op.wave;
-            st.fadeRemaining = waveFadeLength;
-        }
-
-        incrementStep[k] = (target - st.increment) / (double) n;
-        widthStep[k] = (width - st.pulseWidth) * invN;
+        auto& s = banks[k];
+        s.on = true;
+        s.wave = op.wave;
+        s.increment = incrementFor (op, pitchEnd, bend + pitchMod);
+        s.pulseWidth = std::clamp (op.pulseWidth + modPulseWidth * modEnd[index (pulseWidthDest (k))], 0.05f, 0.95f);
+        s.unison = op.unison;
+        s.detuneCents = op.unisonDetuneCents;
+        s.spread = op.unisonSpread;
+        s.antiAlias = op.antiAlias;
+        s.phaseReset = op.phaseReset;
+        s.sync = synced[k];
         oscFactor[k] = levelRamp (rampOf (levelDest (k)), modOscLevelMaxFactor);
     }
+
+    // Two sections run the same oscillators, at the base rate and at twice it (for FM). Normally
+    // one runs. While FM comes or goes the other starts from the first one's state and they are
+    // crossfaded over 10 ms. A section that is live is ticked every sample, heard or not.
+    const float mixTarget = fmWanted ? 1.0f : 0.0f;
+
+    if (! sectionLive[0] && ! sectionLive[1])
+        oversampleMix = mixTarget;
+
+    if (fmWanted && ! sectionLive[1])
+    {
+        if (sectionLive[0])
+        {
+            sections[1].adoptFrom (sections[0]);
+            warmSamples = overWarmSamples; // its decimator needs filling before it is heard
+        }
+
+        sectionLive[1] = true;
+    }
+
+    if (! fmWanted && ! sectionLive[0])
+    {
+        if (sectionLive[1])
+            sections[0].adoptFrom (sections[1]);
+
+        sectionLive[0] = true;
+    }
+
+    for (size_t s = 0; s < sections.size(); ++s)
+        if (sectionLive[s])
+            sections[s].beginBlock (banks, n);
+
+    // The filter is stereo only while the oscillators are: a stereo filter costs twice as much.
+    const bool stereo = (sectionLive[0] && sections[0].needsStereo()) || (sectionLive[1] && sections[1].needsStereo());
+
+    if (stereo && ! stereoFilter)
+        filterR = filter; // the right channel carries on from where the (mono) filter is
+
+    stereoFilter = stereo;
 
     const Ramp noiseFactor = levelRamp (rampOf (ModDest::noiseLevel), modOscLevelMaxFactor);
     const Ramp ampFactor = levelRamp (rampOf (ModDest::ampLevel), modAmpLevelMaxFactor);
@@ -345,49 +410,79 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 
     noise.setPink (p.noise.pink);
     filter.setMode (p.filter.mode);
+    filterR.setMode (p.filter.mode);
 
     const float wetTarget = p.filter.enabled ? 1.0f : 0.0f;
-    const float mixTarget = p.ampEnv.enabled ? 1.0f : 0.0f;
+    const float mixTargetAmp = p.ampEnv.enabled ? 1.0f : 0.0f;
     const float velocityTarget = velocityGain (p);
     bool filterParamsSet = false;
 
     for (int i = 0; i < n; ++i)
     {
         const float t = (float) (i + 1) * invN;
-        float sum = 0.0f;
 
-        for (size_t k = 0; k < oscs.size(); ++k)
+        const float mixGoal = warmSamples > 0 ? 0.0f : mixTarget;
+        if (warmSamples > 0)
+            --warmSamples;
+
+        oversampleMix += std::clamp (mixGoal - oversampleMix, -oversampleStep, oversampleStep);
+
+        const float fmTo2 = fmOn[0] ? lv.fm[0].at (t) : 0.0f;
+        const float fmTo3 = fmOn[1] ? lv.fm[1].at (t) : 0.0f;
+        StereoOscs y, over;
+
+        if (sectionLive[0])
+            sections[0].tick (fmTo2, fmTo3, y);
+
+        if (sectionLive[1])
+            sections[1].tick (fmTo2, fmTo3, sectionLive[0] ? over : y);
+
+        if (sectionLive[0] && sectionLive[1])
+        {
+            for (size_t k = 0; k < y.size(); ++k)
+            {
+                y[k].l += (over[k].l - y[k].l) * oversampleMix;
+                y[k].r += (over[k].r - y[k].r) * oversampleMix;
+            }
+        }
+
+        float sumL = 0.0f, sumR = 0.0f;
+
+        for (size_t k = 0; k < y.size(); ++k)
         {
             if (! on[k])
                 continue;
 
-            auto& st = oscs[k];
-            st.increment += incrementStep[k];
-            st.pulseWidth += widthStep[k];
-            st.osc.setIncrement (st.increment);
-            st.osc.setPulseWidth ((double) st.pulseWidth);
+            const float g1 = lv.osc[k].at (t);
+            const float g2 = oscFactor[k].at (t);
+            sumL += y[k].l * g1 * g2;
 
-            float s;
-            if (st.fadeRemaining > 0)
-            {
-                const float x = 1.0f - (float) st.fadeRemaining / (float) waveFadeLength;
-                s = st.osc.process (st.waveFrom, st.wave, x);
-                --st.fadeRemaining;
-            }
-            else
-            {
-                s = st.osc.process (st.wave);
-            }
+            if (stereo)
+                sumR += y[k].r * g1 * g2;
+        }
 
-            sum += s * lv.osc[k].at (t) * oscFactor[k].at (t);
+        if (ringOn)
+        {
+            const float ringGain = lv.ring.at (t);
+            sumL += y[0].l * y[1].l * ringGain;
+
+            if (stereo)
+                sumR += y[0].r * y[1].r * ringGain;
         }
 
         const float noiseGain = lv.noise.at (t);
         if (noiseGain > 0.0f)
-            sum += noise.next() * noiseGain * noiseFactor.at (t);
+        {
+            const float hiss = noise.next() * noiseGain * noiseFactor.at (t);
+            sumL += hiss;
+            sumR += hiss;
+        }
+
+        if (! stereo)
+            sumR = sumL;
 
         if (taps.afterOscillators != nullptr)
-            taps.afterOscillators[i] += sum;
+            taps.afterOscillators[i] += stereo ? 0.5f * (sumL + sumR) : sumL;
 
         if (filterWet < wetTarget)
             filterWet = std::min (wetTarget, filterWet + filterWetStep);
@@ -401,22 +496,39 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
             if (! filterParamsSet || (i & 7) == 0)
             {
                 const float resonance = std::clamp (lv.resonance.at (t) + modResonance * resonanceMod.at (t), 0.0f, 1.0f);
-                filter.setParams (std::exp2 (cutoff.at (t)), resonance, lv.driveDb.at (t));
+                const float hz = std::exp2 (cutoff.at (t));
+                filter.setParams (hz, resonance, lv.driveDb.at (t));
+
+                if (stereo)
+                    filterR.setParams (hz, resonance, lv.driveDb.at (t));
+
                 filterParamsSet = true;
             }
 
-            const float filtered = filter.process (sum);
-            sum += (filtered - sum) * filterWet;
+            const float filteredL = filter.process (sumL);
+            sumL += (filteredL - sumL) * filterWet;
+
+            if (stereo)
+            {
+                const float filteredR = filterR.process (sumR);
+                sumR += (filteredR - sumR) * filterWet;
+            }
+            else
+            {
+                sumR = sumL;
+            }
+
             filterLive = true;
         }
         else if (filterLive)
         {
             filter.reset(); // so it starts clean the next time it is switched in
+            filterR.reset();
             filterLive = false;
         }
 
         if (taps.afterFilter != nullptr)
-            taps.afterFilter[i] += sum;
+            taps.afterFilter[i] += stereo ? 0.5f * (sumL + sumR) : sumL;
 
         velocityNow += std::clamp (velocityTarget - velocityNow, -velocityStep, velocityStep);
 
@@ -427,10 +539,10 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
         }
         else
         {
-            if (ampMix < mixTarget)
-                ampMix = std::min (mixTarget, ampMix + ampMixStep);
-            else if (ampMix > mixTarget)
-                ampMix = std::max (mixTarget, ampMix - ampMixStep);
+            if (ampMix < mixTargetAmp)
+                ampMix = std::min (mixTargetAmp, ampMix + ampMixStep);
+            else if (ampMix > mixTargetAmp)
+                ampMix = std::max (mixTargetAmp, ampMix - ampMixStep);
 
             const float gateLevel = gate.next();
             const float envLevel = ampEnv.next() * velocityNow;
@@ -442,36 +554,43 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
         // Balance pan: the far side is turned down, the near side is left alone,
         // so a centred voice is exactly as loud as before there was a pan.
         const float panNow = std::clamp (pan.at (t), -1.0f, 1.0f) * modPan;
-        const float out = sum * amp * ampFactor.at (t);
-        left[i] += out * (panNow > 0.0f ? 1.0f - panNow : 1.0f);
-        right[i] += out * (panNow < 0.0f ? 1.0f + panNow : 1.0f);
+        const float ampNow = ampFactor.at (t);
+        const float outL = sumL * amp * ampNow;
+        const float outR = stereo ? sumR * amp * ampNow : outL;
+        left[i] += outL * (panNow > 0.0f ? 1.0f - panNow : 1.0f);
+        right[i] += outR * (panNow < 0.0f ? 1.0f + panNow : 1.0f);
 
         if (ended())
             return;
     }
+
+    // The section the crossfade has left behind stops being carried along.
+    if (fmWanted && oversampleMix >= 1.0f)
+        sectionLive[0] = false;
+    else if (! fmWanted && oversampleMix <= 0.0f)
+        sectionLive[1] = false;
 }
 
 void Voice::renderPreview (float* left, float* right, int n, const BlockLevels& lv, double bend) noexcept
 {
     const float invN = 1.0f / (float) n;
-    auto& st = oscs[0];
     const double target = incrementFor (OscParams {}, (double) note, bend);
 
-    if (! st.running)
+    if (! previewRunning)
     {
-        st.osc.reset (0.0);
-        st.osc.setPulseWidth (0.5);
-        st.increment = target;
-        st.running = true;
+        previewOsc.reset (0.0);
+        previewOsc.setPulseWidth (0.5);
+        previewIncrement = target;
+        previewRunning = true;
     }
 
-    const double step = (target - st.increment) / (double) n;
+    const double step = (target - previewIncrement) / (double) n;
 
     for (int i = 0; i < n; ++i)
     {
-        st.increment += step;
-        st.osc.setIncrement (st.increment);
-        const float s = st.osc.process (previewWave);
+        previewIncrement += step;
+        previewOsc.setIncrement (previewIncrement);
+        const float s = previewOsc.process (previewWave);
 
         float amp = 0.0f;
         if (ampHold > 0)

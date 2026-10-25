@@ -191,6 +191,55 @@
         "key-tracking",
         "modulation"
       ]
+    },
+    "distortion": {
+      "title": "Distortion",
+      "concept": "Distortion squashes and clips the wave, which adds new harmonics. The harder you push it, the grittier it gets. Effects run in order, so distortion before reverb gives a gritty sound in a clean space, while after reverb it also roughens the reverb tail.",
+      "what": "Adds grit by pushing the sound hard so the wave flattens and new harmonics appear.",
+      "listenFor": "Hold a chord and raise Drive: the sound gets thicker, then buzzier.",
+      "tryThis": "Drag it before and after Reverb in the chain and compare how the tail sounds.",
+      "glossaryTerms": [
+        "distortion",
+        "drive",
+        "harmonic"
+      ]
+    },
+    "chorus": {
+      "title": "Chorus",
+      "concept": "Chorus mixes the sound with slightly delayed, slightly detuned copies of itself. The result is wider and thicker. Its order matters: before delay or reverb, the echoes are chorused too; after them, the whole space shimmers.",
+      "what": "Thickens and widens the sound with copies that wobble slightly in pitch.",
+      "listenFor": "Hold a single note: it sounds like several players at once.",
+      "tryThis": "Set Mix to 50% and compare Rate at 0.3 Hz and 4 Hz.",
+      "glossaryTerms": [
+        "chorus",
+        "detune",
+        "wet-dry"
+      ]
+    },
+    "delay": {
+      "title": "Delay",
+      "concept": "A delay repeats the sound after a gap. Feeding the echoes back in makes them repeat and fade. Order matters: delay before reverb gives echoes that each have their own tail, while reverb before delay repeats the reverb itself.",
+      "what": "Repeats the sound after a short gap, like an echo.",
+      "listenFor": "Play a short note and count the echoes as they fade.",
+      "tryThis": "Turn on Sync, then try 1/8 against 1/4 while playing a steady rhythm.",
+      "glossaryTerms": [
+        "delay",
+        "feedback",
+        "tempo-sync",
+        "ping-pong"
+      ]
+    },
+    "reverb": {
+      "title": "Reverb",
+      "concept": "Reverb adds the many tiny reflections of a room, so the sound seems to happen in a space. It is usually last in the chain, because reverb before distortion gets crushed and roughened by the distortion.",
+      "what": "Places the sound in an imaginary room.",
+      "listenFor": "Play a short note and listen to the tail after you let go.",
+      "tryThis": "Raise Size and Decay together, then add Damping to darken the tail.",
+      "glossaryTerms": [
+        "reverb",
+        "damping",
+        "decay"
+      ]
     }
   },
   "controls": {
@@ -199,14 +248,19 @@
       "what": "Turns this module off without removing it, so you can hear the patch with and without it. Your settings are kept.",
       "listenFor": "The sound changes as if the module were not there. Click again and it returns exactly as it was.",
       "tryThis": "Hold a note, then click B on the Filter a few times to hear what it adds.",
-      "glossaryTerms": ["bypass"]
+      "glossaryTerms": [
+        "bypass"
+      ]
     },
     "control.solo": {
       "title": "Solo (S)",
       "what": "Plays only this source and mutes the other sources. It is for listening to one part of the sound on its own.",
       "listenFor": "Only this oscillator or noise is left in the mix. The other cards fade to show they are muted.",
       "tryThis": "With two oscillators playing, solo Oscillator 2 to hear what it adds, then click S again.",
-      "glossaryTerms": ["solo", "oscillator"]
+      "glossaryTerms": [
+        "solo",
+        "oscillator"
+      ]
     },
     "control.remove": {
       "title": "Remove module",
@@ -220,70 +274,103 @@
       "what": "Adds another building block to the signal chain: an oscillator, noise, a filter, an envelope or an LFO. The suggested next one is shown first.",
       "listenFor": "The patch description under the Explain panel updates, and the sound changes once you play a note.",
       "tryThis": "Add the suggested module and hold a note to hear what it changes.",
-      "glossaryTerms": ["oscillator", "filter", "envelope", "lfo"]
+      "glossaryTerms": [
+        "oscillator",
+        "filter",
+        "envelope",
+        "lfo"
+      ]
     },
     "control.handle": {
       "title": "Modulation handle",
       "what": "Starts a connection. Drag it onto any knob that shows a ring, or click it and then click a knob, to make that source move the knob automatically.",
       "listenFor": "The knob you drop it on starts to move by itself, and an arc shows how far it travels.",
       "tryThis": "Drag the LFO 1 handle onto Filter cutoff, hold a note, then change the amount in the connection list.",
-      "glossaryTerms": ["modulation", "lfo", "envelope"]
+      "glossaryTerms": [
+        "modulation",
+        "lfo",
+        "envelope"
+      ]
     },
     "control.keyboard": {
       "title": "Keyboard",
       "what": "Plays notes. Click or drag across the keys, or use the computer keys A to K for white keys and W E T Y U for black keys. C and V lower and raise how hard the notes play.",
       "listenFor": "Keys further right are higher in pitch. Harder (higher velocity) notes are louder.",
       "tryThis": "Play a low key and a high key, then press Z or X to move the whole keyboard an octave.",
-      "glossaryTerms": ["pitch", "velocity", "octave"]
+      "glossaryTerms": [
+        "pitch",
+        "velocity",
+        "octave"
+      ]
     },
     "control.octave": {
       "title": "Octave shift",
       "what": "Moves the computer-keyboard keys up or down by an octave. An octave doubles or halves the pitch.",
       "listenFor": "The same keys now play higher or lower notes. The tone stays the same.",
       "tryThis": "Click + once, then play the same key you played before.",
-      "glossaryTerms": ["octave", "pitch"]
+      "glossaryTerms": [
+        "octave",
+        "pitch"
+      ]
     },
     "control.bend": {
       "title": "Pitch bend wheel",
       "what": "Slides the pitch of the notes you are holding up or down. It springs back to the middle when you let go. The range is set by Pitch bend range in Voicing.",
       "listenFor": "The pitch glides smoothly, then returns.",
       "tryThis": "Hold a note and drag the wheel up, then let go.",
-      "glossaryTerms": ["pitch-bend", "pitch"]
+      "glossaryTerms": [
+        "pitch-bend",
+        "pitch"
+      ]
     },
     "control.modWheel": {
       "title": "Mod wheel",
       "what": "A live control you move by hand. It does nothing until you connect it to a knob. Connect it with the Mod wheel handle under Sources.",
       "listenFor": "Nothing at first. Once connected, the destination knob follows the wheel.",
       "tryThis": "Connect Mod wheel to Filter cutoff, hold a note and drag the wheel.",
-      "glossaryTerms": ["mod-wheel", "modulation"]
+      "glossaryTerms": [
+        "mod-wheel",
+        "modulation"
+      ]
     },
     "control.scopeMode": {
       "title": "Scope display",
       "what": "Chooses how the scope draws the sound. Wave shows the shape of the sound over time. Spectrum shows how much of each pitch is in it.",
       "listenFor": "A bright sound has tall bars far to the right in Spectrum. A dull one has bars only on the left.",
       "tryThis": "Hold a note on a saw wave and switch between Wave and Spectrum.",
-      "glossaryTerms": ["spectrum", "harmonic"]
+      "glossaryTerms": [
+        "spectrum",
+        "harmonic"
+      ]
     },
     "control.scopeTap": {
       "title": "Scope tap",
       "what": "Chooses where in the signal path the scope listens: right after the oscillators, after the filter, or at the final output. Changing it does not change the sound.",
       "listenFor": "Compare Osc and Filter in Spectrum: the filter removes the high bars above its cutoff.",
       "tryThis": "Set the tap to Osc, hold a note, then switch to Filter and close the cutoff.",
-      "glossaryTerms": ["spectrum", "filter", "cutoff"]
+      "glossaryTerms": [
+        "spectrum",
+        "filter",
+        "cutoff"
+      ]
     },
     "control.meter": {
       "title": "Output level",
       "what": "Shows how loud the synth is at its output. If it reaches the top the sound is too loud and may distort.",
       "listenFor": "The bar rises with louder notes and chords.",
       "tryThis": "Play a chord and lower Volume in Output if the meter hits the top.",
-      "glossaryTerms": ["decibel"]
+      "glossaryTerms": [
+        "decibel"
+      ]
     },
     "control.newPatch": {
       "title": "New patch",
       "what": "Starts again from the wave picker. Your current patch is replaced, and Undo can bring it back.",
       "listenFor": "The synth goes back to a single oscillator once you pick a wave.",
       "tryThis": "Click it, pick a different wave, then build up from there.",
-      "glossaryTerms": ["oscillator"]
+      "glossaryTerms": [
+        "oscillator"
+      ]
     },
     "control.undo": {
       "title": "Undo",
@@ -305,6 +392,37 @@
       "listenFor": "With the right output chosen you hear sound. With a MIDI input enabled, your keyboard plays the synth.",
       "tryThis": "Open it, enable your MIDI keyboard, then play it.",
       "glossaryTerms": []
+    },
+    "control.limiter": {
+      "title": "Limiter",
+      "what": "A safety limiter that is always on at the very end. It stops the output going above -0.3 dBFS, so loud patches do not clip. It is the only processing you cannot switch off.",
+      "listenFor": "The light comes on when the limiter is working. A flicker on peaks is fine; staying lit means the patch is too loud.",
+      "tryThis": "Play a big chord with Filter resonance at 100% and watch the light, then lower Volume.",
+      "glossaryTerms": [
+        "limiter",
+        "decibel"
+      ]
+    },
+    "control.effectGrip": {
+      "title": "Effect order",
+      "what": "Drag this handle to move an effect earlier or later in the chain. Sound passes through the effects from left to right.",
+      "listenFor": "The same effects sound different in a different order. Reverb then distortion is rougher than distortion then reverb.",
+      "tryThis": "Drag Distortion from before Reverb to after it while holding a chord.",
+      "glossaryTerms": [
+        "distortion",
+        "reverb"
+      ]
+    },
+    "control.oscMore": {
+      "title": "More",
+      "what": "Opens the oscillator's extra row: unison, hard sync, anti-aliasing, and for Oscillator 1, ring modulation and FM.",
+      "listenFor": "Nothing changes by opening it. The controls inside do the work.",
+      "tryThis": "Open it on Oscillator 2 and try Sync.",
+      "glossaryTerms": [
+        "unison",
+        "hard-sync",
+        "fm"
+      ]
     }
   },
   "params": {
@@ -1364,6 +1482,481 @@
       "tryThis": "Lower it if loud chords distort.",
       "glossaryTerms": [
         "decibel"
+      ]
+    },
+    "osc1.unison": {
+      "title": "Unison",
+      "module": "osc1",
+      "what": "Stacks up to 7 copies of Oscillator 1 on top of each other, each slightly out of tune. 1 means a single copy.",
+      "listenFor": "More copies sound wider and thicker, with a slow shimmer between them.",
+      "tryThis": "Hold a chord and raise it from 1 to 5.",
+      "glossaryTerms": [
+        "unison",
+        "detune"
+      ]
+    },
+    "osc1.unisonDetune": {
+      "title": "Unison detune",
+      "module": "osc1",
+      "what": "How far apart the unison copies are tuned, from 0 to 100 cents. It does nothing with one copy.",
+      "listenFor": "Small amounts shimmer. Large amounts sound out of tune.",
+      "tryThis": "Set Unison to 5, then sweep this from 5 to 60 cents.",
+      "glossaryTerms": [
+        "unison",
+        "cents"
+      ]
+    },
+    "osc1.unisonSpread": {
+      "title": "Unison spread",
+      "module": "osc1",
+      "what": "How far the unison copies are placed across the left and right speakers, from 0 to 100%.",
+      "listenFor": "At 0% everything sits in the middle. At 100% the sound opens out wide.",
+      "tryThis": "Use headphones, set Unison to 5 and move this from 0% to 100%.",
+      "glossaryTerms": [
+        "unison"
+      ]
+    },
+    "osc1.antiAlias": {
+      "title": "Anti-aliasing",
+      "module": "osc1",
+      "what": "Keeps Oscillator 1 free of aliasing. Switch it off to hear the harsh, whistling sound a naive digital wave makes.",
+      "listenFor": "Off: inharmonic whistles that get worse on high notes. On: clean.",
+      "tryThis": "Play high notes on a saw, then toggle it.",
+      "glossaryTerms": [
+        "anti-aliasing",
+        "aliasing"
+      ]
+    },
+    "osc2.unison": {
+      "title": "Unison",
+      "module": "osc2",
+      "what": "Stacks up to 7 copies of Oscillator 2 on top of each other, each slightly out of tune. 1 means a single copy.",
+      "listenFor": "More copies sound wider and thicker, with a slow shimmer between them.",
+      "tryThis": "Hold a chord and raise it from 1 to 5.",
+      "glossaryTerms": [
+        "unison",
+        "detune"
+      ]
+    },
+    "osc2.unisonDetune": {
+      "title": "Unison detune",
+      "module": "osc2",
+      "what": "How far apart the unison copies are tuned, from 0 to 100 cents. It does nothing with one copy.",
+      "listenFor": "Small amounts shimmer. Large amounts sound out of tune.",
+      "tryThis": "Set Unison to 5, then sweep this from 5 to 60 cents.",
+      "glossaryTerms": [
+        "unison",
+        "cents"
+      ]
+    },
+    "osc2.unisonSpread": {
+      "title": "Unison spread",
+      "module": "osc2",
+      "what": "How far the unison copies are placed across the left and right speakers, from 0 to 100%.",
+      "listenFor": "At 0% everything sits in the middle. At 100% the sound opens out wide.",
+      "tryThis": "Use headphones, set Unison to 5 and move this from 0% to 100%.",
+      "glossaryTerms": [
+        "unison"
+      ]
+    },
+    "osc2.antiAlias": {
+      "title": "Anti-aliasing",
+      "module": "osc2",
+      "what": "Keeps Oscillator 2 free of aliasing. Switch it off to hear the harsh, whistling sound a naive digital wave makes.",
+      "listenFor": "Off: inharmonic whistles that get worse on high notes. On: clean.",
+      "tryThis": "Play high notes on a saw, then toggle it.",
+      "glossaryTerms": [
+        "anti-aliasing",
+        "aliasing"
+      ]
+    },
+    "osc3.unison": {
+      "title": "Unison",
+      "module": "osc3",
+      "what": "Stacks up to 7 copies of Oscillator 3 on top of each other, each slightly out of tune. 1 means a single copy.",
+      "listenFor": "More copies sound wider and thicker, with a slow shimmer between them.",
+      "tryThis": "Hold a chord and raise it from 1 to 5.",
+      "glossaryTerms": [
+        "unison",
+        "detune"
+      ]
+    },
+    "osc3.unisonDetune": {
+      "title": "Unison detune",
+      "module": "osc3",
+      "what": "How far apart the unison copies are tuned, from 0 to 100 cents. It does nothing with one copy.",
+      "listenFor": "Small amounts shimmer. Large amounts sound out of tune.",
+      "tryThis": "Set Unison to 5, then sweep this from 5 to 60 cents.",
+      "glossaryTerms": [
+        "unison",
+        "cents"
+      ]
+    },
+    "osc3.unisonSpread": {
+      "title": "Unison spread",
+      "module": "osc3",
+      "what": "How far the unison copies are placed across the left and right speakers, from 0 to 100%.",
+      "listenFor": "At 0% everything sits in the middle. At 100% the sound opens out wide.",
+      "tryThis": "Use headphones, set Unison to 5 and move this from 0% to 100%.",
+      "glossaryTerms": [
+        "unison"
+      ]
+    },
+    "osc3.antiAlias": {
+      "title": "Anti-aliasing",
+      "module": "osc3",
+      "what": "Keeps Oscillator 3 free of aliasing. Switch it off to hear the harsh, whistling sound a naive digital wave makes.",
+      "listenFor": "Off: inharmonic whistles that get worse on high notes. On: clean.",
+      "tryThis": "Play high notes on a saw, then toggle it.",
+      "glossaryTerms": [
+        "anti-aliasing",
+        "aliasing"
+      ]
+    },
+    "osc2.sync": {
+      "title": "Hard sync",
+      "module": "osc2",
+      "what": "Restarts Oscillator 2 every time Oscillator 1 restarts its cycle. Oscillator 1 is the master.",
+      "listenFor": "The pitch of Oscillator 1 stays, but the tone changes. Move the synced oscillator's pitch for a tearing sweep.",
+      "tryThis": "Turn it on, then sweep Oscillator 2's semitone or fine up and down.",
+      "glossaryTerms": [
+        "hard-sync",
+        "oscillator"
+      ]
+    },
+    "osc3.sync": {
+      "title": "Hard sync",
+      "module": "osc3",
+      "what": "Restarts Oscillator 3 every time Oscillator 1 restarts its cycle. Oscillator 1 is the master.",
+      "listenFor": "The pitch of Oscillator 1 stays, but the tone changes. Move the synced oscillator's pitch for a tearing sweep.",
+      "tryThis": "Turn it on, then sweep Oscillator 3's semitone or fine up and down.",
+      "glossaryTerms": [
+        "hard-sync",
+        "oscillator"
+      ]
+    },
+    "ring.level": {
+      "title": "Ring modulation level",
+      "module": "osc1",
+      "what": "Mixes in Oscillator 1 multiplied by Oscillator 2, from -60 dB (off) to 0 dB. The result contains the sum and difference of their frequencies.",
+      "listenFor": "Clangy, bell-like tones that are not tuned to either note.",
+      "tryThis": "Raise it to -12 dB, then detune Oscillator 2 by a few semitones.",
+      "glossaryTerms": [
+        "ring-modulation",
+        "decibel"
+      ]
+    },
+    "fm.amount": {
+      "title": "FM amount",
+      "module": "osc1",
+      "what": "How strongly Oscillator 1 modulates the pitch of the target, from 0 to 100%. Oscillator 1 is the modulator and the target is the carrier.",
+      "listenFor": "Higher amounts add more sidebands, so the tone gets brighter and harsher.",
+      "tryThis": "Raise it slowly, then change the target's octave or semitone to move the sidebands.",
+      "glossaryTerms": [
+        "fm",
+        "harmonic"
+      ]
+    },
+    "fm.target": {
+      "title": "FM target",
+      "module": "osc1",
+      "what": "Chooses which oscillator Oscillator 1 modulates: Osc 2, Osc 3 or both.",
+      "listenFor": "The target's frequency ratio to Oscillator 1 decides the sidebands. Whole-number ratios sound tuned; others sound clangy.",
+      "tryThis": "Set the amount to 30%, then switch between Osc 2 and Both.",
+      "glossaryTerms": [
+        "fm",
+        "frequency"
+      ]
+    },
+    "distortion.enabled": {
+      "title": "Distortion",
+      "module": "distortion",
+      "what": "Shows whether Distortion is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "Once present, it processes everything after the voices are mixed.",
+      "tryThis": "Add Distortion, then drag it to a different place in the chain and listen again.",
+      "glossaryTerms": [
+        "distortion"
+      ]
+    },
+    "distortion.bypass": {
+      "title": "Bypass",
+      "module": "distortion",
+      "what": "Passes the signal through Distortion untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this effect taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "chorus.enabled": {
+      "title": "Chorus",
+      "module": "chorus",
+      "what": "Shows whether Chorus is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "Once present, it processes everything after the voices are mixed.",
+      "tryThis": "Add Chorus, then drag it to a different place in the chain and listen again.",
+      "glossaryTerms": [
+        "chorus"
+      ]
+    },
+    "chorus.bypass": {
+      "title": "Bypass",
+      "module": "chorus",
+      "what": "Passes the signal through Chorus untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this effect taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "delay.enabled": {
+      "title": "Delay",
+      "module": "delay",
+      "what": "Shows whether Delay is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "Once present, it processes everything after the voices are mixed.",
+      "tryThis": "Add Delay, then drag it to a different place in the chain and listen again.",
+      "glossaryTerms": [
+        "delay"
+      ]
+    },
+    "delay.bypass": {
+      "title": "Bypass",
+      "module": "delay",
+      "what": "Passes the signal through Delay untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this effect taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "reverb.enabled": {
+      "title": "Reverb",
+      "module": "reverb",
+      "what": "Shows whether Reverb is in your patch. Add or remove it from the signal chain.",
+      "listenFor": "Once present, it processes everything after the voices are mixed.",
+      "tryThis": "Add Reverb, then drag it to a different place in the chain and listen again.",
+      "glossaryTerms": [
+        "reverb"
+      ]
+    },
+    "reverb.bypass": {
+      "title": "Bypass",
+      "module": "reverb",
+      "what": "Passes the signal through Reverb untouched, so you can compare with and without it.",
+      "listenFor": "The sound with this effect taken out of the picture.",
+      "tryThis": "Toggle it while holding a note to A/B the effect.",
+      "glossaryTerms": [
+        "bypass"
+      ]
+    },
+    "distortion.drive": {
+      "title": "Drive",
+      "module": "distortion",
+      "what": "How hard the signal is pushed into the distortion, from 0 to 40 dB.",
+      "listenFor": "More drive means more grit and more harmonics.",
+      "tryThis": "Hold a chord and raise it to 24 dB.",
+      "glossaryTerms": [
+        "drive",
+        "decibel"
+      ]
+    },
+    "distortion.tone": {
+      "title": "Tone",
+      "module": "distortion",
+      "what": "A tilt from dark to bright for the distorted sound.",
+      "listenFor": "Low: soft and muffled. High: fizzy and sharp.",
+      "tryThis": "Set drive high, then sweep Tone.",
+      "glossaryTerms": [
+        "tone"
+      ]
+    },
+    "distortion.mix": {
+      "title": "Mix",
+      "module": "distortion",
+      "what": "How much distorted sound is blended with the original, from 0 to 100%.",
+      "listenFor": "Lower values keep the clean sound and add edge.",
+      "tryThis": "Try 40% with a high drive.",
+      "glossaryTerms": [
+        "wet-dry"
+      ]
+    },
+    "chorus.rate": {
+      "title": "Rate",
+      "module": "chorus",
+      "what": "How fast the chorus's internal wobble moves, from 0.1 to 8 Hz.",
+      "listenFor": "Slow: gentle drift. Fast: a warbling vibrato.",
+      "tryThis": "Try 0.3 Hz, then 5 Hz.",
+      "glossaryTerms": [
+        "chorus",
+        "frequency"
+      ]
+    },
+    "chorus.depth": {
+      "title": "Depth",
+      "module": "chorus",
+      "what": "How far the chorus bends the pitch of its copies, from 0 to 100%.",
+      "listenFor": "More depth sounds wider and more seasick.",
+      "tryThis": "Hold a note and raise it from 20% to 80%.",
+      "glossaryTerms": [
+        "chorus"
+      ]
+    },
+    "chorus.mix": {
+      "title": "Mix",
+      "module": "chorus",
+      "what": "How much chorused sound is blended with the original, from 0 to 100%.",
+      "listenFor": "At 0% nothing changes. Around 50% the sound thickens.",
+      "tryThis": "Move it from 0% to 100%.",
+      "glossaryTerms": [
+        "wet-dry"
+      ]
+    },
+    "delay.time": {
+      "title": "Time",
+      "module": "delay",
+      "what": "The gap before each echo, from 1 to 2000 ms. It is ignored while Sync is on.",
+      "listenFor": "Short times thicken; long times give separate echoes.",
+      "tryThis": "Play a short note, then try 150 ms and 600 ms.",
+      "glossaryTerms": [
+        "delay"
+      ]
+    },
+    "delay.sync": {
+      "title": "Sync",
+      "module": "delay",
+      "what": "Locks the echo time to the tempo, using the division instead of Time.",
+      "listenFor": "The echoes land on the beat and follow the tempo.",
+      "tryThis": "Turn it on and choose 1/8.",
+      "glossaryTerms": [
+        "tempo-sync",
+        "bpm"
+      ]
+    },
+    "delay.division": {
+      "title": "Division",
+      "module": "delay",
+      "what": "The note length of each echo while Sync is on, such as 1/4 or 1/8.",
+      "listenFor": "Shorter divisions give faster, busier echoes.",
+      "tryThis": "Switch from 1/4 to 1/8 while holding a rhythm.",
+      "glossaryTerms": [
+        "tempo-sync",
+        "bpm"
+      ]
+    },
+    "delay.feedback": {
+      "title": "Feedback",
+      "module": "delay",
+      "what": "How much of each echo is fed back in to make the next one, from 0 to 95%.",
+      "listenFor": "Low: one or two echoes. High: a long trail that fades slowly.",
+      "tryThis": "Try 20%, then 80%.",
+      "glossaryTerms": [
+        "feedback"
+      ]
+    },
+    "delay.pingPong": {
+      "title": "Ping-pong",
+      "module": "delay",
+      "what": "Bounces the echoes between the left and right speakers.",
+      "listenFor": "Echoes alternate from side to side.",
+      "tryThis": "Turn it on with headphones and a short note.",
+      "glossaryTerms": [
+        "ping-pong"
+      ]
+    },
+    "delay.mix": {
+      "title": "Mix",
+      "module": "delay",
+      "what": "How much echo is blended with the original, from 0 to 100%.",
+      "listenFor": "At 0% there is no echo. Higher values make the echoes louder.",
+      "tryThis": "Move it from 0% to 50%.",
+      "glossaryTerms": [
+        "wet-dry"
+      ]
+    },
+    "reverb.size": {
+      "title": "Size",
+      "module": "reverb",
+      "what": "The size of the imaginary room, from 0 to 100%.",
+      "listenFor": "Small: a tight booth. Large: a hall.",
+      "tryThis": "Play a short note and raise it from 10% to 90%.",
+      "glossaryTerms": [
+        "reverb"
+      ]
+    },
+    "reverb.decay": {
+      "title": "Decay",
+      "module": "reverb",
+      "what": "How long the reverb tail takes to fade, from 0.2 to 10 seconds.",
+      "listenFor": "Short: quick ambience. Long: a wash that hangs after you let go.",
+      "tryThis": "Play a short note and try 1 s, then 8 s.",
+      "glossaryTerms": [
+        "reverb",
+        "decay"
+      ]
+    },
+    "reverb.damping": {
+      "title": "Damping",
+      "module": "reverb",
+      "what": "How quickly the reverb loses its high frequencies as it fades, from 0 to 100%.",
+      "listenFor": "More damping gives a darker, softer tail.",
+      "tryThis": "Set a long decay, then raise damping.",
+      "glossaryTerms": [
+        "damping"
+      ]
+    },
+    "reverb.mix": {
+      "title": "Mix",
+      "module": "reverb",
+      "what": "How much reverb is blended with the original, from 0 to 100%.",
+      "listenFor": "At 0% the sound is dry. Higher values push it further away.",
+      "tryThis": "Move it from 10% to 60%.",
+      "glossaryTerms": [
+        "wet-dry"
+      ]
+    },
+    "lfo1.sync": {
+      "title": "Sync",
+      "module": "lfo1",
+      "what": "Locks LFO 1 to the tempo, using the division instead of Rate.",
+      "listenFor": "The movement stays in time with the beat.",
+      "tryThis": "Connect it to Filter cutoff, turn Sync on and choose 1/4.",
+      "glossaryTerms": [
+        "tempo-sync",
+        "bpm",
+        "lfo"
+      ]
+    },
+    "lfo1.division": {
+      "title": "Division",
+      "module": "lfo1",
+      "what": "The note length of one LFO 1 cycle while Sync is on, such as 1/4 or 1/8.",
+      "listenFor": "Longer divisions sweep slowly; shorter ones pulse faster.",
+      "tryThis": "Switch between 1/4 and 1/16 on a filter sweep.",
+      "glossaryTerms": [
+        "tempo-sync",
+        "bpm"
+      ]
+    },
+    "lfo2.sync": {
+      "title": "Sync",
+      "module": "lfo2",
+      "what": "Locks LFO 2 to the tempo, using the division instead of Rate.",
+      "listenFor": "The movement stays in time with the beat.",
+      "tryThis": "Connect it to Filter cutoff, turn Sync on and choose 1/4.",
+      "glossaryTerms": [
+        "tempo-sync",
+        "bpm",
+        "lfo"
+      ]
+    },
+    "lfo2.division": {
+      "title": "Division",
+      "module": "lfo2",
+      "what": "The note length of one LFO 2 cycle while Sync is on, such as 1/4 or 1/8.",
+      "listenFor": "Longer divisions sweep slowly; shorter ones pulse faster.",
+      "tryThis": "Switch between 1/4 and 1/16 on a filter sweep.",
+      "glossaryTerms": [
+        "tempo-sync",
+        "bpm"
       ]
     }
   }

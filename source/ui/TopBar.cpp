@@ -5,6 +5,7 @@ namespace scratchpad::ui
 
 TopBar::TopBar (plugin::ScratchpadProcessor& p)
     : processor (p),
+      limiter ([&p] { return p.getLimiterReductionDb(); }),
       meter ([&p] { return p.takeOutputPeak(); })
 {
     setTitle ("Top bar");
@@ -39,6 +40,7 @@ TopBar::TopBar (plugin::ScratchpadProcessor& p)
     redoButton.setVisible (true);
     settingsButton.setVisible (processor.openAudioSettings != nullptr);
 
+    addAndMakeVisible (limiter);
     addAndMakeVisible (meter);
 
     processor.undoManager.addChangeListener (this);
@@ -194,6 +196,7 @@ void TopBar::resized()
     }
 
     meter.setBounds (row (right - 140, 140, 10));
+    limiter.setBounds (row (meter.getX() - 10 - 52, 52, 16));
 }
 
 } // namespace scratchpad::ui

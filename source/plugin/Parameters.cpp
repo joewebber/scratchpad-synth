@@ -11,6 +11,14 @@ juce::StringArray voiceModeNames()   { return { "Poly", "Mono", "Legato" }; }
 juce::StringArray noiseColourNames() { return { "White", "Pink" }; }
 juce::StringArray lfoShapeNames()    { return { "Sine", "Triangle", "Saw up", "Saw down", "Square", "Sample & hold" }; }
 
+namespace
+{
+    double sanitiseBpm (double bpm) noexcept
+    {
+        return std::isfinite (bpm) && bpm > 0.0 ? bpm : defaultBpm;
+    }
+}
+
 juce::StringArray modSourceNames()
 {
     return { "None", "LFO 1", "LFO 2", "Amp Envelope", "Filter Envelope", "Velocity", "Mod wheel", "Aftertouch", "Key" };
@@ -22,6 +30,22 @@ juce::StringArray modDestNames()
              "Osc 1 pulse width", "Osc 2 pulse width", "Osc 3 pulse width",
              "Osc 1 level", "Osc 2 level", "Osc 3 level", "Noise level",
              "Filter cutoff", "Filter resonance", "Amp level", "Pan", "LFO 1 rate", "LFO 2 rate" };
+}
+
+juce::StringArray fmTargetNames()      { return { "Osc 2", "Osc 3", "Both" }; }
+
+juce::StringArray tempoDivisionNames() { return { "1/32", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars" }; }
+
+float lfoSyncRateHz (double bpm, int divisionIndex) noexcept
+{
+    const double beats = (double) tempoDivisionBeats[(size_t) juce::jlimit (0, (int) tempoDivisionBeats.size() - 1, divisionIndex)];
+    return juce::jlimit (lfoRateMinHz, lfoRateMaxHz, (float) (sanitiseBpm (bpm) / 60.0 / beats));
+}
+
+float delaySyncMs (double bpm, int divisionIndex) noexcept
+{
+    const double beats = (double) tempoDivisionBeats[(size_t) juce::jlimit (0, (int) tempoDivisionBeats.size() - 1, divisionIndex)];
+    return juce::jlimit (delayTimeMinMs, delayTimeMaxMs, (float) (60000.0 / sanitiseBpm (bpm) * beats));
 }
 
 juce::String levelText (float db, float minDb)
@@ -85,10 +109,10 @@ namespace
     }
 
     void addChoice (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const char* id,
-                    const juce::String& name, const juce::StringArray& choices, int defaultIndex, int hint)
+                    const juce::String& name, const juce::StringArray& choices, int defaultIndex, int hint, bool automatable = false)
     {
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id, hint }, name, choices, defaultIndex,
-                                                            AudioParameterChoiceAttributes().withAutomatable (false)));
+                                                            AudioParameterChoiceAttributes().withAutomatable (automatable)));
     }
 
     void addLevel (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const char* id,
@@ -111,13 +135,31 @@ namespace
     }
 
     void addPercent (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const char* id,
-                     const juce::String& name, float lo, float hi, float defaultValue)
+                     const juce::String& name, float lo, float hi, float defaultValue, int hint = versionHintM2)
     {
         layout.add (std::make_unique<AudioParameterFloat> (
-            ParameterID { id, versionHintM2 }, name, juce::NormalisableRange<float> (lo, hi, 1.0f), defaultValue,
+            ParameterID { id, hint }, name, juce::NormalisableRange<float> (lo, hi, 1.0f), defaultValue,
             AudioParameterFloatAttributes()
                 .withLabel ("%")
                 .withStringFromValueFunction ([] (float v, int) { return percentText (v); })));
+    }
+
+    void addToggle (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const char* id,
+                    const juce::String& name, bool defaultOn, bool automatable)
+    {
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id, versionHintM5 }, name, defaultOn,
+                                                          AudioParameterBoolAttributes().withAutomatable (automatable)));
+    }
+
+    void addValue (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const char* id, const juce::String& name,
+                   juce::NormalisableRange<float> range, float defaultValue, const juce::String& label,
+                   std::function<juce::String (float)> text)
+    {
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { id, versionHintM5 }, name, range, defaultValue,
+            AudioParameterFloatAttributes()
+                .withLabel (label)
+                .withStringFromValueFunction ([text] (float v, int) { return text (v); })));
     }
 
     void addEnvelope (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const EnvIds& ids,
@@ -167,7 +209,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { ids.phaseReset, versionHintM2 },
                                                           name + " phase reset on note", true,
                                                           AudioParameterBoolAttributes().withAutomatable (false)));
+
+        layout.add (std::make_unique<AudioParameterInt> (
+            ParameterID { ids.unison, versionHintM5 }, name + " unison voices", 1, maxUnison, 1));
+        addValue (layout, ids.unisonDetune, name + " unison detune", juce::NormalisableRange<float> (0.0f, unisonDetuneMaxCents, 1.0f),
+                  unisonDetuneDefaultCents, "cents", [] (float v) { return juce::String (juce::roundToInt (v)) + " c"; });
+        addPercent (layout, ids.unisonSpread, name + " unison spread", 0.0f, 100.0f, unisonSpreadDefaultPercent, versionHintM5);
+        addToggle (layout, ids.antiAlias, name + " anti-aliasing", true, true);
+
+        if (ids.sync != nullptr)
+            addToggle (layout, ids.sync, name + " sync to oscillator 1", false, true);
     }
+
+    // Oscillator 1 acts on the others.
+    addLevel (layout, ringLevel, "Ring modulation level", oscLevelMinDb, oscLevelMaxDb, ringLevelDefaultDb, versionHintM5);
+    addPercent (layout, fmAmount, "FM amount", 0.0f, 100.0f, 0.0f, versionHintM5);
+    addChoice (layout, fmTarget, "FM target", fmTargetNames(), 0, versionHintM5, true);
 
     // Noise.
     addPresence (layout, noiseEnabled, "Noise present", versionHintM2);
@@ -216,7 +273,38 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
             ParameterID { ids.fade, versionHintM3 }, name + " fade-in", juce::NormalisableRange<float> (0.0f, lfoFadeMaxSeconds, 0.01f, 0.5f), 0.0f,
             AudioParameterFloatAttributes()
                 .withStringFromValueFunction ([] (float v, int) { return v < 0.005f ? juce::String ("Off") : timeText (v); })));
+        addToggle (layout, ids.sync, name + " tempo sync", false, true);
+        addChoice (layout, ids.division, name + " division", tempoDivisionNames(), tempoDivisionDefault, versionHintM5, true);
     }
+
+    // Effects: presence and bypass are structural; everything else is a knob. Their order is a tree property, not a parameter.
+    addPresence (layout, distortionEnabled, "Distortion present", versionHintM5);
+    addValue (layout, distortionDrive, "Distortion drive", juce::NormalisableRange<float> (0.0f, distortionDriveMaxDb, 0.1f), distortionDriveDefaultDb,
+              "dB", [] (float v) { return juce::String (v, 1) + " dB"; });
+    addPercent (layout, distortionTone, "Distortion tone", 0.0f, 100.0f, 50.0f, versionHintM5);
+    addPercent (layout, distortionMix, "Distortion mix", 0.0f, 100.0f, 100.0f, versionHintM5);
+
+    addPresence (layout, chorusEnabled, "Chorus present", versionHintM5);
+    addValue (layout, chorusRate, "Chorus rate", logRange (chorusRateMinHz, chorusRateMaxHz), chorusRateDefaultHz,
+              "Hz", [] (float v) { return juce::String (v, 2) + " Hz"; });
+    addPercent (layout, chorusDepth, "Chorus depth", 0.0f, 100.0f, 50.0f, versionHintM5);
+    addPercent (layout, chorusMix, "Chorus mix", 0.0f, 100.0f, 50.0f, versionHintM5);
+
+    addPresence (layout, delayEnabled, "Delay present", versionHintM5);
+    addValue (layout, delayTime, "Delay time", logRange (delayTimeMinMs, delayTimeMaxMs), delayTimeDefaultMs,
+              "ms", [] (float v) { return timeText (v * 0.001f); });
+    addToggle (layout, delaySync, "Delay tempo sync", false, true);
+    addChoice (layout, delayDivision, "Delay division", tempoDivisionNames(), tempoDivisionDefault, versionHintM5, true);
+    addPercent (layout, delayFeedback, "Delay feedback", 0.0f, 95.0f, 40.0f, versionHintM5);
+    addToggle (layout, delayPingPong, "Delay ping-pong", false, true);
+    addPercent (layout, delayMix, "Delay mix", 0.0f, 100.0f, 35.0f, versionHintM5);
+
+    addPresence (layout, reverbEnabled, "Reverb present", versionHintM5);
+    addPercent (layout, reverbSize, "Reverb size", 0.0f, 100.0f, 50.0f, versionHintM5);
+    addValue (layout, reverbDecay, "Reverb decay", logRange (reverbDecayMinSeconds, reverbDecayMaxSeconds), reverbDecayDefaultSeconds,
+              "s", [] (float v) { return timeText (v); });
+    addPercent (layout, reverbDamping, "Reverb damping", 0.0f, 100.0f, 50.0f, versionHintM5);
+    addPercent (layout, reverbMix, "Reverb mix", 0.0f, 100.0f, 30.0f, versionHintM5);
 
     // Modulation connections: eight fixed slots.
     for (int i = 0; i < numModSlots; ++i)
@@ -237,7 +325,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     for (int i = 0; i < numBypassable; ++i)
     {
         const juce::String key = bypassKeys[(size_t) i];
-        layout.add (std::make_unique<AudioParameterBool> (ParameterID { key + ".bypass", versionHintM4 }, key + " bypass", false,
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { key + ".bypass", i >= numBypassable - numEffectKinds ? versionHintM5 : versionHintM4 },
+                                                          key + " bypass", false,
                                                           AudioParameterBoolAttributes().withAutomatable (false)));
     }
 

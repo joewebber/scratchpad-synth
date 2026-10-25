@@ -3,6 +3,7 @@
 #include "plugin/Parameters.h"
 #include "plugin/Suggestion.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace scratchpad::ui
@@ -20,8 +21,9 @@ namespace
     constexpr int panelGap = 10;
     constexpr int titleRowTop = 10, titleRowHeight = 22;
     constexpr int wellTop = 36;
-    constexpr int wellBottomMargin = 8;
-    constexpr int perVoiceCaptionTop = 6, perVoiceCaptionHeight = 14;
+    constexpr int wellBottomMargin = 6;
+    constexpr int perVoiceCaptionTop = 3, perVoiceCaptionHeight = 14;
+    constexpr int cardsOffset = perVoiceCaptionTop + perVoiceCaptionHeight + 1; // the cards start this far under the well's top
     constexpr int stripPad = 8, stripSidePad = 12, stripGap = 10;
 
     constexpr int sourcesWidth = OscillatorCard::width;
@@ -31,6 +33,13 @@ namespace
     constexpr int rowWidth = wellWidth + chevronWidth + OutputCard::width;
 
     constexpr int stripHeight = LfoCard::height + 2 * stripPad;
+
+    // The effects row under the well: a caption, then four equal places as wide as an effect card.
+    constexpr int effectGap = 6;
+    constexpr int effectsGapAbove = 2, effectsCaptionHeight = 14, effectsBottomMargin = 6;
+    constexpr int effectsBlock = effectsGapAbove + effectsCaptionHeight + EffectCard::height + effectsBottomMargin;
+    constexpr int effectWidth = (rowWidth - 3 * effectGap) / engine::numEffects;
+    static_assert (effectWidth == EffectCard::width, "the four effect places are as wide as an effect card");
 
     void drawChevron (juce::Graphics& g, const Palette& p, juce::Rectangle<int> link)
     {
@@ -62,6 +71,10 @@ namespace
             case Module::filterEnv: return params::filterEnv.enabled;
             case Module::lfo1:      return params::lfo[0].enabled;
             case Module::lfo2:      return params::lfo[1].enabled;
+            case Module::distortion: return params::distortionEnabled;
+            case Module::chorus:     return params::chorusEnabled;
+            case Module::delay:      return params::delayEnabled;
+            case Module::reverb:     return params::reverbEnabled;
         }
         return params::osc[1].enabled;
     }
@@ -114,7 +127,13 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
       filterEnvSlot ("Add Filter Envelope", "Filter Env", SlotButton::Style::slot, "Open and close the filter over each note"),
       ampEnvSlot ("Add Amp Envelope", "Amp Env", SlotButton::Style::slot, "Shape how each note starts and ends"),
       lfo1Slot ("Add LFO 1", "LFO 1", SlotButton::Style::slot, "A slow wobble for vibrato and sweeps"),
-      lfo2Slot ("Add LFO 2", "LFO 2", SlotButton::Style::slot, "A second, independent wobble")
+      lfo2Slot ("Add LFO 2", "LFO 2", SlotButton::Style::slot, "A second, independent wobble"),
+      effectSlotStorage {{
+          { "Add Distortion", "Distortion", SlotButton::Style::slot, "Crunch and grit: squash the wave" },
+          { "Add Chorus", "Chorus", SlotButton::Style::slot, "Thicken the sound with a slow swirl" },
+          { "Add Delay", "Delay", SlotButton::Style::slot, "Echoes that repeat and fade away" },
+          { "Add Reverb", "Reverb", SlotButton::Style::slot, "The sound of a room or a hall" }
+      }}
 {
     setTitle ("Signal chain");
     setPaintingIsUnclipped (true);
@@ -128,6 +147,8 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     addButton.getProperties().set ("explainId", "control.addModule");
     for (auto* slot : { &osc2Slot, &osc3Slot, &noiseSlot, &filterSlot, &filterEnvSlot, &ampEnvSlot, &lfo1Slot, &lfo2Slot })
         slot->getProperties().set ("explainId", "control.addModule");
+    for (auto& slot : effectSlotStorage)
+        slot.getProperties().set ("explainId", "control.addModule");
 
     const struct { SlotButton* slot; Module which; } slots[] = {
         { &osc2Slot, Module::osc2 }, { &osc3Slot, Module::osc3 }, { &noiseSlot, Module::noise },
@@ -141,6 +162,13 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
         addChildComponent (*s.slot);
     }
 
+    for (size_t i = 0; i < effectSlotStorage.size(); ++i)
+    {
+        const auto which = effectModule ((engine::EffectKind) i);
+        effectSlotStorage[i].onClick = [this, which] { processor.addModule (which); };
+        addChildComponent (effectSlotStorage[i]);
+    }
+
     for (auto* c : std::initializer_list<juce::Component*> { &osc1Card, &osc2Card, &osc3Card, &noiseCard, &filterCard,
                                                               &filterEnvCard, &ampCard, &ampEnvCard, &voicingCard, &outputCard,
                                                               &lfo1Card, &lfo2Card })
@@ -151,6 +179,26 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     voicingCard.setVisible (true);
     outputCard.setVisible (true);
 
+    // Effect cards and the oscillators' drawers come before the overlay, so it stays on top.
+    for (auto& card : effectCardStorage)
+    {
+        addChildComponent (card);
+
+        const auto kind = card.getKind();
+        auto& grip = card.getGrip();
+        grip.onDragStart = [this, kind] (const juce::MouseEvent& e) { beginEffectDrag (kind, e); };
+        grip.onDragMove = [this] (const juce::MouseEvent& e) { dragEffect (e); };
+        grip.onDragEnd = [this] (const juce::MouseEvent&) { endEffectDrag(); };
+        grip.onNudge = [this, kind] (int direction) { nudgeEffect (kind, direction); };
+    }
+
+    for (auto* extras : { &osc1Extras, &osc2Extras, &osc3Extras })
+        addChildComponent (extras);
+
+    osc1Card.onMoreClicked = [this] { toggleExtras (0); };
+    osc2Card.onMoreClicked = [this] { toggleExtras (1); };
+    osc3Card.onMoreClicked = [this] { toggleExtras (2); };
+
     addAndMakeVisible (addButton);
     addAndMakeVisible (sourcesPanel);
     addAndMakeVisible (connectionsPanel);
@@ -160,12 +208,15 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
         presenceWatchers[i] = std::make_unique<juce::ParameterAttachment> (
             *p.apvts.getParameter (presenceId (plugin::allModules[i])), [this] (float) { refreshModules(); });
 
+    processor.getEffectsBroadcaster().addChangeListener (this);
+
     model.addListener (this);
     refreshModules();
 }
 
 PatchView::~PatchView()
 {
+    processor.getEffectsBroadcaster().removeChangeListener (this);
     model.removeListener (this);
 }
 
@@ -217,7 +268,8 @@ void PatchView::showAddMenu()
     const struct { const char* heading; std::initializer_list<Module> modules; } groups[] = {
         { "Sources", { Module::osc2, Module::osc3, Module::noise } },
         { "Shape", { Module::filter, Module::ampEnv, Module::filterEnv } },
-        { "Movement", { Module::lfo1, Module::lfo2 } }
+        { "Movement", { Module::lfo1, Module::lfo2 } },
+        { "Effects", { Module::distortion, Module::chorus, Module::delay, Module::reverb } }
     };
 
     for (const auto& group : groups)
@@ -275,12 +327,21 @@ void PatchView::refreshModules()
     lfo2Card.setVisible (hasLfo2);
     lfo2Slot.setVisible (! hasLfo2);
 
+    for (int i = 0; i < engine::numEffects; ++i)
+    {
+        const bool isPresent = present (effectModule ((engine::EffectKind) i));
+        effectCardStorage[(size_t) i].setVisible (isPresent);
+        effectSlotStorage[(size_t) i].setVisible (! isPresent);
+    }
+
     // The palette's advice: the dashed slot of the suggested module, if it has one on screen.
     const auto suggestion = plugin::suggestNext (presence());
     const struct { SlotButton* slot; Module which; } suggestable[] = {
         { &osc2Slot, Module::osc2 }, { &osc3Slot, Module::osc3 }, { &noiseSlot, Module::noise },
         { &filterSlot, Module::filter }, { &filterEnvSlot, Module::filterEnv }, { &ampEnvSlot, Module::ampEnv },
-        { &lfo1Slot, Module::lfo1 }, { &lfo2Slot, Module::lfo2 }
+        { &lfo1Slot, Module::lfo1 }, { &lfo2Slot, Module::lfo2 },
+        { &effectSlotStorage[0], Module::distortion }, { &effectSlotStorage[1], Module::chorus },
+        { &effectSlotStorage[2], Module::delay }, { &effectSlotStorage[3], Module::reverb }
     };
     for (const auto& s : suggestable)
         s.slot->setSuggested (suggestion && suggestion->module == s.which, suggestion ? suggestion->reason : "");
@@ -296,6 +357,7 @@ void PatchView::refreshModules()
         everything = everything && present (m);
     addButton.setEnabled (! everything);
 
+    refreshExtras();
     resized();
 
     // Panels paint their shadows outside their bounds; clear what a removed card left behind.
@@ -308,6 +370,144 @@ void PatchView::refreshModules()
         if (auto* editor = findParentComponentOfClass<juce::AudioProcessorEditor>())
             if (editor->isShowing())
                 editor->grabKeyboardFocus();
+}
+
+void PatchView::refreshExtras()
+{
+    // A drawer belongs to its oscillator: it goes when the oscillator does.
+    if ((openExtras == 1 && ! present (Module::osc2)) || (openExtras == 2 && ! present (Module::osc3)))
+        openExtras = -1;
+
+    OscillatorCard* const cards[] = { &osc1Card, &osc2Card, &osc3Card };
+    OscillatorExtras* const extras[] = { &osc1Extras, &osc2Extras, &osc3Extras };
+
+    for (int i = 0; i < 3; ++i)
+    {
+        cards[i]->setMoreOpen (openExtras == i);
+        extras[i]->setVisible (openExtras == i);
+    }
+}
+
+void PatchView::toggleExtras (int oscillator)
+{
+    openExtras = openExtras == oscillator ? -1 : oscillator;
+    refreshExtras();
+    resized();
+
+    // The drawer's shadow reaches outside its bounds.
+    repaint();
+}
+
+//==============================================================================
+void PatchView::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    // The processor's effect order changed (a move, undo, a loaded session or a new patch).
+    resized();
+    repaint();
+}
+
+PatchView::EffectSlots PatchView::effectSlots() const
+{
+    EffectSlots result;
+
+    for (const auto kind : processor.getEffectOrder())
+    {
+        if (present (effectModule (kind)))
+            result.present[(size_t) result.numPresent++] = kind;
+        else
+            result.absent[(size_t) result.numAbsent++] = kind;
+    }
+
+    return result;
+}
+
+juce::Rectangle<int> PatchView::effectPlace (int index) const
+{
+    return { effectsRow.getX() + index * (effectWidth + effectGap), effectsRow.getY(), effectWidth, EffectCard::height };
+}
+
+int PatchView::effectIndexAt (int x) const
+{
+    return juce::jlimit (0, engine::numEffects - 1, (x - effectsRow.getX()) / (effectWidth + effectGap));
+}
+
+void PatchView::beginEffectDrag (engine::EffectKind kind, const juce::MouseEvent& e)
+{
+    const auto slots = effectSlots();
+
+    for (int i = 0; i < slots.numPresent; ++i)
+    {
+        if (slots.present[(size_t) i] != kind)
+            continue;
+
+        auto& card = effectCard (kind);
+        effectDrag = { true, kind, i, i, e.getEventRelativeTo (this).x - card.getX() };
+        card.toBehind (&overlay); // above the other cards, below the overlay
+        repaint (effectsRow.expanded (12));
+        return;
+    }
+}
+
+void PatchView::dragEffect (const juce::MouseEvent& e)
+{
+    if (! effectDrag.active)
+        return;
+
+    const auto slots = effectSlots();
+    auto& card = effectCard (effectDrag.kind);
+    const int x = juce::jlimit (effectsRow.getX(), effectsRow.getRight() - card.getWidth(),
+                                e.getEventRelativeTo (this).x - effectDrag.grabOffset);
+
+    card.setTopLeftPosition (x, effectsRow.getY());
+    effectDrag.to = juce::jlimit (0, juce::jmax (0, slots.numPresent - 1), effectIndexAt (x + card.getWidth() / 2));
+    repaint (effectsRow.expanded (12));
+}
+
+void PatchView::endEffectDrag()
+{
+    if (! effectDrag.active)
+        return;
+
+    const auto drag = effectDrag;
+    effectDrag = {};
+
+    const auto slots = effectSlots();
+    if (drag.to != drag.from && drag.to < slots.numPresent && slots.present[(size_t) drag.from] == drag.kind)
+        moveEffectTo (drag.kind, drag.to);
+
+    // Either the processor's new order, or back where it was.
+    resized();
+    repaint();
+}
+
+void PatchView::moveEffectTo (engine::EffectKind kind, int destinationIndex)
+{
+    const auto slots = effectSlots();
+    const auto order = processor.getEffectOrder();
+
+    // `moveEffect` speaks in positions of the full four-entry order, which includes effects that are not in the patch.
+    const auto positionOf = [&order] (engine::EffectKind k) { return (int) (std::find (order.begin(), order.end(), k) - order.begin()); };
+    processor.moveEffect (positionOf (kind), positionOf (slots.present[(size_t) destinationIndex]));
+}
+
+void PatchView::nudgeEffect (engine::EffectKind kind, int direction)
+{
+    const auto slots = effectSlots();
+
+    for (int i = 0; i < slots.numPresent; ++i)
+    {
+        if (slots.present[(size_t) i] != kind)
+            continue;
+
+        const int target = i + direction;
+        if (target >= 0 && target < slots.numPresent)
+        {
+            moveEffectTo (kind, target);
+            resized();
+            repaint();
+        }
+        return;
+    }
 }
 
 //==============================================================================
@@ -362,6 +562,27 @@ void PatchView::paint (juce::Graphics& g)
 
     for (const auto& c : chevrons)
         drawChevron (g, p, c);
+
+    // The effects row: what it is, and where a dragged effect would land.
+    {
+        auto row = effectsCaption.toFloat();
+        auto captionFont = uiFont (11.0f);
+        captionFont.setExtraKerningFactor (0.14f);
+        drawCaption (g, "Effects", row.removeFromLeft (textWidth (captionFont, "EFFECTS") + 14.0f), p.ink2);
+        g.setColour (p.mute);
+        g.setFont (uiFont (11.0f));
+        g.drawText ("Global: the voices are mixed first, then pass through these from left to right. Drag a grip to change the order.",
+                    row, juce::Justification::centredLeft, true);
+    }
+
+    if (effectDrag.active && effectDrag.to != effectDrag.from)
+    {
+        const auto target = effectPlace (effectDrag.to);
+        const float x = effectDrag.to > effectDrag.from ? (float) target.getRight() + (float) effectGap * 0.5f
+                                                        : (float) target.getX() - (float) effectGap * 0.5f;
+        g.setColour (p.accent);
+        g.fillRoundedRectangle (x - 2.0f, (float) target.getY() - 4.0f, 4.0f, (float) target.getHeight() + 8.0f, 2.0f);
+    }
 }
 
 void PatchView::resized()
@@ -384,8 +605,8 @@ void PatchView::resized()
 
     // The row of stages, centred in the panel.
     const int x0 = panelPad + (getWidth() - 2 * panelPad - rowWidth) / 2;
-    well = { x0, wellTop, wellWidth, chainHeight - wellTop - wellBottomMargin };
-    const int cardsTop = well.getY() + perVoiceCaptionTop + perVoiceCaptionHeight + 4;
+    well = { x0, wellTop, wellWidth, chainHeight - wellTop - effectsBlock };
+    const int cardsTop = well.getY() + cardsOffset;
 
     // Sources: the cards that are present, then one row of dashed chips for the ones that are not.
     const int sourcesX = well.getX() + wellPad;
@@ -450,6 +671,24 @@ void PatchView::resized()
     chevrons[0] = { sourcesX + sourcesWidth, chevronY, chevronWidth, 20 };
     chevrons[1] = { filterX + filterWidth, chevronY, chevronWidth, 20 };
     chevrons[2] = { well.getRight(), chevronY, chevronWidth, 20 };
+
+    // An open drawer sits just under its oscillator's card.
+    const struct { OscillatorCard* card; OscillatorExtras* extras; } drawers[] = {
+        { &osc1Card, &osc1Extras }, { &osc2Card, &osc2Extras }, { &osc3Card, &osc3Extras }
+    };
+    for (const auto& d : drawers)
+        d.extras->setBounds (d.card->getX(), d.card->getBottom() + 2, OscillatorExtras::width, OscillatorExtras::height);
+
+    // The effects row: present effects take the places from the left, the dashed slots of the others follow.
+    effectsCaption = { x0, well.getBottom() + effectsGapAbove, rowWidth, effectsCaptionHeight };
+    effectsRow = { x0, effectsCaption.getBottom(), rowWidth, EffectCard::height };
+
+    const auto slots = effectSlots();
+    for (int i = 0; i < slots.numPresent; ++i)
+        if (! (effectDrag.active && effectDrag.kind == slots.present[(size_t) i])) // a card being dragged stays under the pointer
+            effectCard (slots.present[(size_t) i]).setBounds (effectPlace (i));
+    for (int i = 0; i < slots.numAbsent; ++i)
+        effectSlot (slots.absent[(size_t) i]).setBounds (effectPlace (slots.numPresent + i));
 
     // Modulation strip: LFO 1, LFO 2, the other sources, then the eight slots.
     int x = stripPanel.getX() + stripSidePad;

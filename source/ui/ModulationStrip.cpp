@@ -188,10 +188,15 @@ LfoCard::LfoCard (plugin::ScratchpadProcessor& p, ModulationModel& m, int lfoInd
       shape (p.apvts, params::lfo[(size_t) lfoIndex].shape, "LFO " + juce::String (lfoIndex + 1) + " shape", p.undoManager, &Palette::mod),
       retrigger (p.apvts, params::lfo[(size_t) lfoIndex].retrigger, "Retrigger",
                  "LFO " + juce::String (lfoIndex + 1) + " retrigger on note", p.undoManager, &Palette::modInk),
+      sync (p.apvts, params::lfo[(size_t) lfoIndex].sync, "Sync",
+            "LFO " + juce::String (lfoIndex + 1) + " tempo sync", p.undoManager, &Palette::modInk),
       rate (p.apvts, params::lfo[(size_t) lfoIndex].rate, "Rate", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " rate"),
+      division (p.apvts, params::lfo[(size_t) lfoIndex].division, "Beat", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " note length"),
       fade (p.apvts, params::lfo[(size_t) lfoIndex].fade, "Fade-in", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " fade-in"),
       shapeWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].shape),
-                    [this] (float v) { shapeIndex = juce::jlimit (0, dsp::numLfoShapes - 1, (int) std::lround (v)); repaint (vizWell); })
+                    [this] (float v) { shapeIndex = juce::jlimit (0, dsp::numLfoShapes - 1, (int) std::lround (v)); repaint (vizWell); }),
+      syncWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].sync), [this] (float) { refreshSync(); }),
+      divisionWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].division), [this] (float) { refreshSync(); })
 {
     const auto name = "LFO " + juce::String (index + 1);
     setTitle (name);
@@ -201,12 +206,13 @@ LfoCard::LfoCard (plugin::ScratchpadProcessor& p, ModulationModel& m, int lfoInd
     shape.setGlyphs (shapeGlyphs());
     rate.setModulation (model, { engine::lfoRateDest ((size_t) index) });
 
-    for (auto* c : std::initializer_list<juce::Component*> { &handle, &shape, &retrigger, &rate, &fade })
+    for (auto* c : std::initializer_list<juce::Component*> { &handle, &shape, &retrigger, &sync, &rate, &division, &fade })
         addAndMakeVisible (c);
 
     model.addListener (this);
     applyColours();
     shapeWatcher.sendInitialUpdate();
+    refreshSync();
 }
 
 LfoCard::~LfoCard()
@@ -218,6 +224,7 @@ void LfoCard::applyColours()
 {
     const auto ink = paletteOf (*this).modInk;
     rate.setFamilyColour (ink);
+    division.setFamilyColour (ink);
     fade.setFamilyColour (ink);
 }
 
@@ -226,26 +233,61 @@ void LfoCard::lookAndFeelChanged()
     applyColours();
 }
 
+// With Sync on, the note length sets the speed and the Rate knob steps back (it stays where it was, dimmed).
+void LfoCard::refreshSync()
+{
+    // The parameters' own values: a listener runs before the cached atomics are updated.
+    auto& apvts = model.getProcessor().apvts;
+    const auto read = [&apvts] (const char* id)
+    {
+        auto* param = apvts.getParameter (id);
+        return param->convertFrom0to1 (param->getValue());
+    };
+
+    const auto& ids = params::lfo[(size_t) index];
+    synced = read (ids.sync) > 0.5f;
+    divisionIndex = (int) std::lround (read (ids.division));
+
+    rate.setEnabled (! synced);
+    division.setEnabled (synced);
+    shownHz = -1.0f;
+    repaint (vizWell.expanded (4));
+}
+
 void LfoCard::resized()
 {
-    constexpr int left = 8, leftWidth = 136, top = 4;
+    constexpr int left = 8, leftWidth = 116, top = 4;
 
     headerRow = { left, top, width - 2 * left, SourceHandle::diameter };
     handle.setBounds (left, top, SourceHandle::diameter, SourceHandle::diameter);
     placeRemoveButton (headerRow);
+    sync.setBounds (88, top + 3, 62, 20);
 
     vizWell = { left, 34, leftWidth, 30 };
     shape.setBounds (left, 68, leftWidth, 22);
     retrigger.setBounds (left, 94, leftWidth, 18);
 
-    rate.setBounds (152, 34, Knob::knobWidth, Knob::knobHeight);
-    fade.setBounds (214, 34, Knob::knobWidth, Knob::knobHeight);
+    rate.setBounds (130, 34, Knob::knobWidth, Knob::knobHeight);
+    division.setBounds (182, 34, Knob::knobWidth, Knob::knobHeight);
+    fade.setBounds (234, 34, Knob::knobWidth, Knob::knobHeight);
 }
 
 void LfoCard::liveUpdated()
 {
     if (! isVisible())
         return;
+
+    // A synced LFO's speed follows the host tempo, which can move while it plays.
+    if (synced)
+    {
+        const float hz = params::lfoSyncRateHz (model.getProcessor().getBpm(), divisionIndex);
+
+        if (std::abs (hz - shownHz) > 0.001f)
+        {
+            shownHz = hz;
+            repaint (vizWell.expanded (4));
+        }
+    }
 
     const float phase = (float) model.liveLfoPhase (index);
 
@@ -304,6 +346,21 @@ void LfoCard::paint (juce::Graphics& g)
         const float dotX = area.getX() + (float) x * area.getWidth();
         g.setColour (p.ink);
         g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ dotX, dotY }));
+    }
+
+    // The speed the tempo gives this LFO, while it is synced.
+    if (synced)
+    {
+        const float hz = params::lfoSyncRateHz (model.getProcessor().getBpm(), divisionIndex);
+        const auto label = juce::String (hz, hz < 10.0f ? 2 : 1) + " Hz";
+        const auto font = uiFont (11.0f);
+        const auto tag = juce::Rectangle<float> (textWidth (font, label) + 8.0f, 13.0f)
+                             .withRightX (vizWell.toFloat().getRight() - 3.0f).withY ((float) vizWell.getY() + 2.0f);
+        g.setColour (p.well.withAlpha (0.85f));
+        g.fillRoundedRectangle (tag, 4.0f);
+        g.setColour (p.ink2);
+        g.setFont (font);
+        g.drawText (label, tag, juce::Justification::centred, false);
     }
 }
 

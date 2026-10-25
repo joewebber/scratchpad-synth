@@ -16,6 +16,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace scratchpad::ui
 {
@@ -68,8 +69,34 @@ private:
     std::vector<std::unique_ptr<juce::ParameterAttachment>> stateWatchers;
 };
 
+/** The small chevron on an oscillator card that opens its extras (unison, anti-aliasing, sync, and ring and FM on
+    Oscillator 1). A dot marks a card whose extras are doing something: calm for unison, sync, ring or FM, in the
+    accent colour when anti-aliasing is off. */
+class MoreButton final : public juce::Button
+{
+public:
+    enum class Marker { none, inUse, warning };
+
+    explicit MoreButton (const juce::String& oscillatorName);
+
+    void setOpen (bool shouldBeOpen);
+    void setMarker (Marker);
+    bool isOpen() const noexcept { return open; }
+
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    void refreshTitle();
+
+    juce::String name;
+    bool open = false;
+    Marker marker = Marker::none;
+};
+
 /** Oscillator 1 to 3: wave well, wave selector, phase reset, and knobs for
-    octave, semitone, fine, level and (for the pulse wave only) pulse width. */
+    octave, semitone, fine, level and (for the pulse wave only) pulse width. A chevron beside the
+    phase reset switch opens the oscillator's extras, which PatchView lays out as a drawer under the card
+    (see `OscillatorExtras`); with anti-aliasing off the wave well wears an accent outline and an "AA off" tag. */
 class OscillatorCard final : public ModuleCard
 {
 public:
@@ -79,20 +106,66 @@ public:
     void resized() override;
     void lookAndFeelChanged() override;
 
+    /** Called when the chevron is pressed. The owner decides what opens; it tells the card with `setMoreOpen`. */
+    std::function<void()> onMoreClicked;
+    void setMoreOpen (bool isOpen) { moreButton.setOpen (isOpen); }
+
     static constexpr int width = 448, height = 82;
 
 private:
     void applyColours();
     void setWave (int newWave);
+    void refreshExtras();
+    float raw (const char* id) const;
 
     const int index;
+    plugin::ScratchpadProcessor& processor;
     ChoiceSegments waveSelector;
     ToggleChip phaseReset;
     Knob octave, semitone, fine, level, pulseWidth;
+    MoreButton moreButton;
     juce::ParameterAttachment waveWatcher;
+    std::vector<std::unique_ptr<juce::ParameterAttachment>> extrasWatchers;
     int wave = 2;
+    bool aliasingOff = false;
 
     juce::Rectangle<int> waveWell, headerRow;
+};
+
+/** What an oscillator has behind its chevron: unison (copies, detune, spread) and the anti-aliasing switch on all
+    three, hard sync on Oscillators 2 and 3, and on Oscillator 1 the things it does to the others: ring
+    modulation level, FM amount and FM target. It acts on Oscillator 2 or 3, so those controls dim (and say
+    why in the line at the bottom) while the oscillators they need are not in the patch. PatchView shows it as
+    a drawer over the cards below its oscillator. */
+class OscillatorExtras final : public ModuleCard
+{
+public:
+    OscillatorExtras (plugin::ScratchpadProcessor&, int oscillatorIndex);
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void lookAndFeelChanged() override;
+
+    static constexpr int width = OscillatorCard::width, height = 100;
+
+private:
+    void applyColours();
+    void watch (const char* id);
+    void refreshState();
+    float raw (const char* id) const;
+
+    plugin::ScratchpadProcessor& processor;
+    const int index;
+    Knob unison, detune, spread;
+    ToggleChip antiAlias;
+    std::unique_ptr<ToggleChip> sync;            // Oscillators 2 and 3
+    std::unique_ptr<Knob> ring, fm;              // Oscillator 1
+    std::unique_ptr<ChoiceSegments> fmTarget;    // Oscillator 1
+    std::vector<std::unique_ptr<juce::ParameterAttachment>> watchers;
+
+    juce::String status;
+    bool statusIsWarning = false;
+    juce::Rectangle<int> statusArea;
 };
 
 class NoiseCard final : public ModuleCard

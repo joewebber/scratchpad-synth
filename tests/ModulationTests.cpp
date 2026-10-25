@@ -17,6 +17,17 @@ namespace
 {
     constexpr double pi = 3.14159265358979323846;
 
+    /** Oscillator 1 as a sine at -6 dB: half scale, well clear of the output limiter's knee, so what is
+        measured is the modulation and not the limiter. */
+    constexpr float quietScale = 0.5011872f;
+
+    EngineParams quietSine()
+    {
+        auto p = sineParams();
+        p.osc[0].levelDb = -6.0f;
+        return p;
+    }
+
     EngineParams withConnection (EngineParams p, size_t slot, ModSource source, ModDest dest, float amount)
     {
         p.mod[slot] = { source, dest, amount };
@@ -236,7 +247,7 @@ TEST_CASE ("The mod wheel pans a note: balance, not a level change at the centre
 {
     const auto levels = [] (float amount, juce::uint8 wheel)
     {
-        Rig rig (withConnection (sineParams(), 0, ModSource::modWheel, ModDest::pan, amount));
+        Rig rig (withConnection (quietSine(), 0, ModSource::modWheel, ModDest::pan, amount));
         rig.midi (juce::MidiMessage::controllerEvent (1, 1, wheel));
         rig.noteOn (69);
         rig.runStereo (9600);
@@ -246,7 +257,7 @@ TEST_CASE ("The mod wheel pans a note: balance, not a level change at the centre
 
     const auto centre = levels (1.0f, 0);
     REQUIRE (centre.first == Approx (centre.second).epsilon (0.001));
-    REQUIRE (centre.first == Approx (0.7071f).epsilon (0.01)); // a full-scale sine
+    REQUIRE (centre.first == Approx (0.7071f * quietScale).epsilon (0.01)); // a half-scale sine
 
     const auto right = levels (1.0f, 127);
     REQUIRE (right.first < 0.001f);
@@ -277,13 +288,13 @@ TEST_CASE ("Velocity on amp level at -100% silences a hard note and halves a med
 {
     const auto level = [] (juce::uint8 velocity)
     {
-        Rig rig (withConnection (sineParams(), 0, ModSource::velocity, ModDest::ampLevel, -1.0f));
+        Rig rig (withConnection (quietSine(), 0, ModSource::velocity, ModDest::ampLevel, -1.0f));
         rig.noteOn (69, velocity);
         rig.run (9600);
         return rms (rig.run (4800), 0, 4800);
     };
 
-    const double unmodulated = 0.7071;
+    const double unmodulated = 0.7071 * quietScale;
     REQUIRE (level (127) < 0.001);
     REQUIRE (level (64) == Approx (unmodulated * (1.0 - 64.0 / 127.0)).epsilon (0.02));
     REQUIRE (level (1) == Approx (unmodulated).epsilon (0.02));
@@ -312,7 +323,7 @@ TEST_CASE ("A pulse-width connection moves the duty cycle", "[modulation][pulse]
 {
     const auto mean = [] (juce::uint8 wheel)
     {
-        auto p = sineParams();
+        auto p = quietSine();
         p.osc[0].wave = dsp::Wave::pulse;
         p.osc[0].pulseWidth = 0.5f;
         Rig rig (withConnection (p, 0, ModSource::modWheel, ModDest::pulseWidth1, 1.0f));
@@ -327,8 +338,8 @@ TEST_CASE ("A pulse-width connection moves the duty cycle", "[modulation][pulse]
         return std::abs (sum / (double) x.size());
     };
 
-    REQUIRE (mean (0) < 0.05);
-    REQUIRE (mean (127) > 0.8); // width 0.5 + 0.45: 2 * 0.95 - 1 = 0.9
+    REQUIRE (mean (0) < 0.05 * quietScale);
+    REQUIRE (mean (127) > 0.8 * quietScale); // width 0.5 + 0.45: 2 * 0.95 - 1 = 0.9
 }
 
 TEST_CASE ("Velocity opens the filter: +100% on cutoff is six octaves", "[modulation][filter]")

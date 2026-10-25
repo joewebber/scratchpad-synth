@@ -237,8 +237,8 @@ juce::String Scope::captionText() const
 {
     static const char* where[] = { "right after the oscillators and noise, before anything shapes them",
                                    "after the filter, before the amp",
-                                   "after the amp: this is the level that reaches the output",
-                                   "after the effects. There are none yet, so it matches the amp" };
+                                   "after the amp, before any effects",
+                                   "after the effects and the safety limiter: this is what reaches the output" };
 
     if (! hasSignal)
         return "Hold a key to see " + juce::String (where[(int) tap]) + ".";

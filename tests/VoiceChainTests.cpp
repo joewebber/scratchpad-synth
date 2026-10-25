@@ -124,7 +124,10 @@ TEST_CASE ("Phase reset restarts the cycle on every note; without it the phase r
 {
     auto twoNotes = [] (bool phaseReset)
     {
+        // -12 dB: a full-scale sine touches the safety limiter's knee, whose release state would differ
+        // between the two notes and show up as a difference that has nothing to do with the phase.
         auto p = sineParams();
+        p.osc[0].levelDb = -12.0f;
         p.osc[0].phaseReset = phaseReset;
         Rig rig (p);
 
@@ -157,25 +160,30 @@ TEST_CASE ("Phase reset restarts the cycle on every note; without it the phase r
 
 TEST_CASE ("Noise sounds on its own, at its level, and pink leans towards the low end", "[chain][noise]")
 {
+    // At -12 dB, so the peaks of the noise stay clear of the output limiter's knee; measurements are
+    // divided by that gain to compare with the full-level figures.
+    constexpr double noiseGain = 0.25118864;
+
     auto noiseOnly = [] (bool pink)
     {
         auto p = silentParams();
         p.noise.enabled = true;
         p.noise.pink = pink;
-        p.noise.levelDb = 0.0f;
+        p.noise.levelDb = -12.0f;
         return p;
     };
 
     auto lowOverHigh = [] (const std::vector<float>& x) { return bandLevel (x, 50.0, 500.0) / bandLevel (x, 8000.0, 20000.0); };
+    auto level = [] (const std::vector<float>& x) { return rms (x, 0, x.size()) / noiseGain; };
 
     const auto white = settled (noiseOnly (false), 60);
     const auto pink = settled (noiseOnly (true), 60);
 
     // Uniform noise in [-1, 1) has an RMS of 0.577; pink is scaled to match.
-    REQUIRE (rms (white, 0, white.size()) > 0.5);
-    REQUIRE (rms (white, 0, white.size()) < 0.65);
-    REQUIRE (rms (pink, 0, pink.size()) > 0.4);
-    REQUIRE (rms (pink, 0, pink.size()) < 0.75);
+    REQUIRE (level (white) > 0.5);
+    REQUIRE (level (white) < 0.65);
+    REQUIRE (level (pink) > 0.4);
+    REQUIRE (level (pink) < 0.75);
 
     REQUIRE (lowOverHigh (pink) > 4.0 * lowOverHigh (white));
 
@@ -405,16 +413,21 @@ TEST_CASE ("The amp envelope shapes the note", "[chain][envelope]")
 
 TEST_CASE ("Velocity scales the note by the amp envelope's velocity sensitivity", "[chain][envelope]")
 {
+    // At -6 dB, so a full-velocity note stays clear of the output limiter's knee; the peak is divided by
+    // that gain to compare with the figures for a full-scale note.
+    constexpr float gain = 0.5011872f;
+
     auto level = [] (float sensitivity, juce::uint8 velocity, bool envelope)
     {
         auto p = envelopeParams (0.001f, 0.1f, 1.0f, 0.1f);
+        p.osc[0].levelDb = -6.0f;
         p.ampEnv.velocitySensitivity = sensitivity;
         p.ampEnv.enabled = envelope;
 
         Rig rig (p);
         rig.noteOn (69, velocity);
         rig.run (4800);
-        return peak (rig.run (4800));
+        return peak (rig.run (4800)) / gain;
     };
 
     const float soft = 64.0f / 127.0f;

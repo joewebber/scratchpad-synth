@@ -38,6 +38,127 @@ namespace
         return 1200.0f * (float) o.octave + 100.0f * (float) o.semitone + o.fineCents;
     }
 
+    juce::String unisonWord (int n)
+    {
+        static const char* words[] = { "one", "two", "three", "four", "five", "six", "seven" };
+        return words[juce::jlimit (0, 6, n - 1)];
+    }
+
+    /** Unison, hard sync, ring modulation, FM and the anti-aliasing switch, each only when it changes the sound. */
+    juce::String oscillatorExtras (const engine::EngineParams& p)
+    {
+        const auto audible = [&] (size_t i) { return p.osc[i].enabled && p.osc[i].levelDb > engine::minLevelDb; };
+        const auto oscName = [] (size_t i) { return "Osc " + juce::String ((int) i + 1); };
+
+        int audibleCount = 0, unisonCount = 0, copies = 0;
+        bool sameCopies = true, spread = false, antiAliasOff = false;
+
+        for (size_t i = 0; i < p.osc.size(); ++i)
+        {
+            if (! audible (i))
+                continue;
+
+            ++audibleCount;
+            antiAliasOff = antiAliasOff || ! p.osc[i].antiAlias;
+
+            if (p.osc[i].unison > 1)
+            {
+                ++unisonCount;
+                spread = spread || p.osc[i].unisonDetuneCents >= 1.0f;
+                sameCopies = sameCopies && (copies == 0 || copies == p.osc[i].unison);
+                copies = p.osc[i].unison;
+            }
+        }
+
+        juce::String text;
+
+        if (unisonCount > 0)
+        {
+            const auto kind = spread ? " detuned copies" : " identical copies";
+
+            if (unisonCount == audibleCount && sameCopies)
+                text += juce::String (audibleCount > 1 ? ", each played as " : ", played as ") + unisonWord (copies) + kind;
+            else
+                text += ", some of it played as several" + juce::String (kind);
+        }
+
+        if (p.osc[0].enabled)
+        {
+            std::vector<juce::String> synced;
+            for (size_t i = 1; i < p.osc.size(); ++i)
+                if (audible (i) && p.osc[i].sync)
+                    synced.push_back (oscName (i));
+
+            if (! synced.empty())
+                text += ", with " + synced.front() + (synced.size() > 1 ? " and " + synced.back() : juce::String()) + " hard-synced to Osc 1";
+        }
+
+        if (p.osc[0].enabled && p.osc[1].enabled && p.ringLevelDb > engine::minLevelDb)
+            text += ", with ring modulation between Osc 1 and Osc 2";
+
+        if (p.osc[0].enabled && p.fmAmount > 0.01f)
+        {
+            std::vector<juce::String> targets;
+
+            if (p.osc[1].enabled && p.fmTarget != engine::FmTarget::osc3)
+                targets.push_back (oscName (1));
+
+            if (p.osc[2].enabled && p.fmTarget != engine::FmTarget::osc2)
+                targets.push_back (oscName (2));
+
+            if (! targets.empty())
+                text += juce::String (", with ") + (p.fmAmount < 0.25f ? "a touch of " : p.fmAmount >= 0.75f ? "heavy " : "")
+                      + "FM from Osc 1 into " + targets.front() + (targets.size() > 1 ? " and " + targets.back() : juce::String());
+        }
+
+        if (antiAliasOff)
+            text += ", with anti-aliasing switched off";
+
+        return text;
+    }
+
+    /** The audible effects in chain order. The safety limiter is always on and never mentioned. */
+    juce::String effectsText (const engine::EngineParams& p)
+    {
+        std::vector<juce::String> items;
+
+        for (const auto kind : p.effectOrder)
+        {
+            switch (kind)
+            {
+                case engine::EffectKind::distortion:
+                    if (p.distortion.enabled && p.distortion.mix > 0.01f)
+                        items.push_back (p.distortion.driveDb < 8.0f ? "a touch of distortion" : p.distortion.driveDb >= 24.0f ? "heavy distortion" : "distortion");
+                    break;
+
+                case engine::EffectKind::chorus:
+                    if (p.chorus.enabled && p.chorus.mix > 0.01f && p.chorus.depth > 0.01f)
+                        items.push_back ("a chorus");
+                    break;
+
+                case engine::EffectKind::delay:
+                    if (p.delay.enabled && p.delay.mix > 0.01f)
+                        items.push_back (juce::String ("a ") + (p.delay.pingPong ? "ping-pong " : "") + "delay of " + params::timeText (p.delay.timeMs * 0.001f));
+                    break;
+
+                case engine::EffectKind::reverb:
+                    if (p.reverb.enabled && p.reverb.mix > 0.01f)
+                        items.push_back (p.reverb.decaySeconds < 1.0f ? "a short reverb" : p.reverb.decaySeconds >= 4.0f ? "a long reverb" : "a reverb");
+                    break;
+            }
+        }
+
+        if (items.empty())
+            return {};
+
+        juce::String text = ", then through ";
+
+        for (size_t i = 0; i < items.size(); ++i)
+            text += (i == 0 ? "" : i + 1 == items.size() ? " and " : ", ") + items[i];
+
+        return text;
+    }
+
     juce::String sources (const engine::EngineParams& p)
     {
         std::vector<const engine::OscParams*> on;
@@ -97,6 +218,8 @@ namespace
         if (p.noise.enabled && p.noise.levelDb > engine::minLevelDb)
             text += juce::String (", with ") + (p.noise.levelDb > -12.0f ? "plenty of " : "a little ")
                   + (p.noise.pink ? "pink" : "white") + " noise";
+
+        text += oscillatorExtras (p);
 
         return text;
     }
@@ -219,7 +342,7 @@ juce::String describe (const engine::EngineParams& p)
     for (size_t i = 0; i < motion.size(); ++i)
         text += (i == 0 ? ", with " : i + 1 == motion.size() ? " and " : ", ") + motion[i];
 
-    return text + ".";
+    return text + effectsText (p) + ".";
 }
 
 } // namespace scratchpad::plugin

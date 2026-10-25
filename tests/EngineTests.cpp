@@ -117,10 +117,17 @@ TEST_CASE ("Switching the wave while a note is held crossfades over 10 ms", "[en
     // The switched output must glide from the first to the second.
     constexpr int fadeSamples = 480;
 
-    auto sawParams = sineParams();
+    // Played at -12 dB: the saw's band-limited overshoot would otherwise reach the safety limiter, whose
+    // gain differs between the three rigs and makes the comparison non-linear. The tolerance scales with it.
+    constexpr float levelDb = -12.0f;
+    const float level = std::pow (10.0f, levelDb / 20.0f);
+
+    auto sineQuiet = sineParams();
+    sineQuiet.osc[0].levelDb = levelDb;
+    auto sawParams = sineQuiet;
     sawParams.osc[0].wave = dsp::Wave::saw;
 
-    Rig sine (sineParams()), saw (sawParams), switched (sineParams());
+    Rig sine (sineQuiet), saw (sawParams), switched (sineQuiet);
     for (auto* r : { &sine, &saw, &switched })
     {
         r->noteOn (45);
@@ -138,7 +145,7 @@ TEST_CASE ("Switching the wave while a note is held crossfades over 10 ms", "[en
         const float x = std::min (1.0f, (float) i / (float) fadeSamples);
         const float expected = a[(size_t) i] + (b[(size_t) i] - a[(size_t) i]) * x;
         INFO ("sample " << i);
-        REQUIRE (std::abs (c[(size_t) i] - expected) < 0.01f);
+        REQUIRE (std::abs (c[(size_t) i] - expected) < 0.01f * level);
     }
 }
 
@@ -217,12 +224,12 @@ TEST_CASE ("The sustain pedal (CC64) holds notes after key-up", "[engine]")
 TEST_CASE ("Level and output volume are in dB, with the bottom of the range silent", "[engine]")
 {
     EngineParams p = sineParams();
-    p.osc[0].levelDb = -6.0f;
+    p.osc[0].levelDb = -12.0f;
     p.outputVolumeDb = 6.0f;
     Rig rig (p);
     rig.noteOn (69);
     rig.run (2400);
-    REQUIRE (std::abs (peak (rig.run (4800)) - 1.0f) < 0.01f); // -6 dB + 6 dB
+    REQUIRE (std::abs (peak (rig.run (4800)) - 0.5011872f) < 0.005f); // -12 dB + 6 dB = -6 dB, clear of the limiter's knee
 
     p.osc[0].levelDb = engine::minLevelDb;
     rig.set (p);

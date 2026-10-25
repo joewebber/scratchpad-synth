@@ -91,6 +91,33 @@ TEST_CASE ("Every control copy entry is complete and links to real glossary term
     }
 }
 
+TEST_CASE ("The M5 modules, controls and glossary terms have copy", "[content]")
+{
+    const auto& content = content::Content::get();
+
+    for (const char* key : { "distortion", "chorus", "delay", "reverb" })
+    {
+        INFO (key);
+        const auto* m = content.module (key);
+        REQUIRE (m != nullptr);
+        REQUIRE (! m->glossaryTerms.isEmpty());
+        REQUIRE (content.param (juce::String (key) + ".bypass") != nullptr);
+    }
+
+    for (const char* id : { "control.limiter", "control.effectGrip", "control.oscMore" })
+    {
+        INFO (id);
+        REQUIRE (content.control (id) != nullptr);
+    }
+
+    for (const char* term : { "hard-sync", "ring-modulation", "fm", "unison", "anti-aliasing", "oversampling", "limiter",
+                              "tempo-sync", "bpm", "ping-pong", "wet-dry", "feedback", "damping" })
+    {
+        INFO (term);
+        REQUIRE (content.glossary (term) != nullptr);
+    }
+}
+
 namespace
 {
     void collect (juce::Component& c, std::vector<juce::Component*>& out)

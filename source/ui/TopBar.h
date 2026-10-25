@@ -9,9 +9,9 @@
 namespace scratchpad::ui
 {
 
-/** Patch name, New patch, Undo, Redo, output meter and (standalone only) the
-    route to audio settings. Save, Open, scope tap, limiter light and CPU
-    readout arrive with the milestones that make them meaningful. */
+/** Patch name, New patch, Undo, Redo, the safety limiter's light, output meter and (standalone only) the
+    route to audio settings. Save, Open, scope tap and CPU readout arrive with the milestones that make
+    them meaningful. */
 class TopBar final : public juce::Component,
                      private juce::ChangeListener,
                      private juce::Timer
@@ -46,6 +46,7 @@ private:
     juce::TextButton settingsButton { "Settings" };
     IconButton noDeviceButton { "No audio device: open Settings", "M2 5h2.5L8 2v10L4.5 9H2z M10 4.5c1 .8 1 4.2 0 5",
                                 14.0f, 1.3, "No audio device: open Settings" };
+    LimiterLight limiter;
     Meter meter;
 
     bool picking = false;

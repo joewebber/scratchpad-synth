@@ -18,11 +18,16 @@ enum class Module
     ampEnv,
     filterEnv,
     lfo1,
-    lfo2
+    lfo2,
+    distortion,
+    chorus,
+    delay,
+    reverb
 };
 
-inline constexpr std::array<Module, 8> allModules {
-    Module::osc2, Module::osc3, Module::noise, Module::filter, Module::ampEnv, Module::filterEnv, Module::lfo1, Module::lfo2
+inline constexpr std::array<Module, 12> allModules {
+    Module::osc2, Module::osc3, Module::noise, Module::filter, Module::ampEnv, Module::filterEnv, Module::lfo1, Module::lfo2,
+    Module::distortion, Module::chorus, Module::delay, Module::reverb
 };
 
 } // namespace scratchpad::plugin

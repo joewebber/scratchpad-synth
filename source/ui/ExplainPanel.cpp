@@ -167,11 +167,13 @@ juce::Colour ExplainPanel::familyOf (const juce::String& key, bool ink) const
     const bool flt = key == "filter" || key == "filterEnv";
     const bool amp = key == "ampEnv" || key == "amp";
     const bool mod = key.startsWith ("lfo") || key == "connections" || key == "sources";
+    const bool fx = key == "distortion" || key == "chorus" || key == "delay" || key == "reverb";
 
     if (src) return ink ? p.srcInk : p.src;
     if (flt) return ink ? p.fltInk : p.flt;
     if (amp) return ink ? p.ampInk : p.amp;
     if (mod) return ink ? p.modInk : p.mod;
+    if (fx) return ink ? p.fxInk : p.fx;
     return ink ? p.perfInk : p.perf;
 }
 

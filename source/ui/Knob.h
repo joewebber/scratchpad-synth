@@ -173,6 +173,13 @@ private:
         A bare number is read in the unit the current text is shown in. */
     double parseTyped (const juce::String& text) const
     {
+        // A stepped choice ("1/8", "2 bars", "Osc 3"): match the typed words, else leave it where it is.
+        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (param))
+        {
+            const int found = choice->choices.indexOf (text.trim(), true);
+            return (double) (found >= 0 ? found : choice->getIndex());
+        }
+
         const auto range = param->getNormalisableRange();
         const auto t = text.trim().toLowerCase().replace (juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")), "-");
 
