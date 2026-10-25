@@ -1,7 +1,6 @@
 #pragma once
 
 #include "plugin/PluginProcessor.h"
-#include "ui/ExplainTooltips.h"
 #include "ui/ExplainPanel.h"
 #include "ui/LookAndFeel.h"
 #include "ui/PatchView.h"
@@ -47,7 +46,6 @@ private:
     ui::PatchView patchView;
     ui::PerformanceBar performanceBar;
     ui::ExplainPanel explainPanel;
-    ui::ExplainTooltips tooltips { this };
 
     juce::ParameterAttachment presenceAttachment;
     int previewingWave = -1;
