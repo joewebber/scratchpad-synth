@@ -86,6 +86,8 @@ Scope::Scope (plugin::ScratchpadProcessor& p)
     for (int i = 0; i < fftSize; ++i)
         window[(size_t) i] = 0.5f - 0.5f * std::cos (2.0f * juce::MathConstants<float>::pi * (float) i / (float) (fftSize - 1));
 
+    modeButtons.getProperties().set ("explainId", "control.scopeMode");
+    tapButtons.getProperties().set ("explainId", "control.scopeTap");
     addAndMakeVisible (modeButtons);
     addAndMakeVisible (tapButtons);
     setTap (tap);

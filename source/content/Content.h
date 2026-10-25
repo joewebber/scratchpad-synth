@@ -31,6 +31,9 @@ public:
 
     const Entry* param (const juce::String& parameterId) const;
     const Entry* module (const juce::String& moduleKey) const;
+
+    /** Copy for controls that are not parameters: bypass, solo, the keyboard, the wheels and so on. */
+    const Entry* control (const juce::String& controlId) const;
     const GlossaryEntry* glossary (const juce::String& id) const;
 
     /** Every glossary entry, alphabetical by term. */
@@ -38,6 +41,7 @@ public:
 
     juce::StringArray paramIds() const;
     juce::StringArray moduleKeys() const;
+    juce::StringArray controlIds() const;
     juce::StringArray glossaryIds() const;
 
     /** Empty when both files parsed; otherwise what was wrong. */
@@ -46,7 +50,7 @@ public:
 private:
     Content();
 
-    std::map<juce::String, Entry> params, modules;
+    std::map<juce::String, Entry> params, modules, controls;
     std::map<juce::String, GlossaryEntry> glossaryEntries;
     std::vector<const GlossaryEntry*> ordered;
     juce::String error;

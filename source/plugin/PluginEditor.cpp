@@ -88,7 +88,7 @@ void ScratchpadEditor::refreshMode (bool started)
     // Panels paint their shadows outside their bounds; clear what the hidden one left.
     repaint();
 
-    if (started)
+    if (started && isShowing())
         grabKeyboardFocus();
 }
 

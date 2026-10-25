@@ -71,8 +71,7 @@ target_include_directories(ScratchpadCore PUBLIC source)
 target_compile_definitions(ScratchpadCore PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_link_libraries(ScratchpadCore
     PUBLIC
@@ -92,8 +91,7 @@ target_sources(ScratchpadSynth PRIVATE source/plugin/PluginEntry.cpp)
 target_compile_definitions(ScratchpadSynth PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_link_libraries(ScratchpadSynth
     PRIVATE

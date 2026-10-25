@@ -107,7 +107,7 @@ void ExplainPanel::show (const juce::String& id, bool pin)
 {
     const auto& content = content::Content::get();
 
-    if (content.param (id) == nullptr && content.module (id) == nullptr)
+    if (content.param (id) == nullptr && content.module (id) == nullptr && content.control (id) == nullptr)
         return;
 
     if (id != shownId)
@@ -245,9 +245,12 @@ void ExplainPanel::paintEntry (juce::Graphics& g, juce::Rectangle<int> bounds)
     const auto& content = content::Content::get();
 
     const auto* entry = content.param (shownId);
-    const bool isModule = entry == nullptr;
+    const bool isControl = entry == nullptr && content.control (shownId) != nullptr;
+    const bool isModule = entry == nullptr && ! isControl;
 
-    if (isModule)
+    if (isControl)
+        entry = content.control (shownId);
+    else if (isModule)
         entry = content.module (shownId);
 
     if (entry == nullptr)
@@ -265,8 +268,8 @@ void ExplainPanel::paintEntry (juce::Graphics& g, juce::Rectangle<int> bounds)
     kicker.removeFromLeft (16.0f);
 
     const juce::String dotSeparator (juce::CharPointer_UTF8 (" \xc2\xb7 "));
-    auto kickerText = isModule ? juce::String ("Module") : (module != nullptr ? module->title : juce::String());
-    if (! isModule)
+    auto kickerText = isModule ? juce::String ("Module") : isControl ? juce::String ("Control") : (module != nullptr ? module->title : juce::String());
+    if (! isModule && ! isControl)
         kickerText += dotSeparator + entry->title;
     if (pinned && isModule)
         kickerText += dotSeparator + "pinned";

@@ -73,6 +73,7 @@ void ModuleCard::paint (juce::Graphics& g)
 void ModuleCard::makeRemovable (const juce::String& accessibleName, std::function<void()> onRemove)
 {
     removeButton = std::make_unique<IconButton> (accessibleName, "M5.5 5.5l5 5 M10.5 5.5l-5 5", 16.0f, 1.3f);
+    removeButton->getProperties().set ("explainId", "control.remove");
     removeButton->onClick = std::move (onRemove);
     addAndMakeVisible (*removeButton);
 }

@@ -175,6 +175,12 @@ is armed, and owns the arcs at rest (drag one to change the amount, right-click 
 - **Explain panel.** Controls name themselves with an `explainId` component property. Hover or keyboard focus
   shows that entry; a card's `?` pins the module's concept explainer until the pointer lands on a control.
   Entries longer than the body scroll with the wheel (a fade marks more below). The glossary lists every term.
+- **Controls that are not parameters.** Bypass, solo, remove, Add module, modulation handles, the keyboard,
+  octave buttons, wheels, scope switches, meter and the top-bar buttons have copy under `"controls"` in
+  `explanations.json` (IDs like `control.bypass`; `Content::control`). A test builds the editor and fails if any
+  button, slider or keyboard in it has no `explainId` that resolves to copy, so a new control cannot ship silent.
+- **Tooltips.** `ui::ExplainTooltips` is the editor's `TooltipWindow`: resting on any control shows its title and
+  "What it does" line from the same copy, beside the pointer, and falls back to JUCE's own tooltip otherwise.
 - **Bypass and solo.** `<module>.bypass` for every module and `<module>.solo` for the four sources are
   non-automatable parameters. The processor applies them when it builds the `EngineParams` for a block, so
   the engine only sees what is audible: a bypassed or muted module is simply absent, and the filter bypass is

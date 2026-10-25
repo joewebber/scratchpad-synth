@@ -54,6 +54,7 @@ SourceHandle::SourceHandle (ModulationModel& m, ModSource s)
     : model (m), source (s)
 {
     setTitle (info::sourceName (s) + " handle: drag onto a knob to modulate it, or click then click a knob");
+    getProperties().set ("explainId", "control.handle");
     setWantsKeyboardFocus (true);
     setPaintingIsUnclipped (true);
     setMouseCursor (juce::MouseCursor::DraggingHandCursor);

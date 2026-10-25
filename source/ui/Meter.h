@@ -20,7 +20,7 @@ public:
           vblank (this, [this] { tick(); })
     {
         setTitle ("Output level");
-        setInterceptsMouseClicks (false, false);
+        setInterceptsMouseClicks (true, false);
     }
 
     void paint (juce::Graphics& g) override

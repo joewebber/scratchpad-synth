@@ -125,6 +125,10 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     addButton.getProperties().set (buttonProps::radius, 13.0);
     addButton.onClick = [this] { showAddMenu(); };
 
+    addButton.getProperties().set ("explainId", "control.addModule");
+    for (auto* slot : { &osc2Slot, &osc3Slot, &noiseSlot, &filterSlot, &filterEnvSlot, &ampEnvSlot, &lfo1Slot, &lfo2Slot })
+        slot->getProperties().set ("explainId", "control.addModule");
+
     const struct { SlotButton* slot; Module which; } slots[] = {
         { &osc2Slot, Module::osc2 }, { &osc3Slot, Module::osc3 }, { &noiseSlot, Module::noise },
         { &filterSlot, Module::filter }, { &filterEnvSlot, Module::filterEnv }, { &ampEnvSlot, Module::ampEnv },
@@ -302,7 +306,8 @@ void PatchView::refreshModules()
     // The button that was just clicked may have been hidden; keep the computer keyboard playing.
     if (getCurrentlyFocusedComponent() == nullptr)
         if (auto* editor = findParentComponentOfClass<juce::AudioProcessorEditor>())
-            editor->grabKeyboardFocus();
+            if (editor->isShowing())
+                editor->grabKeyboardFocus();
 }
 
 //==============================================================================

@@ -18,6 +18,11 @@ public:
         : juce::Button (accessibleName), kind (k)
     {
         setTitle (accessibleName);
+
+        if (k == Kind::bypass)
+            getProperties().set ("explainId", "control.bypass");
+        else if (k == Kind::solo)
+            getProperties().set ("explainId", "control.solo");
         setPaintingIsUnclipped (true);
         setClickingTogglesState (false);
     }

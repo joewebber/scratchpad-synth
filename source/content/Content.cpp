@@ -51,6 +51,10 @@ Content::Content()
         for (const auto& p : object->getProperties())
             modules[p.name.toString()] = entryOf (p.value);
 
+    if (auto* object = explanations.getProperty ("controls", {}).getDynamicObject())
+        for (const auto& p : object->getProperties())
+            controls[p.name.toString()] = entryOf (p.value);
+
     if (auto* object = glossaryJson.getDynamicObject())
     {
         for (const auto& p : object->getProperties())
@@ -79,6 +83,12 @@ const Entry* Content::param (const juce::String& id) const
     return it == params.end() ? nullptr : &it->second;
 }
 
+const Entry* Content::control (const juce::String& id) const
+{
+    const auto it = controls.find (id);
+    return it == controls.end() ? nullptr : &it->second;
+}
+
 const Entry* Content::module (const juce::String& key) const
 {
     const auto it = modules.find (key);
@@ -95,6 +105,14 @@ juce::StringArray Content::paramIds() const
 {
     juce::StringArray out;
     for (const auto& [id, e] : params)
+        out.add (id);
+    return out;
+}
+
+juce::StringArray Content::controlIds() const
+{
+    juce::StringArray out;
+    for (const auto& [id, e] : controls)
         out.add (id);
     return out;
 }

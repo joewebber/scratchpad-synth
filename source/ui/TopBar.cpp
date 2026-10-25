@@ -23,6 +23,13 @@ TopBar::TopBar (plugin::ScratchpadProcessor& p)
     };
     noDeviceButton.onClick = settingsButton.onClick;
 
+    newPatchButton.getProperties().set ("explainId", "control.newPatch");
+    undoButton.getProperties().set ("explainId", "control.undo");
+    redoButton.getProperties().set ("explainId", "control.redo");
+    settingsButton.getProperties().set ("explainId", "control.settings");
+    noDeviceButton.getProperties().set ("explainId", "control.settings");
+    meter.getProperties().set ("explainId", "control.meter");
+
     for (auto* b : std::initializer_list<juce::Component*> { &newPatchButton, &undoButton, &redoButton,
                                                               &settingsButton, &noDeviceButton })
         addChildComponent (b);

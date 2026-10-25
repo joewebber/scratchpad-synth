@@ -56,6 +56,9 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     octaveUp.onClick = [this] { setOctave (octave + 1); };
     addAndMakeVisible (octaveDown);
     addAndMakeVisible (octaveUp);
+    octaveDown.getProperties().set ("explainId", "control.octave");
+    octaveUp.getProperties().set ("explainId", "control.octave");
+    keyboard.getProperties().set ("explainId", "control.keyboard");
 
     bendWheel.setSliderStyle (juce::Slider::LinearVertical);
     bendWheel.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -71,6 +74,7 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
         bendWheel.setValue (0.0, juce::sendNotificationSync);
     };
     addAndMakeVisible (bendWheel);
+    bendWheel.getProperties().set ("explainId", "control.bend");
 
     // The mod wheel stays where it is left, like a real one.
     modWheel.setSliderStyle (juce::Slider::LinearVertical);
@@ -82,6 +86,7 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     modWheel.setMouseDragSensitivity (80);
     modWheel.onValueChange = [this] { sendModWheel ((float) modWheel.getValue()); };
     addAndMakeVisible (modWheel);
+    modWheel.getProperties().set ("explainId", "control.modWheel");
 
     setOctave (octave);
 }

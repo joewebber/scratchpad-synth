@@ -193,6 +193,120 @@
       ]
     }
   },
+  "controls": {
+    "control.bypass": {
+      "title": "Bypass (B)",
+      "what": "Turns this module off without removing it, so you can hear the patch with and without it. Your settings are kept.",
+      "listenFor": "The sound changes as if the module were not there. Click again and it returns exactly as it was.",
+      "tryThis": "Hold a note, then click B on the Filter a few times to hear what it adds.",
+      "glossaryTerms": ["bypass"]
+    },
+    "control.solo": {
+      "title": "Solo (S)",
+      "what": "Plays only this source and mutes the other sources. It is for listening to one part of the sound on its own.",
+      "listenFor": "Only this oscillator or noise is left in the mix. The other cards fade to show they are muted.",
+      "tryThis": "With two oscillators playing, solo Oscillator 2 to hear what it adds, then click S again.",
+      "glossaryTerms": ["solo", "oscillator"]
+    },
+    "control.remove": {
+      "title": "Remove module",
+      "what": "Takes this module out of the patch. Anything connected to it stops moving. Undo brings it back.",
+      "listenFor": "The sound loses whatever this module was adding.",
+      "tryThis": "Remove the Filter, listen, then press Undo at the top to put it back.",
+      "glossaryTerms": []
+    },
+    "control.addModule": {
+      "title": "Add a module",
+      "what": "Adds another building block to the signal chain: an oscillator, noise, a filter, an envelope or an LFO. The suggested next one is shown first.",
+      "listenFor": "The patch description under the Explain panel updates, and the sound changes once you play a note.",
+      "tryThis": "Add the suggested module and hold a note to hear what it changes.",
+      "glossaryTerms": ["oscillator", "filter", "envelope", "lfo"]
+    },
+    "control.handle": {
+      "title": "Modulation handle",
+      "what": "Starts a connection. Drag it onto any knob that shows a ring, or click it and then click a knob, to make that source move the knob automatically.",
+      "listenFor": "The knob you drop it on starts to move by itself, and an arc shows how far it travels.",
+      "tryThis": "Drag the LFO 1 handle onto Filter cutoff, hold a note, then change the amount in the connection list.",
+      "glossaryTerms": ["modulation", "lfo", "envelope"]
+    },
+    "control.keyboard": {
+      "title": "Keyboard",
+      "what": "Plays notes. Click or drag across the keys, or use the computer keys A to K for white keys and W E T Y U for black keys. C and V lower and raise how hard the notes play.",
+      "listenFor": "Keys further right are higher in pitch. Harder (higher velocity) notes are louder.",
+      "tryThis": "Play a low key and a high key, then press Z or X to move the whole keyboard an octave.",
+      "glossaryTerms": ["pitch", "velocity", "octave"]
+    },
+    "control.octave": {
+      "title": "Octave shift",
+      "what": "Moves the computer-keyboard keys up or down by an octave. An octave doubles or halves the pitch.",
+      "listenFor": "The same keys now play higher or lower notes. The tone stays the same.",
+      "tryThis": "Click + once, then play the same key you played before.",
+      "glossaryTerms": ["octave", "pitch"]
+    },
+    "control.bend": {
+      "title": "Pitch bend wheel",
+      "what": "Slides the pitch of the notes you are holding up or down. It springs back to the middle when you let go. The range is set by Pitch bend range in Voicing.",
+      "listenFor": "The pitch glides smoothly, then returns.",
+      "tryThis": "Hold a note and drag the wheel up, then let go.",
+      "glossaryTerms": ["pitch-bend", "pitch"]
+    },
+    "control.modWheel": {
+      "title": "Mod wheel",
+      "what": "A live control you move by hand. It does nothing until you connect it to a knob. Connect it with the Mod wheel handle under Sources.",
+      "listenFor": "Nothing at first. Once connected, the destination knob follows the wheel.",
+      "tryThis": "Connect Mod wheel to Filter cutoff, hold a note and drag the wheel.",
+      "glossaryTerms": ["mod-wheel", "modulation"]
+    },
+    "control.scopeMode": {
+      "title": "Scope display",
+      "what": "Chooses how the scope draws the sound. Wave shows the shape of the sound over time. Spectrum shows how much of each pitch is in it.",
+      "listenFor": "A bright sound has tall bars far to the right in Spectrum. A dull one has bars only on the left.",
+      "tryThis": "Hold a note on a saw wave and switch between Wave and Spectrum.",
+      "glossaryTerms": ["spectrum", "harmonic"]
+    },
+    "control.scopeTap": {
+      "title": "Scope tap",
+      "what": "Chooses where in the signal path the scope listens: right after the oscillators, after the filter, or at the final output. Changing it does not change the sound.",
+      "listenFor": "Compare Osc and Filter in Spectrum: the filter removes the high bars above its cutoff.",
+      "tryThis": "Set the tap to Osc, hold a note, then switch to Filter and close the cutoff.",
+      "glossaryTerms": ["spectrum", "filter", "cutoff"]
+    },
+    "control.meter": {
+      "title": "Output level",
+      "what": "Shows how loud the synth is at its output. If it reaches the top the sound is too loud and may distort.",
+      "listenFor": "The bar rises with louder notes and chords.",
+      "tryThis": "Play a chord and lower Volume in Output if the meter hits the top.",
+      "glossaryTerms": ["decibel"]
+    },
+    "control.newPatch": {
+      "title": "New patch",
+      "what": "Starts again from the wave picker. Your current patch is replaced, and Undo can bring it back.",
+      "listenFor": "The synth goes back to a single oscillator once you pick a wave.",
+      "tryThis": "Click it, pick a different wave, then build up from there.",
+      "glossaryTerms": ["oscillator"]
+    },
+    "control.undo": {
+      "title": "Undo",
+      "what": "Reverses your last change to the patch, such as a knob move, adding a module or a new connection.",
+      "listenFor": "The control and the sound go back to how they were.",
+      "tryThis": "Turn a knob a long way, then click Undo.",
+      "glossaryTerms": []
+    },
+    "control.redo": {
+      "title": "Redo",
+      "what": "Brings back a change you just undid.",
+      "listenFor": "The control and the sound return to the change.",
+      "tryThis": "Click Undo, then Redo.",
+      "glossaryTerms": []
+    },
+    "control.settings": {
+      "title": "Audio and MIDI settings",
+      "what": "Opens the dialog where you choose the audio output device and which MIDI keyboards can play the synth.",
+      "listenFor": "With the right output chosen you hear sound. With a MIDI input enabled, your keyboard plays the synth.",
+      "tryThis": "Open it, enable your MIDI keyboard, then play it.",
+      "glossaryTerms": []
+    }
+  },
   "params": {
     "osc1.enabled": {
       "title": "Oscillator 1",

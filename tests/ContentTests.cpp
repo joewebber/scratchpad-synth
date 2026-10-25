@@ -1,4 +1,5 @@
 #include "content/Content.h"
+#include "plugin/PluginEditor.h"
 #include "plugin/PluginProcessor.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -69,4 +70,68 @@ TEST_CASE ("Modules have a concept paragraph and every glossary link resolves", 
         for (const auto& other : g->seeAlso)
             REQUIRE (content.glossary (other) != nullptr);
     }
+}
+
+TEST_CASE ("Every control copy entry is complete and links to real glossary terms", "[content]")
+{
+    const auto& content = content::Content::get();
+    REQUIRE (! content.controlIds().isEmpty());
+
+    for (const auto& id : content.controlIds())
+    {
+        INFO (id.toStdString());
+        const auto* entry = content.control (id);
+        REQUIRE (entry->title.isNotEmpty());
+        REQUIRE (entry->what.isNotEmpty());
+        REQUIRE (entry->listenFor.isNotEmpty());
+        REQUIRE (entry->tryThis.isNotEmpty());
+
+        for (const auto& term : entry->glossaryTerms)
+            REQUIRE (content.glossary (term) != nullptr);
+    }
+}
+
+namespace
+{
+    void collect (juce::Component& c, std::vector<juce::Component*>& out)
+    {
+        out.push_back (&c);
+
+        for (auto* child : c.getChildren())
+            collect (*child, out);
+    }
+}
+
+TEST_CASE ("Every control in the editor explains itself", "[content][ui]")
+{
+    const auto& content = content::Content::get();
+
+    plugin::ScratchpadProcessor p;
+    std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
+    REQUIRE (editor != nullptr);
+
+    std::vector<juce::Component*> all;
+    collect (*editor, all);
+
+    int checked = 0;
+
+    for (auto* c : all)
+    {
+        const bool interactive = dynamic_cast<juce::Button*> (c) != nullptr
+                              || dynamic_cast<juce::Slider*> (c) != nullptr
+                              || dynamic_cast<juce::MidiKeyboardComponent*> (c) != nullptr;
+
+        // The wave picker and the glossary button explain themselves in their own wording.
+        if (! interactive || c->getComponentID() == "explainPanel" || c->findParentComponentOfClass<ui::WavePicker>() != nullptr
+            || c->getTitle() == "Glossary")
+            continue;
+
+        const auto id = ui::ExplainPanel::explainIdOf (c);
+        INFO (c->getTitle().toStdString());
+        REQUIRE (id.isNotEmpty());
+        REQUIRE ((content.param (id) != nullptr || content.control (id) != nullptr || content.module (id) != nullptr));
+        ++checked;
+    }
+
+    REQUIRE (checked > 20);
 }
