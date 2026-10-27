@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(JUCE)
 # Plugin target: Standalone + VST3 from one project.
 # ---------------------------------------------------------------------------
 juce_add_plugin(ScratchpadSynth
+    VERSION                     ${PROJECT_VERSION}
     COMPANY_NAME                "Scratchpad"
     PRODUCT_NAME                "Scratchpad Synth"
     BUNDLE_ID                   com.scratchpad.synth
@@ -69,6 +70,7 @@ add_library(ScratchpadCore STATIC ${SCRATCHPAD_CORE_SOURCES})
 target_include_directories(ScratchpadCore PUBLIC source)
 
 target_compile_definitions(ScratchpadCore PUBLIC
+    SCRATCHPAD_VERSION="${PROJECT_VERSION}"
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0)

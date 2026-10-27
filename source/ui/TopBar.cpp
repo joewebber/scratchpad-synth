@@ -126,7 +126,13 @@ void TopBar::paint (juce::Graphics& g)
     auto title = uiFont (14.0f, Weight::medium);
     title.setExtraKerningFactor (0.26f);
     g.setFont (title);
-    g.drawText ("SCRATCHPAD", juce::Rectangle<float> (50.0f, 0.0f, titleRight - 50.0f, bounds.getHeight()),
+    g.drawText ("SCRATCHPAD", juce::Rectangle<float> (50.0f, bounds.getCentreY() - 15.0f, titleRight - 50.0f, 17.0f),
+                juce::Justification::centredLeft, false);
+
+    g.setColour (p.mute);
+    g.setFont (uiFont (10.0f));
+    g.drawText (juce::String ("v") + SCRATCHPAD_VERSION,
+                juce::Rectangle<float> (50.0f, bounds.getCentreY() + 3.0f, titleRight - 50.0f, 12.0f),
                 juce::Justification::centredLeft, false);
 
     if (picking)
