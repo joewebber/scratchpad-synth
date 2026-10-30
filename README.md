@@ -2,10 +2,10 @@
 
 A polyphonic subtractive synth whose only job is to teach how synthesis works.
 It ships as a standalone app and a VST3 plugin from one codebase, and it has no
-presets: every patch starts with the user picking a single waveform and grows
-only as they add modules.
+presets: every patch starts with a single oscillator and grows
+only as the user adds modules.
 
-This repository is at **M4 (Learning layer)**: everything from M1 to M3 (wave picker, three
+This repository is at **M4 (Learning layer)**: everything from M1 to M3 (three
 oscillators, noise, multimode filter, envelopes, poly, mono and legato voicing with glide, two LFOs
 and eight modulation connections), plus the Explain panel with a glossary, a signal scope with
 tap points, live pictures on the oscillators, filter, envelopes and LFOs, bypass and solo on every
@@ -71,18 +71,17 @@ CI runs this on every push.
 
 ## Using it
 
-1. Hover or focus a wave in the picker to hear it held, then choose one.
-2. Play with the on-screen keyboard, a MIDI keyboard, or the computer keyboard:
+1. Play with the on-screen keyboard, a MIDI keyboard, or the computer keyboard:
    `A` to `K` are the white keys, `W E T Y U` the black keys, `Z` and `X` shift the
    octave, `C` and `V` change velocity.
-3. Change the wave or the level, or press **New patch** to go back to the picker.
+2. Change the wave or the level, or press **New patch** to go back to a single saw oscillator.
    Every change is one named undo step.
-4. Add an LFO, then drag its round handle (**L1**) onto a knob, or click the handle and then
+3. Add an LFO, then drag its round handle (**L1**) onto a knob, or click the handle and then
    a knob. The knob grows an arc: how far the LFO can move it, with a dot where it is now.
    Drag the arc up or down to change the amount, right-click it to remove the connection.
    Dropping on a **Fine** knob asks whether to move that oscillator or all of them (vibrato).
    The strip at the bottom lists all eight slots; drag a row sideways to change its amount.
-5. Hover or tab to any control and the Explain panel says what it does, what to listen for and
+4. Hover or tab to any control and the Explain panel says what it does, what to listen for and
    something to try. Words in its **Words used** row open the glossary. Use **B** and **S** on a
    card to bypass or solo it, and pick where the scope listens (Osc, Filter, Amp) to watch the
    harmonics fall as you close the cutoff. The Add menu puts the suggested next module first.

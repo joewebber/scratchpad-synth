@@ -23,7 +23,7 @@ void SynthEngine::prepare (double sampleRate)
     for (auto& s : fmGain)
         s.reset (sampleRate, smoothingSeconds);
 
-    for (auto* s : { &noiseGain, &ringGain, &previewGain, &cutoffLog2, &resonance, &driveDb, &filterEnvAmount, &outputGain })
+    for (auto* s : { &noiseGain, &ringGain, &cutoffLog2, &resonance, &driveDb, &filterEnvAmount, &outputGain })
         s->reset (sampleRate, smoothingSeconds);
 
     // A wheel moves in 128 steps; smooth them so modulating with it never zippers.
@@ -55,10 +55,10 @@ void SynthEngine::prepare (double sampleRate)
 
 void SynthEngine::setParams (const EngineParams& p) noexcept
 {
-    // Losing oscillator 1 (New patch) lets held notes fade out rather than
-    // hang around with nothing to play them.
+    // Losing oscillator 1 lets held notes fade out rather than hang around
+    // with nothing to play them.
     if (params.osc[0].enabled && ! p.osc[0].enabled)
-        allocator.releaseAll (false);
+        allocator.releaseAll();
 
     // A free-running LFO that has just been added starts its cycle from the top.
     for (size_t i = 0; i < sharedLfo.size(); ++i)
@@ -92,7 +92,6 @@ void SynthEngine::updateTargets (bool jump) noexcept
     set (ringGain, target.ring.end);
     set (fmGain[0], target.fm[0].end);
     set (fmGain[1], target.fm[1].end);
-    set (previewGain, target.preview.end);
     set (cutoffLog2, target.cutoffLog2.end);
     set (resonance, target.resonance.end);
     set (driveDb, target.driveDb.end);
@@ -117,7 +116,6 @@ BlockLevels SynthEngine::advanceLevels (int numSamples) noexcept
     levels.noise = advance (noiseGain);
     levels.ring = advance (ringGain);
     levels.fm = { advance (fmGain[0]), advance (fmGain[1]) };
-    levels.preview = advance (previewGain);
     levels.cutoffLog2 = advance (cutoffLog2);
     levels.resonance = advance (resonance);
     levels.driveDb = advance (driveDb);
@@ -163,16 +161,6 @@ void SynthEngine::noteOn (int note, float velocity) noexcept
     allocator.noteOn (note, velocity);
 }
 
-void SynthEngine::previewNoteOn (int note, dsp::Wave wave) noexcept
-{
-    allocator.noteOn (note, 0.8f, true, wave);
-}
-
-void SynthEngine::previewNoteOff (int note) noexcept
-{
-    allocator.noteOff (note, true);
-}
-
 void SynthEngine::setPitchBend (float normalised) noexcept
 {
     pitchBend = std::clamp (normalised, -1.0f, 1.0f);
@@ -186,7 +174,7 @@ void SynthEngine::setModWheel (float normalised) noexcept
 
 void SynthEngine::allNotesOff() noexcept
 {
-    allocator.releaseAll (false);
+    allocator.releaseAll();
 }
 
 void SynthEngine::handleMidi (const juce::MidiMessage& m) noexcept
@@ -197,7 +185,7 @@ void SynthEngine::handleMidi (const juce::MidiMessage& m) noexcept
     }
     else if (m.isNoteOff())
     {
-        allocator.noteOff (m.getNoteNumber(), false);
+        allocator.noteOff (m.getNoteNumber());
     }
     else if (m.isPitchWheel())
     {
@@ -215,13 +203,13 @@ void SynthEngine::handleMidi (const juce::MidiMessage& m) noexcept
             case 1:   setModWheel ((float) m.getControllerValue() / 127.0f); break;
             case 64:  allocator.setSustain (m.getControllerValue() >= 64); break;
             case 120: // all sound off
-            case 123: allocator.releaseAll (false); break;
+            case 123: allocator.releaseAll(); break;
             default:  break;
         }
     }
     else if (m.isAllNotesOff() || m.isAllSoundOff())
     {
-        allocator.releaseAll (false);
+        allocator.releaseAll();
     }
 }
 

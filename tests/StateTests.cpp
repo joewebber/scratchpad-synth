@@ -29,33 +29,32 @@ namespace
     }
 }
 
-TEST_CASE ("A new patch has no oscillator until a wave is picked", "[state]")
+TEST_CASE ("A new patch starts with oscillator 1 playing a saw", "[state]")
 {
     ScratchpadProcessor p;
-    REQUIRE_FALSE (p.isPatchStarted());
+    REQUIRE (raw (p, params::osc1Enabled) == 1.0f);
+    REQUIRE (raw (p, params::osc1Wave) == 2.0f);
 }
 
-TEST_CASE ("Picking a wave adds oscillator 1 as one named undo step", "[state]")
+TEST_CASE ("A saved patch without oscillator 1 loads with it present", "[state]")
 {
-    ScratchpadProcessor p;
+    ScratchpadProcessor a;
+    set (a, params::osc1Enabled, 0.0f);
+    set (a, params::osc1Wave, 1.0f);
 
-    p.pickWave (0);
-    REQUIRE (p.isPatchStarted());
-    REQUIRE (raw (p, params::osc1Wave) == 0.0f);
-    REQUIRE (p.undoManager.getUndoDescription() == "Picked sine");
+    juce::MemoryBlock block;
+    a.getStateInformation (block);
 
-    p.undoManager.undo();
-    REQUIRE_FALSE (p.isPatchStarted());
+    ScratchpadProcessor b;
+    b.setStateInformation (block.getData(), (int) block.getSize());
 
-    p.undoManager.redo();
-    REQUIRE (p.isPatchStarted());
-    REQUIRE (raw (p, params::osc1Wave) == 0.0f);
+    REQUIRE (raw (b, params::osc1Enabled) == 1.0f);
+    REQUIRE (raw (b, params::osc1Wave) == 1.0f);
 }
 
 TEST_CASE ("Changing the wave is a named undo step", "[state]")
 {
     ScratchpadProcessor p;
-    p.pickWave (2);
     p.changeWave (3);
 
     REQUIRE (raw (p, params::osc1Wave) == 3.0f);
@@ -64,24 +63,23 @@ TEST_CASE ("Changing the wave is a named undo step", "[state]")
 
     p.undoManager.undo();
     REQUIRE (raw (p, params::osc1Wave) == 2.0f);
-    REQUIRE (p.isPatchStarted());
 }
 
 TEST_CASE ("New patch restores defaults and can be undone", "[state]")
 {
     ScratchpadProcessor p;
-    p.pickWave (1);
+    set (p, params::osc1Wave, 1.0f);
     set (p, params::osc1Level, -20.0f);
     set (p, params::outVolume, 3.0f);
     p.undoManager.beginNewTransaction();
 
     p.newPatch();
-    REQUIRE_FALSE (p.isPatchStarted());
+    REQUIRE (raw (p, params::osc1Enabled) == 1.0f);
+    REQUIRE (raw (p, params::osc1Wave) == 2.0f);
     REQUIRE (raw (p, params::osc1Level) == params::oscLevelDefaultDb);
     REQUIRE (raw (p, params::outVolume) == params::volumeDefaultDb);
 
     p.undoManager.undo();
-    REQUIRE (p.isPatchStarted());
     REQUIRE (raw (p, params::osc1Wave) == 1.0f);
     REQUIRE (raw (p, params::osc1Level) == -20.0f);
     REQUIRE (raw (p, params::outVolume) == 3.0f);
@@ -90,7 +88,7 @@ TEST_CASE ("New patch restores defaults and can be undone", "[state]")
 TEST_CASE ("State survives a save and load", "[state]")
 {
     ScratchpadProcessor a;
-    a.pickWave (3);
+    set (a, params::osc1Wave, 3.0f);
     set (a, params::osc1Level, -12.5f);
     set (a, params::outVolume, 2.5f);
 
@@ -104,7 +102,6 @@ TEST_CASE ("State survives a save and load", "[state]")
     ScratchpadProcessor b;
     b.setStateInformation (block.getData(), (int) block.getSize());
 
-    REQUIRE (b.isPatchStarted());
     REQUIRE (raw (b, params::osc1Wave) == 3.0f);
     REQUIRE (raw (b, params::osc1Level) == -12.5f);
     REQUIRE (raw (b, params::outVolume) == 2.5f);
@@ -113,7 +110,7 @@ TEST_CASE ("State survives a save and load", "[state]")
 TEST_CASE ("Saved state from the future or from another product is refused", "[state]")
 {
     ScratchpadProcessor source;
-    source.pickWave (3);
+    set (source, params::osc1Wave, 3.0f);
     juce::MemoryBlock block;
     source.getStateInformation (block);
     auto xml = juce::AudioProcessor::getXmlFromBinary (block.getData(), (int) block.getSize());
@@ -126,7 +123,7 @@ TEST_CASE ("Saved state from the future or from another product is refused", "[s
 
         ScratchpadProcessor target;
         target.setStateInformation (future.getData(), (int) future.getSize());
-        REQUIRE_FALSE (target.isPatchStarted());
+        REQUIRE (raw (target, params::osc1Wave) == 2.0f);
     }
 
     SECTION ("wrong root tag")
@@ -137,7 +134,7 @@ TEST_CASE ("Saved state from the future or from another product is refused", "[s
 
         ScratchpadProcessor target;
         target.setStateInformation (other.getData(), (int) other.getSize());
-        REQUIRE_FALSE (target.isPatchStarted());
+        REQUIRE (raw (target, params::osc1Wave) == 2.0f);
     }
 }
 
@@ -161,7 +158,6 @@ TEST_CASE ("Module presence is not automatable", "[state]")
 TEST_CASE ("Adding a module is one named undo step and removing it restores the defaults", "[state][modules]")
 {
     ScratchpadProcessor p;
-    p.pickWave (2);
     REQUIRE_FALSE (p.isModulePresent (Module::filter));
 
     p.addModule (Module::filter);
@@ -188,7 +184,7 @@ TEST_CASE ("Adding a module is one named undo step and removing it restores the 
 TEST_CASE ("A new oscillator takes oscillator 1's wave and starts 7 cents sharp", "[state][modules]")
 {
     ScratchpadProcessor p;
-    p.pickWave (3);
+    set (p, params::osc1Wave, 3.0f);
     set (p, params::osc[1].octave, 2.0f); // stale value from an earlier use of the slot
 
     p.addModule (Module::osc2);
@@ -208,7 +204,6 @@ TEST_CASE ("A new oscillator takes oscillator 1's wave and starts 7 cents sharp"
 TEST_CASE ("New patch removes every module and resets every parameter", "[state][modules]")
 {
     ScratchpadProcessor p;
-    p.pickWave (1);
 
     for (const auto m : plugin::allModules)
         p.addModule (m);
@@ -250,7 +245,7 @@ TEST_CASE ("M2 module presence and choices are not automatable; the knobs are", 
 TEST_CASE ("A state saved by M1 loads with the M2 modules absent and at their defaults", "[state][migration]")
 {
     ScratchpadProcessor source;
-    source.pickWave (3);
+    set (source, params::osc1Wave, 3.0f);
     set (source, params::osc1Level, -9.0f);
     set (source, params::outVolume, 1.5f);
 
@@ -272,7 +267,7 @@ TEST_CASE ("A state saved by M1 loads with the M2 modules absent and at their de
 
     // The target is mid-patch, with M2 modules the old state knows nothing about.
     ScratchpadProcessor target;
-    target.pickWave (0);
+    set (target, params::osc1Wave, 0.0f);
     target.addModule (Module::filter);
     target.addModule (Module::osc3);
     set (target, params::filterCutoff, 300.0f);
@@ -280,7 +275,6 @@ TEST_CASE ("A state saved by M1 loads with the M2 modules absent and at their de
 
     target.setStateInformation (old.getData(), (int) old.getSize());
 
-    REQUIRE (target.isPatchStarted());
     REQUIRE (raw (target, params::osc1Wave) == 3.0f);
     REQUIRE (raw (target, params::osc1Level) == -9.0f);
     REQUIRE (raw (target, params::outVolume) == 1.5f);
@@ -295,7 +289,7 @@ TEST_CASE ("A state saved by M1 loads with the M2 modules absent and at their de
 TEST_CASE ("State with modules survives a save and load", "[state][modules]")
 {
     ScratchpadProcessor a;
-    a.pickWave (0);
+    set (a, params::osc1Wave, 0.0f);
     a.addModule (Module::osc2);
     a.addModule (Module::filter);
     a.addModule (Module::ampEnv);
@@ -327,7 +321,7 @@ TEST_CASE ("Module parameters reach the engine: a low cutoff takes the note away
         ScratchpadProcessor p;
         p.setRateAndBufferSizeDetails (48000.0, 512);
         p.prepareToPlay (48000.0, 512);
-        p.pickWave (0); // sine
+        set (p, params::osc1Wave, 0.0f); // sine
         set (p, params::osc1Level, 0.0f);
 
         if (withFilter)
@@ -368,7 +362,7 @@ TEST_CASE ("The processor renders MIDI and keeps note timing inside the block", 
     ScratchpadProcessor p;
     p.setRateAndBufferSizeDetails (48000.0, 512);
     p.prepareToPlay (48000.0, 512);
-    p.pickWave (0); // sine
+    set (p, params::osc1Wave, 0.0f); // sine
     set (p, params::osc1Level, 0.0f);
 
     juce::AudioBuffer<float> buffer (2, 512);
@@ -532,7 +526,6 @@ TEST_CASE ("A host with no tempo counts as 120 bpm", "[state][m5][sync]")
 TEST_CASE ("Synced delay time reaches the patch, and a bypassed effect is absent", "[state][m5][sync]")
 {
     ScratchpadProcessor p;
-    p.pickWave (2);
     p.addModule (Module::delay);
     set (p, params::delayTime, 900.0f);
     REQUIRE (p.describePatch().contains ("delay of 900 ms"));
@@ -556,7 +549,6 @@ TEST_CASE ("Synced delay time reaches the patch, and a bypassed effect is absent
 TEST_CASE ("Adding and removing an effect is one named undo step and resets its parameters", "[state][m5][modules]")
 {
     ScratchpadProcessor p;
-    p.pickWave (2);
 
     const std::array<std::pair<Module, const char*>, 4> effects {{
         { Module::distortion, "Distortion" }, { Module::chorus, "Chorus" }, { Module::delay, "Delay" }, { Module::reverb, "Reverb" }
@@ -601,7 +593,6 @@ TEST_CASE ("Adding and removing an effect is one named undo step and resets its 
 TEST_CASE ("Adding or removing an oscillator resets its unison and sync", "[state][m5][modules]")
 {
     ScratchpadProcessor p;
-    p.pickWave (2);
     set (p, params::osc[1].unison, 5.0f);
     set (p, params::osc[1].unisonDetune, 60.0f);
     set (p, params::osc[1].sync, 1.0f);
@@ -715,7 +706,6 @@ TEST_CASE ("A new patch resets the effect order, and undo brings it back", "[sta
 TEST_CASE ("State with effects, unison, sync, ring and FM survives a save and load", "[state][m5]")
 {
     ScratchpadProcessor a;
-    a.pickWave (2);
     a.addModule (Module::osc2);
     a.addModule (Module::delay);
     a.addModule (Module::reverb);
@@ -782,7 +772,7 @@ TEST_CASE ("A malformed effect order falls back to the default", "[state][m5][or
 TEST_CASE ("A state saved by M4 loads with the M5 features at their defaults", "[state][migration][m5]")
 {
     ScratchpadProcessor source;
-    source.pickWave (3);
+    set (source, params::osc1Wave, 3.0f);
     source.addModule (Module::filter);
     set (source, params::osc1Level, -9.0f);
     set (source, params::filterCutoff, 900.0f);
@@ -805,7 +795,7 @@ TEST_CASE ("A state saved by M4 loads with the M5 features at their defaults", "
 
     // The target is mid-patch with M5 features the old state knows nothing about.
     ScratchpadProcessor target;
-    target.pickWave (0);
+    set (target, params::osc1Wave, 0.0f);
     target.addModule (Module::delay);
     target.addModule (Module::osc2);
     target.moveEffect (3, 0);

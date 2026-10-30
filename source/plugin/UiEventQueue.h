@@ -8,16 +8,13 @@
 namespace scratchpad::plugin
 {
 
-/** An event from the on-screen keyboard, wheels or wave picker to the audio
-    thread. */
+/** An event from the on-screen keyboard or wheels to the audio thread. */
 struct UiEvent
 {
     enum class Type : std::uint8_t
     {
         noteOn,
         noteOff,
-        previewOn,  // wave-picker preview note; `wave` is the wave index
-        previewOff,
         pitchBend,  // `value` in -1..+1
         modWheel,   // `value` in 0..1
         allNotesOff
@@ -25,7 +22,6 @@ struct UiEvent
 
     Type type = Type::noteOn;
     std::uint8_t note = 0;
-    std::uint8_t wave = 0;
     float value = 0.0f; // velocity (0..1), bend (-1..+1) or mod wheel (0..1)
 };
 

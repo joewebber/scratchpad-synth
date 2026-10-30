@@ -148,9 +148,8 @@ TEST_CASE ("Every control in the editor explains itself", "[content][ui]")
                               || dynamic_cast<juce::Slider*> (c) != nullptr
                               || dynamic_cast<juce::MidiKeyboardComponent*> (c) != nullptr;
 
-        // The wave picker and the glossary button explain themselves in their own wording.
-        if (! interactive || c->getComponentID() == "explainPanel" || c->findParentComponentOfClass<ui::WavePicker>() != nullptr
-            || c->getTitle() == "Glossary")
+        // The glossary button explains itself in its own wording.
+        if (! interactive || c->getComponentID() == "explainPanel" || c->getTitle() == "Glossary")
             continue;
 
         const auto id = ui::ExplainPanel::explainIdOf (c);

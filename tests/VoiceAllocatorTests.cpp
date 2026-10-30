@@ -221,22 +221,6 @@ TEST_CASE ("The sustain pedal holds released keys until it is lifted", "[voices]
     REQUIRE (a.countActive() == 0);
 }
 
-TEST_CASE ("Preview notes and played notes with the same number are independent", "[voices]")
-{
-    VoiceAllocator a;
-    prepared (a, 4);
-
-    a.noteOn (57, 0.8f, true, dsp::Wave::saw);
-    a.noteOn (57, 0.8f);
-    run (a, 256);
-    REQUIRE (a.countActive() == 2);
-
-    a.noteOff (57, true);
-    run (a, milliseconds (2.0));
-    REQUIRE (a.countActive() == 1);
-    REQUIRE_FALSE (findNote (a, 57)->preview);
-}
-
 TEST_CASE ("Mono and legato play every note on one voice", "[voices][voicing]")
 {
     for (auto mode : { VoiceMode::mono, VoiceMode::legato })
@@ -306,26 +290,4 @@ TEST_CASE ("Changing the voicing mode releases played notes", "[voices][voicing]
 
     run (a, milliseconds (2.0));
     REQUIRE (a.countActive() == 0);
-}
-
-TEST_CASE ("Previews use poly allocation in mono mode and leave the key stack alone", "[voices][voicing]")
-{
-    VoiceAllocator a;
-    prepared (a, 8);
-
-    engine::VoicingParams v;
-    v.mode = VoiceMode::mono;
-    a.setVoicing (v);
-
-    a.noteOn (60, 0.8f);
-    a.noteOn (57, 0.8f, true, dsp::Wave::saw);
-    a.noteOn (59, 0.8f, true, dsp::Wave::pulse);
-    run (a, 256);
-    REQUIRE (a.countActive() == 3);
-
-    a.noteOff (57, true);
-    a.noteOff (59, true);
-    run (a, milliseconds (2.0));
-    REQUIRE (a.countActive() == 1);
-    REQUIRE (findNote (a, 60)->state == Voice::State::held);
 }

@@ -102,9 +102,9 @@ namespace
     }
 
     void addPresence (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const char* id,
-                      const juce::String& name, int hint)
+                      const juce::String& name, int hint, bool defaultOn = false)
     {
-        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id, hint }, name, false,
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id, hint }, name, defaultOn,
                                                           AudioParameterBoolAttributes().withAutomatable (false)));
     }
 
@@ -185,7 +185,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         const auto name = "Oscillator " + n;
         const int hint = i == 0 ? versionHint : versionHintM2;
 
-        addPresence (layout, ids.enabled, name + " present", hint);
+        addPresence (layout, ids.enabled, name + " present", hint, i == 0); // oscillator 1 is always part of the patch
         addChoice (layout, ids.wave, name + " wave", waveNames(), 2, hint);
 
         layout.add (std::make_unique<AudioParameterInt> (

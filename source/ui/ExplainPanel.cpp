@@ -19,7 +19,7 @@ namespace
 }
 
 ExplainPanel::ExplainPanel (plugin::ScratchpadProcessor& p)
-    : processor (p), scope (p)
+    : processor (p), scope (p), patchText (p.describePatch())
 {
     setComponentID ("explainPanel");
     setTitle ("Explain");
@@ -428,7 +428,7 @@ void ExplainPanel::paint (juce::Graphics& g)
         const auto font = uiFont (12.0f);
         g.setFont (font);
         g.setColour (p.ink);
-        const auto lines = wrapLines (font, patchText.isEmpty() ? juce::String ("Pick a wave to begin.") : patchText, area.getWidth());
+        const auto lines = wrapLines (font, patchText, area.getWidth());
         drawLines (g, lines, area.getPosition(), area.getWidth(), lineHeight);
     }
 

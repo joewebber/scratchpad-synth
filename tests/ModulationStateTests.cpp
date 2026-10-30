@@ -28,7 +28,6 @@ namespace
     /** Osc 1 present, the modules a connection needs, nothing connected. */
     void build (ScratchpadProcessor& p)
     {
-        p.pickWave (2);
         p.addModule (Module::lfo1);
         p.addModule (Module::filter);
         p.addModule (Module::osc2);
@@ -127,7 +126,6 @@ TEST_CASE ("A source can drive a destination only once, and there are eight slot
 TEST_CASE ("A connection needs both modules in the patch", "[modulation][state]")
 {
     ScratchpadProcessor p;
-    p.pickWave (2);
 
     REQUIRE (p.connectMod (ModSource::lfo1, ModDest::pitchAll) == Result::unavailable); // no LFO yet
     p.addModule (Module::lfo1);
@@ -281,7 +279,7 @@ TEST_CASE ("Connections reach the engine: velocity on amp level at -100% silence
         ScratchpadProcessor p;
         p.setRateAndBufferSizeDetails (48000.0, 512);
         p.prepareToPlay (48000.0, 512);
-        p.pickWave (0);
+        set (p, params::osc1Wave, 0.0f);
         set (p, params::osc1Level, 0.0f);
 
         if (connected)
@@ -318,7 +316,7 @@ TEST_CASE ("The editor's mod wheel reaches a pan connection through the UI event
     ScratchpadProcessor p;
     p.setRateAndBufferSizeDetails (48000.0, 512);
     p.prepareToPlay (48000.0, 512);
-    p.pickWave (0);
+    set (p, params::osc1Wave, 0.0f);
     set (p, params::osc1Level, 0.0f);
     p.connectMod (ModSource::modWheel, ModDest::pan);
     set (p, params::mod[0].amount, 100.0f);

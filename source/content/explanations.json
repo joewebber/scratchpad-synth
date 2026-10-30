@@ -365,9 +365,9 @@
     },
     "control.newPatch": {
       "title": "New patch",
-      "what": "Starts again from the wave picker. Your current patch is replaced, and Undo can bring it back.",
-      "listenFor": "The synth goes back to a single oscillator once you pick a wave.",
-      "tryThis": "Click it, pick a different wave, then build up from there.",
+      "what": "Starts again from a single saw oscillator. Your current patch is replaced, and Undo can bring it back.",
+      "listenFor": "The synth goes back to one oscillator and nothing else.",
+      "tryThis": "Click it, then build up again: add a filter, an envelope or a second oscillator.",
       "glossaryTerms": [
         "oscillator"
       ]

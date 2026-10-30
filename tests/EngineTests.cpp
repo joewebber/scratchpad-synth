@@ -30,46 +30,6 @@ TEST_CASE ("Notes are ignored while only a later oscillator is on", "[engine]")
     REQUIRE (peak (rig.run (4800)) == 0.0f);
 }
 
-TEST_CASE ("Wave-picker previews sound even before the patch has an oscillator", "[engine]")
-{
-    EngineParams p = sineParams();
-    p.osc[0].enabled = false;
-    Rig rig (p);
-
-    rig.engine.previewNoteOn (57, dsp::Wave::sine);
-    const auto out = rig.run (9600);
-    REQUIRE (peak (out) > 0.9f);
-    REQUIRE (std::abs (testutil::centsBetween (measureHz (out), 220.0)) < 0.5);
-
-    rig.engine.previewNoteOff (57);
-    rig.run (200);
-    REQUIRE (peak (rig.run (480)) == 0.0f);
-}
-
-TEST_CASE ("Previews ignore the filter, envelopes and other oscillators", "[engine]")
-{
-    EngineParams p = sineParams();
-    p.osc[0].enabled = false;
-    p.osc[1].enabled = true;
-    p.osc[1].levelDb = 0.0f;
-    p.noise.enabled = true;
-    p.noise.levelDb = 0.0f;
-    p.filter.enabled = true;
-    p.filter.cutoffHz = 100.0f;
-    p.ampEnv.enabled = true;
-    p.ampEnv.attack = 1.0f;
-    Rig rig (p);
-
-    rig.engine.previewNoteOn (69, dsp::Wave::sine);
-    rig.run (4800);
-    const auto out = rig.run (9600);
-
-    // A clean full-level sine at pitch: no noise, no second oscillator, no filter, no slow attack.
-    REQUIRE (peak (out) > 0.95f);
-    REQUIRE (peak (out) < 1.01f);
-    REQUIRE (std::abs (testutil::centsBetween (measureHz (out), 440.0)) < 0.5);
-}
-
 TEST_CASE ("A held note plays at pitch and falls silent after release", "[engine]")
 {
     Rig rig;

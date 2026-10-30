@@ -5,16 +5,6 @@
 namespace scratchpad::engine
 {
 
-namespace
-{
-    /** Which kind of note the voice is working for: while it fades for a
-        steal, that is the note waiting to start. */
-    bool servesPreview (const Voice& v) noexcept
-    {
-        return (v.state == Voice::State::stealing && v.hasPending) ? v.pending.preview : v.preview;
-    }
-}
-
 void VoiceAllocator::prepare (double sampleRate) noexcept
 {
     for (size_t i = 0; i < voices.size(); ++i)
@@ -29,7 +19,7 @@ void VoiceAllocator::setVoicing (const VoicingParams& v) noexcept
 {
     if (v.mode != mode)
     {
-        releaseAll (false);
+        releaseAll();
         mode = v.mode;
     }
 
@@ -97,12 +87,11 @@ Voice* VoiceAllocator::findVictim() noexcept
     return anyStealing;
 }
 
-/** The voice mono and legato play on: whichever one is already working on a
-    played (not preview) note. */
+/** The voice mono and legato play on: whichever one is already working on a note. */
 Voice* VoiceAllocator::findMonoVoice() noexcept
 {
     for (auto& v : voices)
-        if (v.state != Voice::State::idle && ! servesPreview (v))
+        if (v.state != Voice::State::idle)
             return &v;
 
     return nullptr;
@@ -126,23 +115,21 @@ void VoiceAllocator::startPoly (const Voice::Pending& note) noexcept
     }
 }
 
-void VoiceAllocator::noteOn (int note, float velocity, bool preview, dsp::Wave previewWave) noexcept
+void VoiceAllocator::noteOn (int note, float velocity) noexcept
 {
     Voice::Pending n;
     n.note = note;
     n.velocity = velocity;
-    n.preview = preview;
-    n.wave = previewWave;
 
-    if (preview || mode == VoiceMode::poly)
+    if (mode == VoiceMode::poly)
         startPoly (n);
     else
         monoNoteOn (n);
 }
 
-void VoiceAllocator::noteOff (int note, bool preview) noexcept
+void VoiceAllocator::noteOff (int note) noexcept
 {
-    if (! preview && mode != VoiceMode::poly)
+    if (mode != VoiceMode::poly)
     {
         monoNoteOff (note);
         return;
@@ -150,16 +137,16 @@ void VoiceAllocator::noteOff (int note, bool preview) noexcept
 
     for (auto& v : voices)
     {
-        if (v.state == Voice::State::held && v.note == note && v.preview == preview && ! v.sustainPending)
+        if (v.state == Voice::State::held && v.note == note && ! v.sustainPending)
         {
-            if (sustainDown && ! preview)
+            if (sustainDown)
                 v.sustainPending = true;
             else
                 v.release (++counter);
         }
-        else if (v.state == Voice::State::stealing && v.hasPending && v.pending.note == note && v.pending.preview == preview)
+        else if (v.state == Voice::State::stealing && v.hasPending && v.pending.note == note)
         {
-            if (sustainDown && ! preview)
+            if (sustainDown)
                 v.pending.keyReleased = true;
             else
                 v.hasPending = false; // the new note never starts; voice just finishes fading
@@ -199,20 +186,17 @@ void VoiceAllocator::setSustain (bool down) noexcept
         followStack();
 }
 
-void VoiceAllocator::releaseAll (bool includePreview) noexcept
+void VoiceAllocator::releaseAll() noexcept
 {
     for (auto& v : voices)
     {
-        if (v.state == Voice::State::held && (includePreview || ! v.preview))
+        if (v.state == Voice::State::held)
             v.release (++counter);
-        else if (v.state == Voice::State::stealing && v.hasPending && (includePreview || ! v.pending.preview))
+        else if (v.state == Voice::State::stealing && v.hasPending)
             v.hasPending = false;
     }
 
     numKeys = 0;
-
-    if (includePreview)
-        sustainDown = false;
 }
 
 void VoiceAllocator::render (float* left, float* right, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones, const Voice::Taps& taps) noexcept
@@ -226,7 +210,7 @@ const Voice* VoiceAllocator::newestPlayedVoice() const noexcept
     const Voice* newest = nullptr;
 
     for (const auto& v : voices)
-        if (v.isActive() && ! v.preview && (newest == nullptr || v.startOrder > newest->startOrder))
+        if (v.isActive() && (newest == nullptr || v.startOrder > newest->startOrder))
             newest = &v;
 
     return newest;

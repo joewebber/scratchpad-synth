@@ -26,7 +26,7 @@ UI events ┘      (splits the block at MIDI timestamps)       osc 1-3 + noise -
 
 Nothing on the audio thread allocates, locks, logs or waits.
 
-- The editor never calls into DSP. Keyboard, bend wheel and wave-picker preview notes
+- The editor never calls into DSP. Keyboard and bend wheel events
   go through `UiEventQueue`, a single-producer single-consumer `AbstractFifo` of fixed
   size. The on-screen keyboard uses its own `MidiKeyboardState` on the message thread
   and forwards to the queue, because `MidiKeyboardState::processNextMidiBuffer` takes

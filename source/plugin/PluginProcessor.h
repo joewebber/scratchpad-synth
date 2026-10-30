@@ -50,12 +50,10 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     // Patch operations (message thread). Each is one named undo step.
-    bool isPatchStarted() const;
-    void pickWave (int waveIndex);
     void changeWave (int waveIndex);
     void newPatch();
 
-    /** Modules the user adds to the oscillator the picker made. Presence is
+    /** Modules the user adds to oscillator 1, which every patch has. Presence is
         the module's `enabled` parameter. Adding resets the module's
         parameters to their defaults (a new Osc 2 or 3 takes Osc 1's wave and
         starts detuned by 7 cents so it is audible at once); removing resets

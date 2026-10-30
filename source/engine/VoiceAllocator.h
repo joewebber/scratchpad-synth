@@ -19,10 +19,7 @@ namespace scratchpad::engine
     are down. Mono retriggers the envelopes on every note; legato only when no
     other key is held. Releasing the sounding note returns to the most recent
     key still down (retriggering in mono, gliding only in legato). The sustain
-    pedal keeps released keys in the stack until it comes up.
-
-    Wave-picker preview notes always use the poly allocation, whatever the
-    mode, and never touch the stack. */
+    pedal keeps released keys in the stack until it comes up. */
 class VoiceAllocator
 {
 public:
@@ -34,15 +31,15 @@ public:
         note (with the normal fades) so nothing hangs. */
     void setVoicing (const VoicingParams& voicing) noexcept;
 
-    /** How many voices poly mode and previews may use. Voices above it finish their note. */
+    /** How many voices poly mode may use. Voices above it finish their note. */
     void setActiveVoices (int count) noexcept;
 
-    void noteOn (int note, float velocity, bool preview = false, dsp::Wave previewWave = dsp::Wave::sine) noexcept;
-    void noteOff (int note, bool preview = false) noexcept;
+    void noteOn (int note, float velocity) noexcept;
+    void noteOff (int note) noexcept;
     void setSustain (bool down) noexcept;
 
-    /** Releases every voice. Preview voices are included only if asked. */
-    void releaseAll (bool includePreview) noexcept;
+    /** Releases every voice. */
+    void releaseAll() noexcept;
 
     /** Adds all voices into `left` and `right`; `levels` cover exactly this block (at most `Voice::blockSize` samples). */
     void render (float* left, float* right, int numSamples, const EngineParams& params, const BlockLevels& levels, double bendSemitones, const Voice::Taps& taps) noexcept;

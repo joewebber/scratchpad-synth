@@ -426,13 +426,6 @@ void ScratchpadProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             case UiEvent::Type::noteOff:
                 synthEngine.handleMidi (juce::MidiMessage::noteOff (1, (int) e.note));
                 break;
-            case UiEvent::Type::previewOn:
-                synthEngine.previewNoteOn ((int) e.note,
-                                           (dsp::Wave) juce::jlimit (0, dsp::numWaves - 1, (int) e.wave));
-                break;
-            case UiEvent::Type::previewOff:
-                synthEngine.previewNoteOff ((int) e.note);
-                break;
             case UiEvent::Type::pitchBend:
                 synthEngine.setPitchBend (e.value);
                 break;
@@ -472,22 +465,6 @@ void ScratchpadProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 juce::AudioProcessorEditor* ScratchpadProcessor::createEditor()
 {
     return new ScratchpadEditor (*this);
-}
-
-bool ScratchpadProcessor::isPatchStarted() const
-{
-    return oscPointers[0].enabled->load (std::memory_order_relaxed) >= 0.5f;
-}
-
-void ScratchpadProcessor::pickWave (int waveIndex)
-{
-    const auto names = params::waveNames();
-    const auto name = names[juce::jlimit (0, names.size() - 1, waveIndex)];
-
-    flushPendingChanges (apvts);
-    undoManager.beginNewTransaction ("Picked " + name.toLowerCase());
-    setParamValue (apvts, params::osc1Wave, (float) waveIndex);
-    setParamValue (apvts, params::osc1Enabled, 1.0f);
 }
 
 void ScratchpadProcessor::changeWave (int waveIndex)
@@ -693,7 +670,7 @@ bool ScratchpadProcessor::isModDestinationPresent (engine::ModDest d) const
         return false;
 
     const auto owner = modulation::moduleOf (d);
-    return owner.has_value() ? isModulePresent (*owner) : isPatchStarted();
+    return ! owner.has_value() || isModulePresent (*owner);
 }
 
 ScratchpadProcessor::ConnectResult ScratchpadProcessor::connectMod (engine::ModSource source, engine::ModDest destination)
@@ -933,6 +910,9 @@ void ScratchpadProcessor::setStateInformation (const void* data, int sizeInBytes
         parameter->setValueNotifyingHost (parameter->getDefaultValue());
 
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
+
+    // A patch saved before the wave picker went away may have no oscillator 1; every patch has one now.
+    apvts.getParameter (params::osc1Enabled)->setValueNotifyingHost (1.0f);
     refreshEffectOrder();
 }
 

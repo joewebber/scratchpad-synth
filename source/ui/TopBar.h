@@ -28,10 +28,6 @@ public:
     /** Updates the "Last: ..." line and the Undo/Redo enabled state. */
     void refreshHistory();
 
-    /** On the wave picker the bar shows "New patch" as a plain caption and
-        hides the patch controls, as in the prototype. */
-    void setPickerMode (bool picking);
-
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -40,7 +36,7 @@ private:
 
     plugin::ScratchpadProcessor& processor;
 
-    IconButton newPatchButton { "New patch: back to the wave picker", "M4 2h5.5L12.5 5v9H4z M8 7.5v4.5 M5.8 9.75h4.4" };
+    IconButton newPatchButton { "New patch", "M4 2h5.5L12.5 5v9H4z M8 7.5v4.5 M5.8 9.75h4.4" };
     IconButton undoButton { "Undo", "M5 3L2 6l3 3 M2.5 6H10a3.5 3.5 0 0 1 0 7H6" };
     IconButton redoButton { "Redo", "M11 3l3 3-3 3 M13.5 6H6a3.5 3.5 0 0 0 0 7h4" };
     juce::TextButton settingsButton { "Settings" };
@@ -49,8 +45,7 @@ private:
     LimiterLight limiter;
     Meter meter;
 
-    bool picking = false;
-    juce::Rectangle<int> patchPill, newPatchCaption;
+    juce::Rectangle<int> patchPill;
     float titleRight = 0.0f;
     juce::String lastStep { "Nothing yet" };
 };

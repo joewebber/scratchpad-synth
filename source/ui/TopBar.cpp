@@ -96,17 +96,6 @@ void TopBar::refreshHistory()
     repaint (patchPill);
 }
 
-void TopBar::setPickerMode (bool shouldPick)
-{
-    picking = shouldPick;
-
-    for (auto* b : { &newPatchButton, &undoButton, &redoButton })
-        b->setVisible (! picking);
-
-    resized();
-    repaint();
-}
-
 void TopBar::paint (juce::Graphics& g)
 {
     const auto& p = paletteOf (*this);
@@ -135,14 +124,6 @@ void TopBar::paint (juce::Graphics& g)
                 juce::Rectangle<float> (50.0f, bounds.getCentreY() + 3.0f, titleRight - 50.0f, 12.0f),
                 juce::Justification::centredLeft, false);
 
-    if (picking)
-    {
-        g.setColour (p.track);
-        g.fillRect (juce::Rectangle<float> (1.0f, 22.0f).withCentre ({ titleRight + 12.5f, bounds.getCentreY() }));
-        drawCaption (g, "New patch", newPatchCaption.toFloat(), p.mute);
-        return;
-    }
-
     if (! patchPill.isEmpty())
     {
         const auto pill = patchPill.toFloat();
@@ -170,21 +151,13 @@ void TopBar::resized()
 
     int x = (int) std::ceil (titleRight) + 12;
 
-    if (picking)
-    {
-        newPatchCaption = row (x + 13, 120, 14);
-        patchPill = {};
-    }
-    else
-    {
-        patchPill = row (x, 230, 41);
-        x = patchPill.getRight() + 12;
-        newPatchButton.setBounds (row (x, 32, 32));
-        x += 32 + 12;
-        undoButton.setBounds (row (x, 32, 32));
-        x += 32 + 4;
-        redoButton.setBounds (row (x, 32, 32));
-    }
+    patchPill = row (x, 230, 41);
+    x = patchPill.getRight() + 12;
+    newPatchButton.setBounds (row (x, 32, 32));
+    x += 32 + 12;
+    undoButton.setBounds (row (x, 32, 32));
+    x += 32 + 4;
+    redoButton.setBounds (row (x, 32, 32));
 
     int right = getWidth() - 12;
 

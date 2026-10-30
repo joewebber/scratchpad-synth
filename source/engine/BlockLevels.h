@@ -29,7 +29,6 @@ struct BlockLevels
     Ramp noise;               // linear gain, 0 when disabled
     Ramp ring;                // linear gain of the ring-modulation source (osc 1 x osc 2); 0 when off or an oscillator is missing
     std::array<Ramp, 2> fm;   // FM amount 0 .. 1 into oscillator 2 and oscillator 3; 0 when off or a needed oscillator is missing
-    Ramp preview;             // linear gain of the wave-picker preview voice (osc 1's level)
     Ramp cutoffLog2;          // log2 of the filter cutoff in Hz, before key tracking and envelope
     Ramp resonance;           // 0 .. 1
     Ramp driveDb;             // 0 .. 24
@@ -52,7 +51,6 @@ struct BlockLevels
         }
 
         const float noiseGain = p.noise.enabled ? dbToGain (p.noise.levelDb) : 0.0f;
-        const float previewGain = dbToGain (p.osc[0].levelDb);
         const float cutoff = std::log2 (std::max (p.filter.cutoffHz, 1.0f));
         const float amount = p.filterEnv.enabled ? p.filterEnv.amount : 0.0f;
 
@@ -69,7 +67,6 @@ struct BlockLevels
         const float fm3 = p.osc[0].enabled && p.osc[2].enabled && toOsc3 ? fmAmount : 0.0f;
         b.fm = { Ramp { fm2, fm2 }, Ramp { fm3, fm3 } };
 
-        b.preview = { previewGain, previewGain };
         b.cutoffLog2 = { cutoff, cutoff };
         b.resonance = { p.filter.resonance, p.filter.resonance };
         b.driveDb = { p.filter.driveDb, p.filter.driveDb };

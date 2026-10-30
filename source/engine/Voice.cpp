@@ -50,8 +50,6 @@ void Voice::kill() noexcept
 
     sectionLive[0] = sectionLive[1] = false;
     oversampleMix = 0.0f;
-    previewOsc.reset (0.0);
-    previewRunning = false;
     stereoFilter = false;
     warmSamples = 0;
 
@@ -85,15 +83,12 @@ void Voice::start (const Pending& n) noexcept
 {
     note = n.note;
     velocity = n.velocity;
-    preview = n.preview;
-    previewWave = n.wave;
     sustainPending = n.keyReleased;
     hasPending = false;
     stealGain = 1.0f;
     filterEnvLevel = 0.0f;
 
-    if (! preview)
-        glideTo ((double) n.note);
+    glideTo ((double) n.note);
 
     ampEnv.reset();
     filterEnv.reset();
@@ -174,7 +169,6 @@ void Voice::init (const EngineParams& p) noexcept
 
     sectionLive[0] = sectionLive[1] = false;
     oversampleMix = 0.0f;
-    previewRunning = false;
     stereoFilter = false;
     warmSamples = 0;
 
@@ -210,10 +204,7 @@ void Voice::render (float* left, float* right, int numSamples, const EngineParam
     if (needsInit)
         init (p);
 
-    if (preview)
-        renderPreview (left, right, numSamples, lv, bend);
-    else
-        renderPlayed (left, right, numSamples, p, lv, bend, taps);
+    renderPlayed (left, right, numSamples, p, lv, bend, taps);
 }
 
 /** Reads every modulation source as it stands at the end of this block and adds
@@ -571,43 +562,6 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
         sectionLive[1] = false;
 }
 
-void Voice::renderPreview (float* left, float* right, int n, const BlockLevels& lv, double bend) noexcept
-{
-    const float invN = 1.0f / (float) n;
-    const double target = incrementFor (OscParams {}, (double) note, bend);
-
-    if (! previewRunning)
-    {
-        previewOsc.reset (0.0);
-        previewOsc.setPulseWidth (0.5);
-        previewIncrement = target;
-        previewRunning = true;
-    }
-
-    const double step = (target - previewIncrement) / (double) n;
-
-    for (int i = 0; i < n; ++i)
-    {
-        previewIncrement += step;
-        previewOsc.setIncrement (previewIncrement);
-        const float s = previewOsc.process (previewWave);
-
-        float amp = 0.0f;
-        if (ampHold > 0)
-            --ampHold;
-        else
-            amp = gate.next();
-
-        applyStealFade (amp);
-        const float out = s * lv.preview.at ((float) (i + 1) * invN) * amp;
-        left[i] += out;
-        right[i] += out;
-
-        if (ended())
-            return;
-    }
-}
-
 void Voice::applyStealFade (float& amp) noexcept
 {
     if (state != State::stealing)
@@ -634,9 +588,6 @@ bool Voice::ended() noexcept
 
 bool Voice::ampSilent() const noexcept
 {
-    if (preview)
-        return gate.isClosedAndSilent();
-
     // Only the stage that is audible has to be done; a long envelope release
     // must not keep a voice alive after the gate has taken over.
     const bool envelopeDone = ampMix <= 0.0f || ampEnv.isIdle();

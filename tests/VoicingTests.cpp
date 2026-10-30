@@ -336,20 +336,3 @@ TEST_CASE ("Changing the voicing mode with notes held releases them cleanly", "[
     rig.run (4800);
     REQUIRE (rig.activeVoices() == 2);
 }
-
-TEST_CASE ("Wave-picker previews stay polyphonic in mono mode", "[voicing][preview]")
-{
-    auto p = voicingParams (VoiceMode::mono);
-    p.osc[0].enabled = false; // the picker is only shown without oscillator 1
-    Rig rig (p);
-
-    rig.engine.previewNoteOn (57, dsp::Wave::sine);
-    rig.engine.previewNoteOn (64, dsp::Wave::sine);
-    rig.run (4800);
-    REQUIRE (rig.activeVoices() == 2);
-
-    rig.engine.previewNoteOff (57);
-    rig.engine.previewNoteOff (64);
-    rig.run (200);
-    REQUIRE (peak (rig.run (480)) == 0.0f);
-}

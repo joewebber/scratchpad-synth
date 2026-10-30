@@ -34,8 +34,8 @@ struct LiveModulation
 /** The whole sound engine: MIDI in, stereo audio out.
 
     Until the patch has oscillator 1 (`osc[0].enabled`), notes from MIDI or the
-    keyboard are ignored; only wave-picker preview notes sound. Every voice
-    renders stereo: the two channels differ only where a connection moves pan.
+    keyboard are ignored. Every voice renders stereo: the two channels differ
+    only where a connection moves pan.
 
     Patch-wide levels (oscillator, noise and output gains, filter cutoff,
     resonance, drive, envelope amount) are smoothed here over 20 ms, so a knob
@@ -47,8 +47,6 @@ public:
     void setParams (const EngineParams& newParams) noexcept;
 
     void handleMidi (const juce::MidiMessage& message) noexcept;
-    void previewNoteOn (int note, dsp::Wave wave) noexcept;
-    void previewNoteOff (int note) noexcept;
     void setPitchBend (float normalised) noexcept; // -1 .. +1
     void setModWheel (float normalised) noexcept;  // 0 .. 1
     void allNotesOff() noexcept;
@@ -91,7 +89,7 @@ private:
     EngineParams params;
 
     std::array<Smoother, 3> oscGain;
-    Smoother noiseGain, ringGain, previewGain, cutoffLog2, resonance, driveDb, filterEnvAmount;
+    Smoother noiseGain, ringGain, cutoffLog2, resonance, driveDb, filterEnvAmount;
     std::array<Smoother, 2> fmGain; // FM amount into oscillators 2 and 3
     Smoother outputGain;
     Smoother modWheelSmoother, aftertouchSmoother;

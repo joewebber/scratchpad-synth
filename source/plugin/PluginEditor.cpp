@@ -1,7 +1,5 @@
 #include "plugin/PluginEditor.h"
 
-#include "plugin/Parameters.h"
-
 namespace scratchpad::plugin
 {
 
@@ -11,85 +9,29 @@ ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
       topBar (p),
       patchView (p),
       performanceBar (p),
-      explainPanel (p),
-      presenceAttachment (*p.apvts.getParameter (params::osc1Enabled),
-                          [this] (float v) { refreshMode (v >= 0.5f); },
-                          &p.undoManager)
+      explainPanel (p)
 {
     setWantsKeyboardFocus (true);
     setTitle ("Scratchpad Synth");
 
     addAndMakeVisible (topBar);
-    addChildComponent (picker);
-    addChildComponent (patchView);
-    addChildComponent (performanceBar);
-    addChildComponent (explainPanel);
+    addAndMakeVisible (patchView);
+    addAndMakeVisible (performanceBar);
+    addAndMakeVisible (explainPanel);
 
     // After the children exist, so they all pick up the palette.
     setLookAndFeel (&lookAndFeel);
-
-    picker.onPreview = [this] (int wave) { setPreviewWave (wave); };
-    picker.onChoose = [this] (int wave)
-    {
-        setPreviewWave (-1);
-        processor.pickWave (wave);
-    };
 
     setResizable (false, false);
     setSize (baseWidth, baseHeight);
 
     juce::Desktop::getInstance().addFocusChangeListener (this);
-    presenceAttachment.sendInitialUpdate();
 }
 
 ScratchpadEditor::~ScratchpadEditor()
 {
     juce::Desktop::getInstance().removeFocusChangeListener (this);
-    setPreviewWave (-1);
     setLookAndFeel (nullptr);
-}
-
-void ScratchpadEditor::setPreviewWave (int wave)
-{
-    if (wave == previewingWave)
-        return;
-
-    UiEvent e;
-
-    if (previewingWave >= 0)
-    {
-        e.type = UiEvent::Type::previewOff;
-        e.note = (std::uint8_t) ui::WavePicker::previewNote;
-        processor.getUiEvents().push (e);
-    }
-
-    previewingWave = wave;
-
-    if (wave >= 0)
-    {
-        e.type = UiEvent::Type::previewOn;
-        e.note = (std::uint8_t) ui::WavePicker::previewNote;
-        e.wave = (std::uint8_t) wave;
-        processor.getUiEvents().push (e);
-    }
-}
-
-void ScratchpadEditor::refreshMode (bool started)
-{
-    if (! started)
-        performanceBar.releaseAllNotes();
-
-    picker.setVisible (! started);
-    patchView.setVisible (started);
-    performanceBar.setVisible (started);
-    explainPanel.setVisible (started);
-    topBar.setPickerMode (! started);
-
-    // Panels paint their shadows outside their bounds; clear what the hidden one left.
-    repaint();
-
-    if (started && isShowing())
-        grabKeyboardFocus();
 }
 
 void ScratchpadEditor::globalFocusChanged (juce::Component* focused)
@@ -102,15 +44,15 @@ void ScratchpadEditor::globalFocusChanged (juce::Component* focused)
 
 bool ScratchpadEditor::keyPressed (const juce::KeyPress& key)
 {
-    if (patchView.isVisible() && key == juce::KeyPress::escapeKey && patchView.cancelConnecting())
+    if (key == juce::KeyPress::escapeKey && patchView.cancelConnecting())
         return true;
 
-    return patchView.isVisible() && performanceBar.handleKeyPressed (key);
+    return performanceBar.handleKeyPressed (key);
 }
 
 bool ScratchpadEditor::keyStateChanged (bool isKeyDown)
 {
-    return patchView.isVisible() && performanceBar.handleKeyStateChanged (isKeyDown);
+    return performanceBar.handleKeyStateChanged (isKeyDown);
 }
 
 void ScratchpadEditor::paint (juce::Graphics& g)
@@ -124,8 +66,6 @@ void ScratchpadEditor::resized()
 
     topBar.setBounds (area.removeFromTop (52));
     area.removeFromTop (10);
-
-    picker.setBounds (area);
 
     explainPanel.setBounds (area.removeFromRight (ui::ExplainPanel::width));
     area.removeFromRight (10);

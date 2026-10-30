@@ -6,7 +6,7 @@
 namespace scratchpad::plugin
 {
 
-/** The modules a user adds to the one oscillator the wave picker creates.
+/** The modules a user adds to oscillator 1, which every patch has.
     Each has an `enabled` parameter (see Parameters.h). The integer values
     index `allModules`. */
 enum class Module

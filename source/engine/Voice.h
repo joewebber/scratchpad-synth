@@ -31,9 +31,6 @@ namespace scratchpad::engine
     oscillators in a second `OscSection` at twice the sample rate while the FM amount is above
     zero; the two sections are crossfaded over 10 ms when FM comes and goes.
 
-    A wave-picker preview voice is a different, fixed chain: one oscillator of
-    the wave it was started with, straight through the gate.
-
     Everything is real-time safe: no allocation, locks or logging. */
 class Voice
 {
@@ -51,8 +48,6 @@ public:
     {
         int note = -1;
         float velocity = 0.0f;
-        bool preview = false;
-        dsp::Wave wave = dsp::Wave::sine; // preview voices only; played notes use the patch's waves
         bool keyReleased = false;         // note-off arrived while the fade was running
     };
 
@@ -116,7 +111,6 @@ public:
     State state = State::idle;
     int note = -1;
     float velocity = 0.0f;
-    bool preview = false;
     bool sustainPending = false; // key is up but the pedal is holding the note
     std::uint64_t startOrder = 0;
     std::uint64_t releaseOrder = 0;
@@ -139,7 +133,6 @@ private:
     void finishSteal() noexcept;
     void silence() noexcept;
     void renderPlayed (float* left, float* right, int numSamples, const EngineParams& p, const BlockLevels& lv, double bend, const Taps& taps) noexcept;
-    void renderPreview (float* left, float* right, int numSamples, const BlockLevels& lv, double bend) noexcept;
     void computeModulation (const EngineParams& p, const BlockLevels& lv, int numSamples, float filterEnvEnd) noexcept;
 
     void glideTo (double target) noexcept;
@@ -154,9 +147,6 @@ private:
     static void syncEnvelope (dsp::Envelope& env, EnvelopeCache& cache, const EnvelopeParams& e) noexcept;
 
     std::unique_ptr<Oscillators> oscillators; // large; kept off the stack
-    dsp::Oscillator previewOsc;               // the wave-picker preview's single oscillator
-    double previewIncrement = 0.0;
-    bool previewRunning = false;
     bool sectionLive[2] { false, false };     // 1x and 2x sections: running since the last note started
     float oversampleMix = 0.0f;               // 0: all from the base-rate section, 1: all from the 2x section
     float oversampleStep = 0.01f;
@@ -167,7 +157,6 @@ private:
     dsp::Envelope ampEnv, filterEnv;
     dsp::Gate gate;
     EnvelopeCache ampCache, filterCache;
-    dsp::Wave previewWave = dsp::Wave::sine;
 
     // Glide runs in the semitone domain, from the last note this voice played.
     double glidePitch = 60.0;
