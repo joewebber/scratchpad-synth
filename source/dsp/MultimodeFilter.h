@@ -7,8 +7,8 @@
 #include "dsp/FloatCompare.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-
 namespace scratchpad::dsp
 {
 
