@@ -42,6 +42,8 @@ inline float filterMagnitude (FilterMode mode, float hz, float cutoffHz, float r
         case FilterMode::lp12: return (float) (1.0 / d);
         case FilterMode::hp12: return (float) (x * x / d);
         case FilterMode::bp12: return (float) (x / d);
+        case FilterMode::notch: return (float) (std::abs (1.0 - x * x) / d);
+        case FilterMode::comb: return 1.0f;
         case FilterMode::lp24: break;
     }
 

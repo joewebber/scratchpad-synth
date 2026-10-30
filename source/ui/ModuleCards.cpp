@@ -23,6 +23,9 @@ namespace
             case Wave::triangle: return "M1 5l4-4 8 8 4-4";
             case Wave::saw:      return "M1 1l8 8V1l8 8";
             case Wave::pulse:    return "M1 9V1h8v8h8V1";
+            case Wave::wavetableA:
+            case Wave::wavetableB:
+            case Wave::wavetableC: return "M1 5c2-5.5 5-5.5 8 0s6 5.5 8 0";
         }
         return "";
     }
@@ -35,6 +38,9 @@ namespace
             case Wave::triangle: return "M0.5 5l2.75-4 5.5 8 2.75-4";
             case Wave::saw:      return "M0.5 1.5L6 8.5V1.5L11.5 8.5";
             case Wave::pulse:    return "M0.5 9V1h5.5v8h5.5V1";
+            case Wave::wavetableA:
+            case Wave::wavetableB:
+            case Wave::wavetableC: return "M0.5 5c1.4-5 3.6-5 5.5 0s4 5 5.5 0";
         }
         return "";
     }
@@ -728,12 +734,16 @@ void NoiseCard::paint (juce::Graphics& g)
 FilterCard::FilterCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
     : curve (p),
       mode (p.apvts, params::filterMode, "Filter mode", p.undoManager, &Palette::flt),
+      shaperMode (p.apvts, params::voiceShaperMode, "Voice shaper mode", p.undoManager, &Palette::flt),
       cutoff (p.apvts, params::filterCutoff, "Cutoff", p.undoManager, "Filter cutoff"),
       resonance (p.apvts, params::filterResonance, "Reso", p.undoManager, "Filter resonance"),
       keyTrack (p.apvts, params::filterKeyTrack, "Key track", p.undoManager, "Filter key tracking"),
-      drive (p.apvts, params::filterDrive, "Drive", p.undoManager, "Filter drive")
+      drive (p.apvts, params::filterDrive, "Drive", p.undoManager, "Filter drive"),
+      shaperDrive (p.apvts, params::voiceShaperDrive, "Shaper drive", p.undoManager, "Per-voice shaper drive"),
+      shaperBias (p.apvts, params::voiceShaperBias, "Bias", p.undoManager, "Per-voice shaper bias"),
+      shaperMix (p.apvts, params::voiceShaperMix, "Shaper mix", p.undoManager, "Per-voice shaper mix")
 {
-    setTitle ("Filter");
+    shaperEnabled = std::make_unique<ToggleChip> (p.apvts, params::voiceShaperEnabled, "Shape", "Per-voice shaper", p.undoManager, &Palette::flt);
     makeRemovable ("Remove Filter", [&p] { p.removeModule (plugin::Module::filter); });
     makeControllable (p, "filter", false);
 
@@ -741,17 +751,18 @@ FilterCard::FilterCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
     cutoff.setModulation (model, { engine::ModDest::cutoff }, p.apvts.getParameter (params::filterEnvAmount));
     resonance.setModulation (model, { engine::ModDest::resonance });
 
-    for (auto* c : std::initializer_list<juce::Component*> { &curve, &mode, &cutoff, &resonance, &keyTrack, &drive })
-        addAndMakeVisible (c);
+    for (auto* c : std::initializer_list<juce::Component*> { &curve, &mode, &cutoff, &resonance, &keyTrack, &drive, shaperEnabled.get(), &shaperMode, &shaperDrive, &shaperBias, &shaperMix })
+        if (c != nullptr)
+            addAndMakeVisible (c);
 
     applyColours();
-    setFocusOrder ({ &mode, &cutoff, &resonance, &keyTrack, &drive, &curve });
+    setFocusOrder ({ &mode, &cutoff, &resonance, &keyTrack, &drive, shaperEnabled.get(), &shaperMode, &shaperDrive, &shaperBias, &shaperMix, &curve });
 }
 
 void FilterCard::applyColours()
 {
     const auto ink = paletteOf (*this).fltInk;
-    for (auto* k : { &cutoff, &resonance, &keyTrack, &drive })
+    for (auto* k : { &cutoff, &resonance, &keyTrack, &drive, &shaperDrive, &shaperBias, &shaperMix })
         k->setFamilyColour (ink);
 }
 
@@ -768,14 +779,23 @@ void FilterCard::resized()
     placeRemoveButton (headerRow);
     curve.setBounds (inner.getX(), 32, inner.getWidth(), 50);
     mode.setBounds (inner.getX(), 88, inner.getWidth(), 24);
+    shaperEnabled->setBounds (inner.getX(), 114, 70, 22);
+    shaperMode.setBounds (inner.getX() + 74, 114, inner.getWidth() - 74, 22);
 
     constexpr int knobs = 4;
     const int gap = (inner.getWidth() - knobs * Knob::knobWidth) / (knobs - 1);
     int x = inner.getX();
     for (auto* k : { &cutoff, &resonance, &keyTrack, &drive })
     {
-        k->setBounds (x, 118, Knob::knobWidth, Knob::knobHeight);
+        k->setBounds (x, 142, Knob::knobWidth, Knob::knobHeight);
         x += Knob::knobWidth + gap;
+    }
+
+    x = inner.getX();
+    for (auto* k : { &shaperDrive, &shaperBias, &shaperMix })
+    {
+        k->setBounds (x, 196, Knob::knobWidth, Knob::knobHeight);
+        x += Knob::knobWidth + 12;
     }
 }
 
@@ -919,6 +939,7 @@ VoicingCard::VoicingCard (plugin::ScratchpadProcessor& p)
       voices (p.apvts, params::voicingVoices, "Voices", p.undoManager, "Voices"),
       glide (p.apvts, params::voicingGlide, "Glide", p.undoManager, "Glide time"),
       bendRange (p.apvts, params::voicingBendRange, "Bend", p.undoManager, "Pitch bend range"),
+      drift (p.apvts, params::voicingDrift, "Drift", p.undoManager, "Analogue pitch and cutoff drift"),
       modeWatcher (*p.apvts.getParameter (params::voicingMode),
                    [this] (float v)
                    {
@@ -930,19 +951,19 @@ VoicingCard::VoicingCard (plugin::ScratchpadProcessor& p)
     setTitle ("Voicing");
     setExplainKey ("voicing");
 
-    for (auto* c : std::initializer_list<juce::Component*> { &mode, &voices, &glide, &bendRange })
+    for (auto* c : std::initializer_list<juce::Component*> { &mode, &voices, &glide, &bendRange, &drift })
         addAndMakeVisible (c);
 
     applyColours();
     modeWatcher.sendInitialUpdate();
     voices.setDisabledNote ("Not in use: mono and legato play one voice.");
-    setFocusOrder ({ &mode, &voices, &glide, &bendRange });
+    setFocusOrder ({ &mode, &voices, &glide, &bendRange, &drift });
 }
 
 void VoicingCard::applyColours()
 {
     const auto ink = paletteOf (*this).perfInk;
-    for (auto* k : { &voices, &glide, &bendRange })
+    for (auto* k : { &voices, &glide, &bendRange, &drift })
         k->setFamilyColour (ink);
 }
 
@@ -958,10 +979,10 @@ void VoicingCard::resized()
     headerRow = { pad, top, titleWidth, 24 };
     mode.setBounds (pad + titleWidth, top, width - 2 * pad - titleWidth, 24);
 
-    constexpr int knobs = 3;
+    constexpr int knobs = 4;
     const int gap = (width - 2 * pad - knobs * Knob::knobWidth) / (knobs - 1);
     int x = pad;
-    for (auto* k : { &voices, &glide, &bendRange })
+    for (auto* k : { &voices, &glide, &bendRange, &drift })
     {
         k->setBounds (x, 36, Knob::knobWidth, Knob::knobHeight);
         x += Knob::knobWidth + gap;

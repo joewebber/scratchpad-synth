@@ -53,6 +53,8 @@ inline constexpr const char* distortionEnabled = "distortion.enabled";
 inline constexpr const char* distortionDrive   = "distortion.drive";   // dB, 0 .. 40, default 12
 inline constexpr const char* distortionTone    = "distortion.tone";    // percent, default 50
 inline constexpr const char* distortionMix     = "distortion.mix";     // percent, default 100
+inline constexpr const char* distortionMode    = "distortion.mode";
+inline constexpr const char* distortionBias    = "distortion.bias";
 
 inline constexpr const char* chorusEnabled = "chorus.enabled";
 inline constexpr const char* chorusRate    = "chorus.rate";            // Hz, 0.1 .. 8, default 0.8
@@ -88,6 +90,11 @@ inline constexpr const char* filterCutoff     = "filter.cutoff";
 inline constexpr const char* filterResonance  = "filter.resonance";
 inline constexpr const char* filterKeyTrack   = "filter.keyTracking";
 inline constexpr const char* filterDrive      = "filter.drive";
+inline constexpr const char* voiceShaperEnabled = "filter.shaper.enabled";
+inline constexpr const char* voiceShaperMode = "filter.shaper.mode";
+inline constexpr const char* voiceShaperDrive = "filter.shaper.drive";
+inline constexpr const char* voiceShaperBias = "filter.shaper.bias";
+inline constexpr const char* voiceShaperMix = "filter.shaper.mix";
 
 /** IDs of an ADSR envelope's parameters. */
 struct EnvIds
@@ -143,7 +150,7 @@ inline constexpr const char* voicingMode      = "voicing.mode";
 inline constexpr const char* voicingVoices    = "voicing.voices";
 inline constexpr const char* voicingGlide     = "voicing.glide";
 inline constexpr const char* voicingBendRange = "voicing.bendRange";
-
+inline constexpr const char* voicingDrift     = "voicing.drift";
 inline constexpr const char* outVolume = "output.volume";
 
 // Ranges and defaults, in the units the parameter holds.

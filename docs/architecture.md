@@ -54,23 +54,20 @@ crossfade does not start with a gap.
 
 ## Voice chain (M2)
 
-Per voice: up to three oscillators and a noise source are summed, then the filter, then
-the amp stage. `EngineParams` (plain values in the engine's units) is built once per
+Per voice: up to three oscillators and a noise source are summed, then the filter, optional per-voice shaper, and amp stage. `EngineParams` (plain values in the engine's units) is built once per
 block by the processor from cached parameter pointers.
 
+- **Saturation.** The ladder applies `tanh` at each stage when driven. The drive makeup is intentionally lighter than the original
+  `1/sqrt(drive)` compensation, so resonance grows instead of being normalized away. The optional post-filter voice shaper reuses
+  the distortion's 2x oversampling and supports tanh, hard clip, wavefolder, DC bias, DC blocking and wet/dry mix.
+- **Filter modes.** LP 24, LP 12, HP 12 and BP 12 are retained; notch uses the SVF notch output and comb uses a short feedback delay
+  whose length follows cutoff. Both are per-voice and crossfade with the existing filter mode transition.
 - **Smoothing.** The engine owns one 20 ms smoother per patch-wide value (oscillator
   and noise gains, cutoff in log2, resonance, drive, filter-envelope amount, output
-  volume) so every voice follows the same curve. It hands each voice the value at the
-  start and end of every 32-sample sub-block (`BlockLevels`), and the voice
+  volume) so every voice follows the same curve. It hands each voice the value at
+  the start and end of every 32-sample sub-block (`BlockLevels`), and the voice
   interpolates linearly per sample. Pitch is interpolated the same way. Disabling a
   module ramps its gain to zero; it never steps.
-- **Filter.** Cutoff for a voice is `log2(cutoff) + keyTracking * (note - 60) / 12 +
-  filterEnvAmount * 6 * envelope`. LP 12, HP 12 and BP 12 are one TPT state-variable
-  filter; LP 24 is a four-pole TPT ladder with `tanh` in the feedback. Switching mode
-  crossfades the outgoing and incoming filters over 10 ms. Resonance 1.0 rings forever
-  by design: the ladder's feedback goes slightly past 4, and the SVF's damping goes
-  slightly negative with a term that grows with the band-pass level, so the ringing
-  settles at a steady level at every cutoff. Bypassing the filter is a 10 ms wet fade.
 - **Envelopes.** Exponential ADSR. Each segment aims a little past its destination
   (`Envelope.h`) so it arrives in finite time: the attack reaches 1.0 after the attack
   time, decay reaches sustain after the decay time, and release falls from full scale to
@@ -130,11 +127,16 @@ Eight fixed connection slots, `modN.source`, `modN.dest` (non-automatable choice
 
   | Destination | +100% means |
   | --- | --- |
-  | Pitch (all, or one oscillator) | 2 semitones |
+  | Pitch (all, or one oscillator) | 24 semitones |
   | Pulse width | 0.45 of the cycle (the knob's own 5-95% limits still hold) |
   | Osc level, noise level | gain x (1 + sum), limited to 0..2: -100% is silence, +100% is +6 dB |
   | Filter cutoff | 6 octaves, the same scale as the filter envelope's amount |
   | Resonance | the whole 0..1 range |
+  | Filter drive | 24 dB |
+  | FM amount | the full FM amount range |
+  | Distortion drive | 40 dB on the per-voice shaper |
+  | Unison detune | 100 cents |
+  | Sync | positive modulation above 50% enables hard sync |
   | Amp level | gain x (1 + sum), limited to 0..1: modulation can only turn it down |
   | Pan | hard left to hard right; a balance law, so a centred voice is exactly as loud as before |
   | LFO rate | 3 octaves (x or / 8) |

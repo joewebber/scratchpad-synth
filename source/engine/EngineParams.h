@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/Distortion.h"
 #include "dsp/Lfo.h"
 #include "dsp/MultimodeFilter.h"
 #include "dsp/Oscillator.h"
@@ -51,6 +52,11 @@ struct FilterParams
     float resonance = 0.2f;   // 0 .. 1
     float keyTracking = 0.0f; // 0 .. 1; 1 moves the cutoff one octave per octave played
     float driveDb = 0.0f;     // 0 .. 24
+    bool shaperEnabled = false;
+    dsp::ShapeMode shaperMode = dsp::ShapeMode::tanh;
+    float shaperDriveDb = 12.0f;
+    float shaperBias = 0.0f;
+    float shaperMix = 1.0f;
 };
 
 struct EnvelopeParams
@@ -89,6 +95,7 @@ struct VoicingParams
     int voices = 8;           // 1 .. 16, poly only
     float glideSeconds = 0.0f;
     float bendRange = 2.0f;   // semitones either way
+    float drift = 0.0f;       // 0 .. 1: slow per-voice pitch/cutoff drift
 };
 
 /** Which oscillators oscillator 1 phase-modulates. The order matches `params::fmTargetNames()`. */
@@ -104,6 +111,8 @@ struct DistortionParams
     float driveDb = 12.0f;  // 0 .. 40
     float tone = 0.5f;      // 0 .. 1, dark to bright
     float mix = 1.0f;       // 0 .. 1
+    dsp::ShapeMode mode = dsp::ShapeMode::tanh;
+    float bias = 0.0f;      // -1 .. +1
 };
 
 struct ChorusParams

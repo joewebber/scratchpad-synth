@@ -19,20 +19,29 @@ enum class Wave
     sine = 0,
     triangle = 1,
     saw = 2,
-    pulse = 3
+    pulse = 3,
+    wavetableA = 4,
+    wavetableB = 5,
+    wavetableC = 6
 };
 
-inline constexpr int numWaves = 4;
+inline constexpr int numWaves = 7;
 
 /** The naive (not band-limited) wave at phase `p` (0 .. 1). */
 inline double naiveWave (Wave wave, double p, double pulseWidth) noexcept
 {
     switch (wave)
     {
-        case Wave::sine:     return std::sin (2.0 * std::numbers::pi * p);
-        case Wave::triangle: return p < 0.5 ? 4.0 * p - 1.0 : 3.0 - 4.0 * p;
-        case Wave::saw:      return 2.0 * p - 1.0;
-        case Wave::pulse:    return p < pulseWidth ? 1.0 : -1.0;
+        case Wave::sine:       return std::sin (2.0 * std::numbers::pi * p);
+        case Wave::triangle:   return p < 0.5 ? 4.0 * p - 1.0 : 3.0 - 4.0 * p;
+        case Wave::saw:        return 2.0 * p - 1.0;
+        case Wave::pulse:      return p < pulseWidth ? 1.0 : -1.0;
+        case Wave::wavetableA: return (std::sin (2.0 * std::numbers::pi * p) + 0.45 * std::sin (4.0 * std::numbers::pi * p)
+                                      + 0.20 * std::sin (6.0 * std::numbers::pi * p)) / 1.65;
+        case Wave::wavetableB: return (std::sin (2.0 * std::numbers::pi * p) + 0.60 * std::sin (6.0 * std::numbers::pi * p)
+                                      + 0.30 * std::sin (10.0 * std::numbers::pi * p)) / 1.90;
+        case Wave::wavetableC: return (std::sin (2.0 * std::numbers::pi * p) + 0.55 * std::sin (8.0 * std::numbers::pi * p)
+                                      + 0.25 * std::sin (14.0 * std::numbers::pi * p)) / 1.80;
     }
     return 0.0;
 }
@@ -45,7 +54,10 @@ inline double naiveSlope (Wave wave, double p) noexcept
         case Wave::sine:     return 2.0 * std::numbers::pi * std::cos (2.0 * std::numbers::pi * p);
         case Wave::triangle: return p < 0.5 ? 4.0 : -4.0;
         case Wave::saw:      return 2.0;
-        case Wave::pulse:    return 0.0;
+        case Wave::pulse:
+        case Wave::wavetableA:
+        case Wave::wavetableB:
+        case Wave::wavetableC: return 0.0;
     }
     return 0.0;
 }
@@ -379,21 +391,6 @@ private:
 
     float run (Wave wave) noexcept
     {
-        const size_t index = wave == Wave::triangle ? 0 : wave == Wave::saw ? 1 : wave == Wave::pulse ? 2 : 3;
-        auto& shape = shapes[index];
-
-        if (! active[index])
-        {
-            // Joining mid-note needs history; at the start of a note the
-            // shape starts empty and the output is silent until it fills.
-            if (! fresh)
-                shape.prime (phase, dt, pulseWidth, bandLimit);
-
-            active[index] = true;
-        }
-
-        used[index] = true;
-
         double p = phase;
         if (offset != 0.0)
         {
@@ -401,6 +398,21 @@ private:
             p -= fastFloor (p);
         }
 
+        if ((int) wave >= (int) Wave::wavetableA)
+            return (float) naiveWave (wave, p, pulseWidth);
+
+        const size_t index = wave == Wave::triangle ? 0 : wave == Wave::saw ? 1 : wave == Wave::pulse ? 2 : 3;
+        auto& shape = shapes[index];
+
+        if (! active[index])
+        {
+            if (! fresh)
+                shape.prime (phase, dt, pulseWidth, bandLimit);
+
+            active[index] = true;
+        }
+
+        used[index] = true;
         return shape.tick (p, advance, pulseWidth, ! fresh && ! suppressEdges, bandLimit, hasReset ? &syncReset : nullptr);
     }
 

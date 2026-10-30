@@ -40,10 +40,18 @@ enum class ModDest : int
     ampLevel,
     pan,
     lfo1Rate,
-    lfo2Rate
+    lfo2Rate,
+    filterDrive,
+    fmAmount,
+    distortionDrive,
+    unisonDetune1,
+    unisonDetune2,
+    unisonDetune3,
+    sync2,
+    sync3
 };
 
-inline constexpr int numModDests = 18;
+inline constexpr int numModDests = 26;
 inline constexpr int numModSlots = 8;
 
 struct ModConnection
@@ -70,12 +78,16 @@ constexpr size_t index (ModDest d) noexcept { return (size_t) d; }
 
 /** What +100% means for each kind of destination. A sum of 1.0 moves the destination this far;
     -1.0 moves it as far the other way. */
-inline constexpr float modPitchSemitones = 2.0f;   // pitch
+inline constexpr float modPitchSemitones = 24.0f; // pitch, two octaves at 100%
 inline constexpr float modCutoffOctaves = 6.0f;    // filter cutoff, the same scale as the filter envelope's amount
 inline constexpr float modResonance = 1.0f;        // the whole 0 .. 1 range
 inline constexpr float modPulseWidth = 0.45f;      // pulse width, as a fraction of the cycle
 inline constexpr float modPan = 1.0f;              // hard left to hard right
 inline constexpr float modLfoRateOctaves = 3.0f;   // LFO rate
+inline constexpr float modFilterDriveDb = 24.0f;
+inline constexpr float modFmAmount = 1.0f;
+inline constexpr float modDistortionDriveDb = 40.0f;
+inline constexpr float modUnisonDetuneCents = 100.0f;
 
 /** Level destinations scale the knob's gain by `1 + sum`, so -100% is silence and +100% doubles it (+6 dB). */
 inline constexpr float modOscLevelMaxFactor = 2.0f;

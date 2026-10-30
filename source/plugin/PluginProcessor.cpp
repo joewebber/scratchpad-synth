@@ -147,12 +147,18 @@ ScratchpadProcessor::ScratchpadProcessor()
     filterResonance = findParam (params::filterResonance);
     filterKeyTrack = findParam (params::filterKeyTrack);
     filterDrive = findParam (params::filterDrive);
+    voiceShaperEnabled = findParam (params::voiceShaperEnabled);
+    voiceShaperMode = findParam (params::voiceShaperMode);
+    voiceShaperDrive = findParam (params::voiceShaperDrive);
+    voiceShaperBias = findParam (params::voiceShaperBias);
+    voiceShaperMix = findParam (params::voiceShaperMix);
     ampVelocity = findParam (params::ampEnvVelocity);
     filterEnvAmount = findParam (params::filterEnvAmount);
     voicingMode = findParam (params::voicingMode);
     voicingVoices = findParam (params::voicingVoices);
     voicingGlide = findParam (params::voicingGlide);
     voicingBendRange = findParam (params::voicingBendRange);
+    voicingDrift = findParam (params::voicingDrift);
     outVolume = findParam (params::outVolume);
 
     static_assert (params::numModSlots == engine::numModSlots);
@@ -186,6 +192,7 @@ ScratchpadProcessor::ScratchpadProcessor()
     }
 
     fx = { findParam (params::distortionEnabled), findParam (params::distortionDrive), findParam (params::distortionTone), findParam (params::distortionMix),
+           findParam (params::distortionMode), findParam (params::distortionBias),
            findParam (params::chorusEnabled), findParam (params::chorusRate), findParam (params::chorusDepth), findParam (params::chorusMix),
            findParam (params::delayEnabled), findParam (params::delayTime), findParam (params::delaySync), findParam (params::delayDivision),
            findParam (params::delayFeedback), findParam (params::delayPingPong), findParam (params::delayMix),
@@ -302,6 +309,11 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
     e.filter.resonance = fraction (filterResonance);
     e.filter.keyTracking = fraction (filterKeyTrack);
     e.filter.driveDb = load (filterDrive);
+    e.filter.shaperEnabled = on (voiceShaperEnabled);
+    e.filter.shaperMode = (dsp::ShapeMode) index (voiceShaperMode, 3);
+    e.filter.shaperDriveDb = load (voiceShaperDrive);
+    e.filter.shaperBias = fraction (voiceShaperBias);
+    e.filter.shaperMix = fraction (voiceShaperMix);
 
     const auto readEnvelope = [&] (const EnvPointers& s, engine::EnvelopeParams& env)
     {
@@ -340,6 +352,7 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
     e.voicing.voices = juce::jlimit (1, params::maxVoices, juce::roundToInt (load (voicingVoices)));
     e.voicing.glideSeconds = load (voicingGlide);
     e.voicing.bendRange = load (voicingBendRange);
+    e.voicing.drift = fraction (voicingDrift);
 
     e.ringLevelDb = load (fx.ringLevel);
     e.fmAmount = fraction (fx.fmAmount);
@@ -349,6 +362,8 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
     e.distortion.driveDb = load (fx.distortionDrive);
     e.distortion.tone = fraction (fx.distortionTone);
     e.distortion.mix = fraction (fx.distortionMix);
+    e.distortion.mode = (dsp::ShapeMode) index (fx.distortionMode, 3);
+    e.distortion.bias = fraction (fx.distortionBias);
 
     e.chorus.enabled = on (fx.chorusEnabled);
     e.chorus.rateHz = load (fx.chorusRate);

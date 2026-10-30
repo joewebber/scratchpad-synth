@@ -34,8 +34,9 @@ namespace
 
         // Position -1 .. +1 maps to 0 .. pi/2; sqrt 2 puts the centre at unity per side.
         const double angle = (u * (double) spread + 1.0) * (std::numbers::pi / 4.0);
-        l = (float) (std::numbers::sqrt2 * std::cos (angle)) * norm;
-        r = (float) (std::numbers::sqrt2 * std::sin (angle)) * norm;
+        const float centreWeight = std::abs (u) < 0.2 ? 1.25f : 1.0f;
+        l = (float) (std::numbers::sqrt2 * std::cos (angle)) * norm * centreWeight;
+        r = (float) (std::numbers::sqrt2 * std::sin (angle)) * norm * centreWeight;
     }
 }
 
@@ -170,7 +171,8 @@ void OscSection::beginBank (size_t index, const BankSettings& s, int numSamples)
             continue;
         }
 
-        const double u = n == 1 ? 0.0 : 2.0 * (double) c / (double) (n - 1) - 1.0;
+        const double rawU = n == 1 ? 0.0 : 2.0 * (double) c / (double) (n - 1) - 1.0;
+        const double u = rawU == 0.0 ? 0.0 : std::copysign (std::pow (std::abs (rawU), 1.35), rawU);
         const double ratio = n == 1 || s.detuneCents == 0.0f ? 1.0 : std::exp2 (u * (double) s.detuneCents / 1200.0);
 
         float gl, gr;

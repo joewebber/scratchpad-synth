@@ -15,6 +15,8 @@
 namespace scratchpad::dsp
 {
 
+enum class ShapeMode { tanh = 0, hardClip = 1, wavefolder = 2 };
+
 /** Drive into a tanh waveshaper, run at 4x the sample rate (two half-band FIR stages from
     `juce::dsp::Oversampling`) so the harmonics it makes above Nyquist are filtered out
     rather than folded back down. Then a two-pole low-pass "tone" control and a dry/wet mix.
@@ -44,11 +46,8 @@ public:
 
         for (auto& ring : dryRing)
             ring.assign ((size_t) latency + 1, 0.0f);
-
-        for (auto* s : { &driveDb, &tone, &mix })
+        for (auto* s : { &driveDb, &tone, &mix, &bias })
             s->reset (sampleRate, 0.02);
-
-        reset();
     }
 
     int getLatencySamples() const noexcept { return latency; }
@@ -64,15 +63,22 @@ public:
         ringIndex = 0;
         toneState = {};
         toneCoefficient = coefficientFor (tone.getCurrentValue());
+        shapedDriveDb = 1.0e9f;
     }
-
     void setParams (float newDriveDb, float newTone, float newMix, bool jump) noexcept
     {
+        setParams (newDriveDb, newTone, newMix, ShapeMode::tanh, 0.0f, jump);
+    }
+
+    void setParams (float newDriveDb, float newTone, float newMix, ShapeMode newMode, float newBias, bool jump) noexcept
+    {
+        mode = newMode;
         if (jump)
         {
             driveDb.setCurrentAndTargetValue (newDriveDb);
             tone.setCurrentAndTargetValue (newTone);
             mix.setCurrentAndTargetValue (newMix);
+            bias.setCurrentAndTargetValue (newBias);
             toneCoefficient = coefficientFor (newTone);
         }
         else
@@ -80,6 +86,7 @@ public:
             driveDb.setTargetValue (newDriveDb);
             tone.setTargetValue (newTone);
             mix.setTargetValue (newMix);
+            bias.setTargetValue (newBias);
         }
     }
 
@@ -131,6 +138,7 @@ private:
         for (int i = 0; i < n; ++i)
         {
             const float drive = driveDb.getNextValue();
+            const float biasValue = bias.getNextValue();
 
             if (! same (drive, shapedDriveDb))
             {
@@ -139,14 +147,30 @@ private:
                 shapeMakeup = std::pow (shapeGain, -0.25f);
             }
 
-            const float gain = shapeGain;
-            const float makeup = shapeMakeup;
+            const auto shape = [this, biasValue] (float input) noexcept
+            {
+                const float x = input * shapeGain + biasValue;
+                switch (mode)
+                {
+                    case ShapeMode::tanh: return fastTanh (x) * shapeMakeup;
+                    case ShapeMode::hardClip: return std::clamp (x, -1.0f, 1.0f) * shapeMakeup;
+                    case ShapeMode::wavefolder:
+                    {
+                        float folded = std::fmod (x + 1.0f, 4.0f);
+                        if (folded < 0.0f)
+                            folded += 4.0f;
+                        folded = folded < 2.0f ? folded : 4.0f - folded;
+                        return (folded - 1.0f) * shapeMakeup;
+                    }
+                }
+                return input;
+            };
 
             for (int j = 0; j < 4; ++j)
             {
                 const size_t k = (size_t) (4 * i + j);
-                upLeft[k] = fastTanh (upLeft[k] * gain) * makeup;
-                upRight[k] = fastTanh (upRight[k] * gain) * makeup;
+                upLeft[k] = shape (upLeft[k]);
+                upRight[k] = shape (upRight[k]);
             }
         }
 
@@ -165,9 +189,12 @@ private:
                 state[0] += toneCoefficient * (channels[c][i] - state[0]);
                 state[1] += toneCoefficient * (state[0] - state[1]);
 
-                channels[c][i] = dry[c][(size_t) i] * (1.0f - m) + state[1] * m;
-            }
+                const float blocked = state[1] - dcInput[c] + 0.995f * dcOutput[c];
+                dcInput[c] = state[1];
+                dcOutput[c] = blocked;
+                channels[c][i] = dry[c][(size_t) i] * (1.0f - m) + blocked * m;
         }
+    }
     }
 
     double sampleRate = 48000.0;
@@ -178,7 +205,9 @@ private:
     size_t ringIndex = 0;
     std::array<std::array<float, maxBlock>, 2> dry {};
 
-    juce::SmoothedValue<float> driveDb { 12.0f }, tone { 0.5f }, mix { 1.0f };
+    juce::SmoothedValue<float> driveDb { 12.0f }, tone { 0.5f }, mix { 1.0f }, bias {};
+    ShapeMode mode = ShapeMode::tanh;
+    std::array<float, 2> dcInput {}, dcOutput {};
     std::array<std::array<float, 2>, 2> toneState {};
     float toneCoefficient = 0.5f;
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/Distortion.h"
 #include "dsp/Envelope.h"
 #include "dsp/Gate.h"
 #include "dsp/Lfo.h"
@@ -154,6 +155,7 @@ private:
     int warmSamples = 0;                      // samples the 2x section still runs unheard, filling its decimator
     dsp::Noise noise;
     dsp::MultimodeFilter filter, filterR;
+    dsp::Distortion voiceShaper;
     dsp::Envelope ampEnv, filterEnv;
     dsp::Gate gate;
     EnvelopeCache ampCache, filterCache;

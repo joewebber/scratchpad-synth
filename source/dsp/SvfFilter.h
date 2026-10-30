@@ -19,7 +19,7 @@ namespace scratchpad::dsp
 class SvfFilter
 {
 public:
-    struct Outputs { float low, high, band; };
+    struct Outputs { float low, high, band, notch; };
 
     void setSampleRate (double sr) noexcept
     {
@@ -69,7 +69,7 @@ public:
         s2 = g * band + low;
         lastBand = band;
 
-        return { low, high, band };
+        return { low, high, band, low + high };
     }
 
 private:

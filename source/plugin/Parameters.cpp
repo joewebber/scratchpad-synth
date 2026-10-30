@@ -5,8 +5,8 @@
 namespace scratchpad::params
 {
 
-juce::StringArray waveNames()        { return { "Sine", "Triangle", "Saw", "Pulse" }; }
-juce::StringArray filterModeNames()  { return { "LP 24", "LP 12", "HP 12", "BP 12" }; }
+juce::StringArray waveNames()        { return { "Sine", "Triangle", "Saw", "Pulse", "Wavetable A", "Wavetable B", "Wavetable C" }; }
+juce::StringArray filterModeNames()  { return { "LP 24", "LP 12", "HP 12", "BP 12", "Notch", "Comb" }; }
 juce::StringArray voiceModeNames()   { return { "Poly", "Mono", "Legato" }; }
 juce::StringArray noiseColourNames() { return { "White", "Pink" }; }
 juce::StringArray lfoShapeNames()    { return { "Sine", "Triangle", "Saw up", "Saw down", "Square", "Sample & hold" }; }
@@ -29,7 +29,9 @@ juce::StringArray modDestNames()
     return { "None", "Pitch (all oscillators)", "Osc 1 pitch", "Osc 2 pitch", "Osc 3 pitch",
              "Osc 1 pulse width", "Osc 2 pulse width", "Osc 3 pulse width",
              "Osc 1 level", "Osc 2 level", "Osc 3 level", "Noise level",
-             "Filter cutoff", "Filter resonance", "Amp level", "Pan", "LFO 1 rate", "LFO 2 rate" };
+             "Filter cutoff", "Filter resonance", "Amp level", "Pan", "LFO 1 rate", "LFO 2 rate",
+             "Filter drive", "FM amount", "Distortion drive", "Osc 1 detune", "Osc 2 detune",
+             "Osc 3 detune", "Osc 2 sync", "Osc 3 sync" };
 }
 
 juce::StringArray fmTargetNames()      { return { "Osc 2", "Osc 3", "Both" }; }
@@ -252,6 +254,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         AudioParameterFloatAttributes()
             .withLabel ("dB")
             .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " dB"; })));
+    addToggle (layout, voiceShaperEnabled, "Per-voice shaper", false, versionHintM5);
+    addChoice (layout, voiceShaperMode, "Per-voice shaper mode", { "Tanh", "Hard clip", "Wavefolder" }, 0, versionHintM5);
+    addValue (layout, voiceShaperDrive, "Per-voice shaper drive", juce::NormalisableRange<float> (0.0f, distortionDriveMaxDb, 0.1f), 12.0f,
+              "dB", [] (float v) { return juce::String (v, 1) + " dB"; });
+    addPercent (layout, voiceShaperBias, "Per-voice shaper bias", -100.0f, 100.0f, 0.0f);
+    addPercent (layout, voiceShaperMix, "Per-voice shaper mix", 0.0f, 100.0f, 100.0f);
 
     // Envelopes.
     addEnvelope (layout, ampEnv, "Amp envelope", 0.005f, 0.3f, 80.0f, 0.2f);
@@ -289,6 +297,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
               "dB", [] (float v) { return juce::String (v, 1) + " dB"; });
     addPercent (layout, distortionTone, "Distortion tone", 0.0f, 100.0f, 50.0f, versionHintM5);
     addPercent (layout, distortionMix, "Distortion mix", 0.0f, 100.0f, 100.0f, versionHintM5);
+    addChoice (layout, distortionMode, "Distortion mode", { "Tanh", "Hard clip", "Wavefolder" }, 0, versionHintM5);
+    addPercent (layout, distortionBias, "Distortion bias", -100.0f, 100.0f, 0.0f, versionHintM5);
 
     addPresence (layout, chorusEnabled, "Chorus present", versionHintM5);
     addValue (layout, chorusRate, "Chorus rate", logRange (chorusRateMinHz, chorusRateMaxHz), chorusRateDefaultHz,
@@ -353,6 +363,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<AudioParameterInt> (
         ParameterID { voicingBendRange, versionHintM2 }, "Pitch bend range", bendRangeMin, bendRangeMax, bendRangeDefault,
         AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int) { return juce::String (juce::CharPointer_UTF8 ("\xc2\xb1")) + juce::String (v); })));
+    addPercent (layout, voicingDrift, "Analogue drift", 0.0f, 100.0f, 0.0f, versionHintM5);
 
     // Output.
     addLevel (layout, outVolume, "Output volume", volumeMinDb, volumeMaxDb, volumeDefaultDb, versionHint);

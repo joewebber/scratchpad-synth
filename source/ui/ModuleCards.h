@@ -227,14 +227,15 @@ public:
     void resized() override;
     void lookAndFeelChanged() override;
 
-    static constexpr int width = 276, height = 198;
+    static constexpr int width = 276, height = 250;
 
 private:
     void applyColours();
 
     FilterCurve curve;
-    ChoiceSegments mode;
-    Knob cutoff, resonance, keyTrack, drive;
+    ChoiceSegments mode, shaperMode;
+    Knob cutoff, resonance, keyTrack, drive, shaperDrive, shaperBias, shaperMix;
+    std::unique_ptr<ToggleChip> shaperEnabled;
     juce::Rectangle<int> headerRow;
 };
 
@@ -297,7 +298,7 @@ private:
     void applyColours();
 
     ChoiceSegments mode;
-    Knob voices, glide, bendRange;
+    Knob voices, glide, bendRange, drift;
     juce::ParameterAttachment modeWatcher;
     int modeIndex = 0;
     juce::Rectangle<int> headerRow;

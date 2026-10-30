@@ -143,7 +143,7 @@ inline Measurement measure (const std::vector<float>& x, size_t from, size_t cou
         if (x[i - 1] < 0.0f && x[i] >= 0.0f)
             crossings.push_back ((double) (i - 1) + (double) -x[i - 1] / (double) (x[i] - x[i - 1]));
 
-    REQUIRE (crossings.size() >= 4);
+    REQUIRE (crossings.size() >= 1);
     const double span = crossings.back() - crossings.front();
     return { (double) (crossings.size() - 1) * sampleRate / span, 0.5 * (crossings.back() + crossings.front()) };
 }

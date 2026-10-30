@@ -67,6 +67,14 @@ juce::String destinationName (ModDest d)
         case ModDest::pan:         return "Pan";
         case ModDest::lfo1Rate:    return "LFO 1 rate";
         case ModDest::lfo2Rate:    return "LFO 2 rate";
+        case ModDest::filterDrive: return "Filter drive";
+        case ModDest::fmAmount:    return "FM amount";
+        case ModDest::distortionDrive: return "Distortion drive";
+        case ModDest::unisonDetune1: return "Osc 1 detune";
+        case ModDest::unisonDetune2: return "Osc 2 detune";
+        case ModDest::unisonDetune3: return "Osc 3 detune";
+        case ModDest::sync2:       return "Osc 2 sync";
+        case ModDest::sync3:       return "Osc 3 sync";
     }
     return {};
 }
@@ -101,9 +109,17 @@ std::optional<Module> moduleOf (ModDest d)
         case ModDest::level3:      return Module::osc3;
         case ModDest::noiseLevel:  return Module::noise;
         case ModDest::cutoff:
-        case ModDest::resonance:   return Module::filter;
+        case ModDest::resonance:
+        case ModDest::filterDrive: return Module::filter;
         case ModDest::lfo1Rate:    return Module::lfo1;
         case ModDest::lfo2Rate:    return Module::lfo2;
+        case ModDest::distortionDrive: return Module::distortion;
+        case ModDest::unisonDetune2:
+        case ModDest::sync2:       return Module::osc2;
+        case ModDest::unisonDetune3:
+        case ModDest::sync3:       return Module::osc3;
+        case ModDest::fmAmount:
+        case ModDest::unisonDetune1:
         case ModDest::none:
         case ModDest::pitchAll:
         case ModDest::pitch1:

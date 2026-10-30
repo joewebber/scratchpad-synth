@@ -404,6 +404,9 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
             addKnob (params::distortionDrive, "Drive", "drive");
             addKnob (params::distortionTone, "Tone", "tone");
             addKnob (params::distortionMix, "Mix", "mix");
+            distortionBias = addKnob (params::distortionBias, "Bias", "bias");
+            distortionMode = std::make_unique<ChoiceSegments> (p.apvts, params::distortionMode, "Mode", p.undoManager, &Palette::fx);
+            addAndMakeVisible (*distortionMode);
             break;
 
         case engine::EffectKind::chorus:
@@ -445,6 +448,8 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
     // Tab order: the grip, the chips on the left, then the knobs left to right (the delay's note length takes its
     // time knob's place), then the picture. A newly added effect offers its first knob.
     std::vector<juce::Component*> order { &grip };
+    if (distortionMode != nullptr)
+        order.push_back (distortionMode.get());
     for (auto* chip : { (juce::Component*) syncChip.get(), (juce::Component*) pingPongChip.get() })
         if (chip != nullptr)
             order.push_back (chip);
@@ -514,7 +519,9 @@ void EffectCard::resized()
     }
     else
     {
-        display.setBounds (pad, top, leftWidth, 72);
+        display.setBounds (pad, top, leftWidth, distortionMode != nullptr ? 42 : 72);
+        if (distortionMode != nullptr)
+            distortionMode->setBounds (pad, top + 44, leftWidth, 24);
     }
 
     int x = knobsX;

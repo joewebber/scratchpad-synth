@@ -98,7 +98,8 @@ void EffectsChain::setEffectParams (EffectKind kind, bool jump) noexcept
     switch (kind)
     {
         case EffectKind::distortion:
-            distortion.setParams (distortionParams.driveDb, distortionParams.tone, distortionParams.mix, jump);
+            distortion.setParams (distortionParams.driveDb, distortionParams.tone, distortionParams.mix,
+                                  distortionParams.mode, distortionParams.bias, jump);
             break;
         case EffectKind::chorus:
             chorus.setParams (chorusParams.rateHz, chorusParams.depth, chorusParams.mix, jump);

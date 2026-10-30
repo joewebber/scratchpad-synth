@@ -91,7 +91,7 @@ public:
     /** Where this effect is among the effects in the patch (1 is first), for the grip's description. */
     void setPosition (int position, int count);
 
-    static constexpr int width = 280, height = 102;
+    static constexpr int width = 280, height = 130;
 
 private:
     Knob* addKnob (const char* id, const char* caption, const juce::String& accessibleSuffix, bool inRow = true);
@@ -109,6 +109,8 @@ private:
     Knob* alternateKnob = nullptr;              // the delay's note length, in the time knob's place while synced
     std::unique_ptr<ToggleChip> syncChip, pingPongChip;
     std::unique_ptr<juce::ParameterAttachment> syncWatcher;
+    std::unique_ptr<ChoiceSegments> distortionMode;
+    Knob* distortionBias = nullptr;
 
     juce::Rectangle<int> headerRow;
 };

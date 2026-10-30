@@ -189,7 +189,7 @@ TEST_CASE ("Connections add up per destination and ignore sources that read zero
     REQUIRE (sums[index (ModDest::resonance)] == 0.0f);
 }
 
-TEST_CASE ("An LFO on pitch bends it by +-2 semitones at 100%, scaled by the amount", "[modulation][pitch]")
+TEST_CASE ("An LFO on pitch bends it by +-24 semitones at 100%, scaled by the amount", "[modulation][pitch]")
 {
     for (const float amount : { 1.0f, 0.5f })
     {
@@ -200,7 +200,7 @@ TEST_CASE ("An LFO on pitch bends it by +-2 semitones at 100%, scaled by the amo
         const auto x = rig.run (48000);
 
         const auto [lo, hi] = hzRange (x);
-        const double span = 2.0 * amount;
+        const double span = 24.0 * amount;
         REQUIRE (hi == Approx (440.0 * std::exp2 (span / 12.0)).epsilon (0.01));
         REQUIRE (lo == Approx (440.0 * std::exp2 (-span / 12.0)).epsilon (0.01));
     }
@@ -237,8 +237,8 @@ TEST_CASE ("A connection to one oscillator's pitch moves only that oscillator", 
         return measureHz (rig.run (9600));
     };
 
-    REQUIRE (settledHz (ModDest::pitch2) == Approx (440.0 * std::exp2 (2.0 / 12.0)).epsilon (0.001));
-    REQUIRE (settledHz (ModDest::pitchAll) == Approx (440.0 * std::exp2 (2.0 / 12.0)).epsilon (0.001));
+    REQUIRE (settledHz (ModDest::pitch2) == Approx (440.0 * std::exp2 (24.0 / 12.0)).epsilon (0.001));
+    REQUIRE (settledHz (ModDest::pitchAll) == Approx (440.0 * std::exp2 (24.0 / 12.0)).epsilon (0.001));
     REQUIRE (settledHz (ModDest::pitch3) == Approx (440.0).epsilon (0.001));
     REQUIRE (settledHz (ModDest::pitch1) == Approx (440.0).epsilon (0.001)); // osc 1 is silent here
 }

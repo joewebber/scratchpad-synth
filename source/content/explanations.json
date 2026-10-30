@@ -903,6 +903,46 @@
         "decibel"
       ]
     },
+    "filter.shaper.enabled": {
+      "title": "Per-voice shaper",
+      "module": "filter",
+      "what": "Adds a separate shaper after each voice's filter and before its amp envelope.",
+      "listenFor": "The filter envelope can now sweep harmonics into the shaper.",
+      "tryThis": "Enable it and raise Shaper drive while moving the filter cutoff.",
+      "glossaryTerms": ["distortion", "filter"]
+    },
+    "filter.shaper.mode": {
+      "title": "Shaper mode",
+      "module": "filter",
+      "what": "Chooses tanh, hard clip or wavefolder shaping for each voice.",
+      "listenFor": "Wavefolder and hard clip add a more angular grit than tanh.",
+      "tryThis": "Compare all three modes at the same drive.",
+      "glossaryTerms": ["distortion", "harmonic"]
+    },
+    "filter.shaper.drive": {
+      "title": "Shaper drive",
+      "module": "filter",
+      "what": "Sets how hard each filtered voice is pushed into its shaper.",
+      "listenFor": "Higher drive adds harmonics before the amp envelope.",
+      "tryThis": "Raise it with a short filter-envelope attack.",
+      "glossaryTerms": ["drive", "distortion"]
+    },
+    "filter.shaper.bias": {
+      "title": "Shaper bias",
+      "module": "filter",
+      "what": "Adds a DC offset before shaping, creating asymmetric even harmonics; a blocker removes the offset afterwards.",
+      "listenFor": "Positive and negative bias have different grit and body.",
+      "tryThis": "Sweep Bias around zero in hard-clip mode.",
+      "glossaryTerms": ["harmonic", "distortion"]
+    },
+    "filter.shaper.mix": {
+      "title": "Shaper mix",
+      "module": "filter",
+      "what": "Blends the shaped filtered voice with its clean version.",
+      "listenFor": "Lower mix keeps the original attack under the grit.",
+      "tryThis": "Use a low mix with high drive for parallel texture.",
+      "glossaryTerms": ["distortion"]
+    },
     "filter.bypass": {
       "title": "Bypass",
       "module": "filter",
@@ -1509,6 +1549,17 @@
         "semitone"
       ]
     },
+    "voicing.drift": {
+      "title": "Analogue drift",
+      "module": "voicing",
+      "what": "Adds a slow, independent pitch and cutoff wander to each voice, up to a few cents at maximum.",
+      "listenFor": "A subtle difference between repeated notes and voices.",
+      "tryThis": "Raise it slightly on a sustained chord, then compare repeated notes.",
+      "glossaryTerms": [
+        "detune",
+        "pitch"
+      ]
+    },
     "output.volume": {
       "title": "Volume",
       "module": "output",
@@ -1793,6 +1844,22 @@
         "drive",
         "decibel"
       ]
+    },
+    "distortion.mode": {
+      "title": "Mode",
+      "module": "distortion",
+      "what": "Chooses smooth tanh, hard clip or wavefolder shaping.",
+      "listenFor": "Each mode emphasizes a different harmonic texture.",
+      "tryThis": "Compare modes with Drive at 24 dB.",
+      "glossaryTerms": ["distortion", "harmonic"]
+    },
+    "distortion.bias": {
+      "title": "Bias",
+      "module": "distortion",
+      "what": "Offsets the signal before shaping to create asymmetric even harmonics.",
+      "listenFor": "Bias changes the grit from symmetric buzz to thicker asymmetric tone.",
+      "tryThis": "Sweep Bias around zero in hard-clip mode.",
+      "glossaryTerms": ["distortion", "harmonic"]
     },
     "distortion.tone": {
       "title": "Tone",

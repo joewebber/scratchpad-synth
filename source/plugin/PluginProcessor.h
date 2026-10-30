@@ -195,12 +195,18 @@ private:
     std::atomic<float>* filterResonance = nullptr;
     std::atomic<float>* filterKeyTrack = nullptr;
     std::atomic<float>* filterDrive = nullptr;
+    std::atomic<float>* voiceShaperEnabled = nullptr;
+    std::atomic<float>* voiceShaperMode = nullptr;
+    std::atomic<float>* voiceShaperDrive = nullptr;
+    std::atomic<float>* voiceShaperBias = nullptr;
+    std::atomic<float>* voiceShaperMix = nullptr;
     std::atomic<float>* ampVelocity = nullptr;
     std::atomic<float>* filterEnvAmount = nullptr;
     std::atomic<float>* voicingMode = nullptr;
     std::atomic<float>* voicingVoices = nullptr;
     std::atomic<float>* voicingGlide = nullptr;
     std::atomic<float>* voicingBendRange = nullptr;
+    std::atomic<float>* voicingDrift = nullptr;
     std::atomic<float>* outVolume = nullptr;
 
     struct LfoPointers
@@ -218,7 +224,7 @@ private:
 
     struct EffectPointers
     {
-        std::atomic<float> *distortionEnabled, *distortionDrive, *distortionTone, *distortionMix;
+        std::atomic<float> *distortionEnabled, *distortionDrive, *distortionTone, *distortionMix, *distortionMode, *distortionBias;
         std::atomic<float> *chorusEnabled, *chorusRate, *chorusDepth, *chorusMix;
         std::atomic<float> *delayEnabled, *delayTime, *delaySync, *delayDivision, *delayFeedback, *delayPingPong, *delayMix;
         std::atomic<float> *reverbEnabled, *reverbSize, *reverbDecay, *reverbDamping, *reverbMix;

@@ -30,19 +30,21 @@ public:
     void reset() noexcept { s[0] = s[1] = s[2] = s[3] = 0.0f; }
 
     /** Cheap enough to call every sample; recalculates only when something changed. */
-    void setParams (float cutoffHz, float resonance) noexcept
+    void setParams (float cutoffHz, float resonance, float driveDb = 0.0f) noexcept
     {
         const float res = std::clamp (resonance, 0.0f, 1.0f);
 
-        if (same (cutoffHz, cutoff) && same (res, lastResonance))
+        if (same (cutoffHz, cutoff) && same (res, lastResonance) && same (driveDb, lastDriveDb))
             return;
 
         cutoff = cutoffHz;
         lastResonance = res;
+        lastDriveDb = driveDb;
 
         const float g = (float) std::tan (std::numbers::pi * std::min ((double) cutoffHz, 0.45 * sampleRate) / sampleRate);
         G = g / (1.0f + g);
         k = 4.1f * res;
+        stageDrive = std::pow (10.0f, std::max (driveDb, 0.0f) / 80.0f);
 
         const float G2 = G * G;
         G4 = G2 * G2;
@@ -58,15 +60,14 @@ public:
 
         // Predict the last stage's output by solving the loop linearly, then
         // feed back only its tanh. Small signals see the exact linear loop;
-        // loud ones are held in check by the saturating feedback.
         const float uLinear = (x - k * stateSum) * solveDenominator;
         const float u = x - k * fastTanh (G4 * uLinear + stateSum);
-
         float in = u;
         for (float& state : s)
         {
             const float v = (in - state) * G;
-            const float y = v + state;
+            const float raw = v + state;
+            const float y = stageDrive > 1.0001f ? fastTanh (raw * stageDrive) / stageDrive : raw;
             state = y + v;
             in = y;
         }
@@ -76,8 +77,9 @@ public:
 
 private:
     double sampleRate = 48000.0;
-    float cutoff = -1.0f, lastResonance = -1.0f;
+    float cutoff = -1.0f, lastResonance = -1.0f, lastDriveDb = -1.0f;
     float G = 0.0f, G4 = 0.0f, k = 0.0f, solveDenominator = 1.0f;
+    float stageDrive = 1.0f;
     float s[4] {};
 };
 

@@ -16,8 +16,8 @@ void Voice::prepare (double sr, std::uint32_t noiseSeed) noexcept
     filterEnv.setSampleRate (sr);
     filter.prepare (sr);
     filterR.prepare (sr);
+    voiceShaper.prepare (sr);
     noise.seed (noiseSeed);
-
     for (size_t i = 0; i < lfos.size(); ++i)
     {
         lfos[i].setSampleRate (sr);
@@ -55,7 +55,7 @@ void Voice::kill() noexcept
 
     filter.reset();
     filterR.reset();
-    ampCache = {};
+    voiceShaper.reset();
     filterCache = {};
     glideRemaining = 0;
     hasPlayed = false;
@@ -263,8 +263,15 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 {
     const float invN = 1.0f / (float) n;
 
-    const double pitchStart = glidePitch;
-    const double pitchEnd = advanceGlide (n);
+    const double driftPhaseStart = age * 0.37 + (double) (startOrder % 1009u) * 0.17;
+    const double driftPhaseEnd = (age + (double) n / sampleRate) * 0.37 + (double) (startOrder % 1009u) * 0.17;
+    const double driftPitchStart = p.voicing.drift * 0.05 * std::sin (driftPhaseStart);
+    const double driftPitchEnd = p.voicing.drift * 0.05 * std::sin (driftPhaseEnd);
+    const double driftCutoffStart = p.voicing.drift * 0.03 * std::cos (driftPhaseStart * 0.73);
+    const double driftCutoffEnd = p.voicing.drift * 0.03 * std::cos (driftPhaseEnd * 0.73);
+
+    const double pitchStart = glidePitch + driftPitchStart;
+    const double pitchEnd = advanceGlide (n) + driftPitchEnd;
 
     syncEnvelope (ampEnv, ampCache, p.ampEnv);
     syncEnvelope (filterEnv, filterCache, p.filterEnv);
@@ -296,12 +303,15 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 
     const Ramp cutoffMod = rampOf (ModDest::cutoff);
     const Ramp resonanceMod = rampOf (ModDest::resonance);
+    const Ramp filterDriveMod = rampOf (ModDest::filterDrive);
+    const Ramp fmAmountMod = rampOf (ModDest::fmAmount);
+    const Ramp distortionDriveMod = rampOf (ModDest::distortionDrive);
 
     const float tracking = p.filter.keyTracking / 12.0f;
     const Ramp cutoff {
-        lv.cutoffLog2.start + tracking * (float) (pitchStart - 60.0) + lv.filterEnvAmount.start * filterEnvOctaves * envStart
+        lv.cutoffLog2.start + tracking * (float) (pitchStart - 60.0) + (float) driftCutoffStart + lv.filterEnvAmount.start * filterEnvOctaves * envStart
             + modCutoffOctaves * cutoffMod.start,
-        lv.cutoffLog2.end + tracking * (float) (pitchEnd - 60.0) + lv.filterEnvAmount.end * filterEnvOctaves * envEnd
+        lv.cutoffLog2.end + tracking * (float) (pitchEnd - 60.0) + (float) driftCutoffEnd + lv.filterEnvAmount.end * filterEnvOctaves * envEnd
             + modCutoffOctaves * cutoffMod.end
     };
 
@@ -322,14 +332,18 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
     if (ringOn)
         on[0] = on[1] = true;
 
-    const std::array<bool, 2> fmOn { present (lv.fm[0]) && on[1], present (lv.fm[1]) && on[2] };
+    const std::array<bool, 2> fmOn {
+        (present (lv.fm[0]) || std::abs (fmAmountMod.start) > 1.0e-5f || std::abs (fmAmountMod.end) > 1.0e-5f) && on[1],
+        (present (lv.fm[1]) || std::abs (fmAmountMod.start) > 1.0e-5f || std::abs (fmAmountMod.end) > 1.0e-5f) && on[2]
+    };
     const bool fmWanted = fmOn[0] || fmOn[1];
     if (fmWanted)
         on[0] = true;
 
     for (size_t k = 1; k < synced.size(); ++k)
     {
-        synced[k] = p.osc[k].sync && on[k] && p.osc[0].enabled;
+        const auto syncDest = k == 1 ? ModDest::sync2 : ModDest::sync3;
+        synced[k] = (p.osc[k].sync || modEnd[index (syncDest)] > 0.5f) && on[k] && p.osc[0].enabled;
         if (synced[k])
             on[0] = true;
     }
@@ -348,7 +362,8 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
         s.increment = incrementFor (op, pitchEnd, bend + pitchMod);
         s.pulseWidth = std::clamp (op.pulseWidth + modPulseWidth * modEnd[index (pulseWidthDest (k))], 0.05f, 0.95f);
         s.unison = op.unison;
-        s.detuneCents = op.unisonDetuneCents;
+        const auto detuneDest = k == 0 ? ModDest::unisonDetune1 : k == 1 ? ModDest::unisonDetune2 : ModDest::unisonDetune3;
+        s.detuneCents = std::clamp (op.unisonDetuneCents + modUnisonDetuneCents * modEnd[index (detuneDest)], 0.0f, 100.0f);
         s.spread = op.unisonSpread;
         s.antiAlias = op.antiAlias;
         s.phaseReset = op.phaseReset;
@@ -418,8 +433,8 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 
         oversampleMix += std::clamp (mixGoal - oversampleMix, -oversampleStep, oversampleStep);
 
-        const float fmTo2 = fmOn[0] ? lv.fm[0].at (t) : 0.0f;
-        const float fmTo3 = fmOn[1] ? lv.fm[1].at (t) : 0.0f;
+        const float fmTo2 = fmOn[0] ? std::clamp (lv.fm[0].at (t) + modFmAmount * fmAmountMod.at (t), 0.0f, 1.0f) : 0.0f;
+        const float fmTo3 = fmOn[1] ? std::clamp (lv.fm[1].at (t) + modFmAmount * fmAmountMod.at (t), 0.0f, 1.0f) : 0.0f;
         StereoOscs y, over;
 
         if (sectionLive[0])
@@ -488,10 +503,11 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
             {
                 const float resonance = std::clamp (lv.resonance.at (t) + modResonance * resonanceMod.at (t), 0.0f, 1.0f);
                 const float hz = std::exp2 (cutoff.at (t));
-                filter.setParams (hz, resonance, lv.driveDb.at (t));
+                const float drive = std::clamp (lv.driveDb.at (t) + modFilterDriveDb * filterDriveMod.at (t), 0.0f, 24.0f);
+                filter.setParams (hz, resonance, drive);
 
                 if (stereo)
-                    filterR.setParams (hz, resonance, lv.driveDb.at (t));
+                    filterR.setParams (hz, resonance, drive);
 
                 filterParamsSet = true;
             }
@@ -520,6 +536,16 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 
         if (taps.afterFilter != nullptr)
             taps.afterFilter[i] += stereo ? 0.5f * (sumL + sumR) : sumL;
+        if (p.filter.shaperEnabled || std::abs (distortionDriveMod.start) > 1.0e-5f || std::abs (distortionDriveMod.end) > 1.0e-5f)
+        {
+            const float shaperDrive = std::clamp (p.filter.shaperDriveDb + modDistortionDriveDb * distortionDriveMod.at (t), 0.0f, 40.0f);
+            voiceShaper.setParams (shaperDrive, 0.5f, p.filter.shaperEnabled ? p.filter.shaperMix : 1.0f,
+                                   p.filter.shaperMode, p.filter.shaperBias, false);
+            float shaped[2] { sumL, sumR };
+            voiceShaper.process (shaped, shaped + 1, 1);
+            sumL = shaped[0];
+            sumR = stereo ? shaped[1] : shaped[0];
+        }
 
         velocityNow += std::clamp (velocityTarget - velocityNow, -velocityStep, velocityStep);
 

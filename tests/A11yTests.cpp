@@ -112,7 +112,7 @@ TEST_CASE ("Choice selectors expose their current text and respond to arrows", "
     REQUIRE (selector.keyPressed (juce::KeyPress (juce::KeyPress::homeKey)));
     CHECK (selector.getSelected() == 0);
     REQUIRE (selector.keyPressed (juce::KeyPress (juce::KeyPress::endKey)));
-    CHECK (selector.getSelected() == 3);
+    CHECK (selector.getSelected() == 6);
 }
 
 TEST_CASE ("Connection rows adjust and remove a modulation from the keyboard", "[a11y][keyboard][modulation]")
