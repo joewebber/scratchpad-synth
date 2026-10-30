@@ -30,6 +30,21 @@ FilterCurve::FilterCurve (plugin::ScratchpadProcessor& p)
     setPaintingIsUnclipped (true);
 }
 
+std::unique_ptr<juce::AccessibilityHandler> FilterCurve::createAccessibilityHandler()
+{
+    return a11y::makeImageHandler (*this,
+                                   [this]
+                                   {
+                                       static const char* const modes[] = { "Low-pass, 24 decibels per octave", "Low-pass, 12 decibels per octave",
+                                                                            "High-pass, 12 decibels per octave", "Band-pass, 12 decibels per octave" };
+                                       const auto text = [this] (const char* id) { return a11y::spokenValue (processor.apvts.getParameter (id)->getCurrentValueAsText()); };
+                                       const int mode = juce::jlimit (0, 3, (int) (raw (processor, params::filterMode) + 0.5f));
+
+                                       return juce::String (modes[mode]) + ". Cutoff " + text (params::filterCutoff) + ", resonance "
+                                              + text (params::filterResonance) + ".";
+                                   });
+}
+
 void FilterCurve::visibilityChanged()
 {
     if (isShowing())
@@ -130,6 +145,19 @@ EnvelopeDisplay::EnvelopeDisplay (plugin::ScratchpadProcessor& p, ModulationMode
 EnvelopeDisplay::~EnvelopeDisplay()
 {
     model.removeListener (this);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> EnvelopeDisplay::createAccessibilityHandler()
+{
+    return a11y::makeImageHandler (*this,
+                                   [this]
+                                   {
+                                       const auto& ids = isAmp ? params::ampEnv : params::filterEnv;
+                                       const auto text = [this] (const char* id) { return a11y::spokenValue (processor.apvts.getParameter (id)->getCurrentValueAsText()); };
+
+                                       return "Attack " + text (ids.attack) + ", decay " + text (ids.decay) + ", sustain " + text (ids.sustain)
+                                              + ", release " + text (ids.release) + ".";
+                                   });
 }
 
 void EnvelopeDisplay::visibilityChanged()

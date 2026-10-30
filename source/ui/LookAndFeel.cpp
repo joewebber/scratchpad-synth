@@ -72,6 +72,16 @@ void ScratchpadLookAndFeel::drawFocusRing (juce::Graphics& g, juce::Rectangle<fl
     g.drawRoundedRectangle (bounds.expanded (2.5f), radius + 2.5f, 2.0f);
 }
 
+void ScratchpadLookAndFeel::drawSelectedEdge (juce::Graphics& g, juce::Rectangle<float> bounds, float radius, const Palette& p,
+                                              juce::Colour fill, juce::Colour behind)
+{
+    if (contrastRatio (fill, behind) >= minGraphicContrast)
+        return;
+
+    g.setColour (p.ink2);
+    g.drawRoundedRectangle (bounds.reduced (0.6f), radius, 1.2f);
+}
+
 juce::Font ScratchpadLookAndFeel::getTextButtonFont (juce::TextButton& b, int)
 {
     auto font = uiFont ((float) (double) b.getProperties().getWithDefault (buttonProps::fontSize, 12.0));
@@ -192,6 +202,15 @@ juce::Font ScratchpadLookAndFeel::getLabelFont (juce::Label&)
 {
     auto font = uiFont (12.0f);
     return font;
+}
+
+void ScratchpadLookAndFeel::drawCornerResizer (juce::Graphics& g, int w, int h, bool isMouseOver, bool isMouseDragging)
+{
+    // Three diagonal strokes in the bottom-right corner; they must still read against the background (3:1).
+    g.setColour (isMouseOver || isMouseDragging ? palette->ink : palette->ink2);
+
+    for (const float i : { 0.35f, 0.6f, 0.85f })
+        g.drawLine ((float) w * i, (float) h - 2.0f, (float) w - 2.0f, (float) h * i, 1.5f);
 }
 
 void ScratchpadLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)

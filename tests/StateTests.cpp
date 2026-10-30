@@ -723,7 +723,7 @@ TEST_CASE ("State with effects, unison, sync, ring and FM survives a save and lo
     a.setBypassed ("reverb", true);
 
     auto xml = savedXml (a);
-    REQUIRE (xml->getIntAttribute (patch::schemaVersionAttribute) == 5);
+    REQUIRE (xml->getIntAttribute (patch::schemaVersionAttribute) == patch::currentSchemaVersion);
     REQUIRE (xml->getStringAttribute (params::effectOrderProperty) == "3,0,1,2");
 
     ScratchpadProcessor b;

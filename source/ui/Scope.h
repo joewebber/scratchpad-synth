@@ -1,7 +1,9 @@
 #pragma once
 
 #include "plugin/PluginProcessor.h"
+#include "ui/Accessibility.h"
 #include "ui/LookAndFeel.h"
+#include "ui/Motion.h"
 
 #include <juce_dsp/juce_dsp.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -17,9 +19,11 @@ namespace scratchpad::ui
     them 30 times a second, keeps the last 8,192 and draws from those. The spectrum is a 2,048-point
     Hann-windowed FFT run here on the message thread, never in the audio callback.
 
-    A caption under it says in words what it is showing. */
+    A caption under it says in words what it is showing, and a screen reader is given that caption as the scope's
+    description. Its two selectors (what to show, and where in the signal path to listen) are combo boxes to a
+    screen reader, and work with the arrow keys. */
 class Scope final : public juce::Component,
-                    private juce::Timer
+                    private motion::LiveTimer
 {
 public:
     explicit Scope (plugin::ScratchpadProcessor&);
@@ -28,6 +32,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void visibilityChanged() override;
+    void lookAndFeelChanged() override;
+
+    using motion::LiveTimer::getLiveIntervalMs; // 0 when stopped
 
     enum class Mode { wave, spectrum };
 
@@ -38,7 +45,8 @@ public:
     static int findTrigger (const float* x, int count, int searchFrom, int searchTo);
 
 private:
-    void timerCallback() override;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    void liveTick() override;
     void setMode (Mode);
     void setTap (engine::ScopeTap);
     void drawWave (juce::Graphics&, juce::Rectangle<float>);
@@ -49,7 +57,7 @@ private:
     class Segments final : public juce::Component
     {
     public:
-        Segments (juce::StringArray labelsToShow, std::function<void (int)> onPick);
+        Segments (juce::StringArray labelsToShow, juce::StringArray spokenLabels, std::function<void (int)> onPick);
         void setSelected (int i, juce::Colour fill);
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -58,7 +66,9 @@ private:
         void focusLost (FocusChangeType) override { repaint(); }
 
     private:
-        juce::StringArray labels;
+        std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+        juce::StringArray labels, spoken;
         std::function<void (int)> pick;
         int selected = 0;
         juce::Colour fillColour;

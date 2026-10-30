@@ -8,7 +8,8 @@ namespace scratchpad::ui
 {
 
 /** A small raised square with one letter in a module's header: "?" (explain), "B" (bypass) or
-    "S" (solo). Toggling ones fill when on: bypass dark, solo in the accent yellow, as in the design. */
+    "S" (solo). Toggling ones fill when on: bypass dark, solo in the accent yellow, as in the design. Bypass and
+    solo are toggle buttons to a screen reader (named for their module, "Filter bypass"); "?" is a plain button. */
 class HeaderToggle final : public juce::Button
 {
 public:
@@ -23,8 +24,10 @@ public:
             getProperties().set ("explainId", "control.bypass");
         else if (k == Kind::solo)
             getProperties().set ("explainId", "control.solo");
+
         setPaintingIsUnclipped (true);
         setClickingTogglesState (false);
+        setToggleable (k != Kind::explain);
     }
 
     void setOn (bool shouldBeOn)
@@ -32,6 +35,7 @@ public:
         if (on != shouldBeOn)
         {
             on = shouldBeOn;
+            setToggleState (on, juce::dontSendNotification);
             repaint();
         }
     }
@@ -57,6 +61,9 @@ public:
             fill = fill.interpolatedWith (p.ink, 0.06f);
 
         drawRaised (g, bounds, 7.0f, p, Elevation::small, fill);
+
+        if (on)
+            ScratchpadLookAndFeel::drawSelectedEdge (g, bounds, 7.0f, p, fill, p.surface);
 
         g.setColour (textColour);
         g.setFont (uiFont (12.0f, Weight::medium));

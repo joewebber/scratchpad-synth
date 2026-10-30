@@ -108,6 +108,10 @@ target_link_libraries(ScratchpadSynth
 add_executable(ScratchpadParameterList tools/ParameterList.cpp)
 target_link_libraries(ScratchpadParameterList PRIVATE ScratchpadCore juce::juce_recommended_config_flags)
 
+# CPU benchmark for the performance target (see docs/architecture.md, "Performance and validation (M6)").
+add_executable(ScratchpadBenchmark tools/Benchmark.cpp tools/BenchmarkRig.h)
+target_link_libraries(ScratchpadBenchmark PRIVATE ScratchpadCore juce::juce_recommended_config_flags)
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------

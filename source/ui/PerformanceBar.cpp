@@ -22,11 +22,17 @@ namespace
 PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     : processor (p)
 {
-    setTitle ("Keyboard");
+    setTitle ("Performance bar");
+    setFocusContainerType (FocusContainerType::focusContainer);
 
     keyState.addListener (this);
 
     keyboard.setTitle ("On-screen keyboard");
+    keyboard.describe = [this]
+    {
+        return "Two octaves from C" + juce::String (octave - 1) + ". Play it with the A to K keys on your computer keyboard: "
+               "A S D F G H J K are the white keys and W E T Y U the black ones. Z and X change octave, C and V change velocity.";
+    };
     keyboard.setScrollButtonsVisible (false);
     keyboard.setWantsKeyboardFocus (false);
     keyboard.setMidiChannel (1);
@@ -38,6 +44,11 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     for (const auto& m : keyMap)
         keyboard.setKeyPressForNote (juce::KeyPress ((int) m.key), m.semitone);
     keyboard.setKeyPressBaseOctave (octave);
+    // JUCE keeps its hidden scroll buttons as children even when the scroll controls are disabled. They are
+    // implementation details, not controls in this editor's accessibility tree.
+    for (auto* child : keyboard.getChildren())
+        if (dynamic_cast<juce::Button*> (child) != nullptr)
+            child->setAccessible (false);
     addAndMakeVisible (keyboard);
 
     setPaintingIsUnclipped (true);
@@ -52,6 +63,8 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
 
     octaveDown.setTitle ("Octave down");
     octaveUp.setTitle ("Octave up");
+    octaveDown.setDescription ("Moves the keyboard down an octave. The Z key does the same.");
+    octaveUp.setDescription ("Moves the keyboard up an octave. The X key does the same.");
     octaveDown.onClick = [this] { setOctave (octave - 1); };
     octaveUp.onClick = [this] { setOctave (octave + 1); };
     addAndMakeVisible (octaveDown);
@@ -66,6 +79,15 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     bendWheel.setValue (0.0, juce::dontSendNotification);
     bendWheel.setDoubleClickReturnValue (true, 0.0);
     bendWheel.setTitle ("Pitch bend");
+    bendWheel.describe = [] { return juce::String ("Bends the pitch of the notes you play. It springs back to the middle when you let go. The Up and Down arrow keys bend it while you hold them."); };
+    bendWheel.textFromValueFunction = [] (double v)
+    {
+        return std::abs (v) < 0.005 ? juce::String ("centre") : juce::String (juce::roundToInt (std::abs (v) * 100.0)) + " percent " + (v > 0.0 ? "up" : "down");
+    };
+    bendWheel.valueFromTextFunction = [] (const juce::String& text)
+    {
+        return (text.containsIgnoreCase ("down") ? -1.0 : 1.0) * text.getDoubleValue() * 0.01;
+    };
     bendWheel.setMouseDragSensitivity (80);
     bendWheel.onValueChange = [this] { sendBend ((float) bendWheel.getValue()); };
     bendWheel.onDragEnd = [this]
@@ -83,12 +105,31 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     modWheel.setValue (0.0, juce::dontSendNotification);
     modWheel.setDoubleClickReturnValue (true, 0.0);
     modWheel.setTitle ("Mod wheel");
+    modWheel.describe = [] { return juce::String ("Moves everything you have connected to the mod wheel. It stays where you leave it. The Up and Down arrow keys move it."); };
+    modWheel.steps = { 0.05, 0.01, 0.25 };
+    modWheel.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + "%"; };
+    modWheel.valueFromTextFunction = [] (const juce::String& text) { return text.getDoubleValue() * 0.01; };
     modWheel.setMouseDragSensitivity (80);
     modWheel.onValueChange = [this] { sendModWheel ((float) modWheel.getValue()); };
     addAndMakeVisible (modWheel);
     modWheel.getProperties().set ("explainId", "control.modWheel");
 
-    setOctave (octave);
+    addAndMakeVisible (summary);
+
+    // Tab: the octave buttons, then the wheels. The text and the keyboard follow in the screen reader's order.
+    octaveDown.setExplicitFocusOrder (1);
+    octaveUp.setExplicitFocusOrder (2);
+    summary.setExplicitFocusOrder (3);
+    bendWheel.setExplicitFocusOrder (4);
+    modWheel.setExplicitFocusOrder (5);
+    keyboard.setExplicitFocusOrder (6);
+
+    setOctave (octave, false);
+}
+
+juce::String PerformanceBar::summaryText() const
+{
+    return "Octave " + juce::String (octave - 1) + ", velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + " percent";
 }
 
 PerformanceBar::~PerformanceBar()
@@ -138,7 +179,7 @@ void PerformanceBar::releaseAllNotes()
     keyState.allNotesOff (1);
 }
 
-void PerformanceBar::setOctave (int newOctave)
+void PerformanceBar::setOctave (int newOctave, bool announceIt)
 {
     octave = juce::jlimit (minOctave, maxOctave, newOctave);
 
@@ -149,14 +190,20 @@ void PerformanceBar::setOctave (int newOctave)
 
     octaveDown.setEnabled (octave > minOctave);
     octaveUp.setEnabled (octave < maxOctave);
+    summary.setText (summaryText());
     repaint (octaveLabelArea);
+
+    if (announceIt)
+        a11y::announce ("Octave " + juce::String (octave - 1));
 }
 
 void PerformanceBar::setVelocity (float newVelocity)
 {
     velocity = juce::jlimit (0.1f, 1.0f, newVelocity);
     keyboard.setVelocity (velocity, false);
+    summary.setText (summaryText());
     repaint (velocityLabelArea);
+    a11y::announce ("Velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + " percent");
 }
 
 bool PerformanceBar::handleKeyPressed (const juce::KeyPress& key)
@@ -216,6 +263,7 @@ void PerformanceBar::resized()
     octaveLabelArea = row;
     left.removeFromTop (10);
     velocityLabelArea = left.removeFromTop (20);
+    summary.setBounds (octaveLabelArea.getUnion (velocityLabelArea));
 
     area.removeFromLeft (12);
     auto wheels = area.removeFromLeft (76);
@@ -232,6 +280,9 @@ void PerformanceBar::resized()
 
     keyboard.setKeyWidth ((float) area.getWidth() / (float) whiteKeysShown);
     keyboard.setBounds (area.withTrimmedBottom (4));
+    for (auto* child : keyboard.getChildren())
+        if (dynamic_cast<juce::Button*> (child) != nullptr)
+            child->setAccessible (false);
 }
 
 } // namespace scratchpad::ui

@@ -4,6 +4,7 @@
 #include "ui/Typography.h"
 
 #include <algorithm>
+#include <memory>
 
 namespace scratchpad::ui
 {
@@ -18,31 +19,152 @@ namespace
     bool isModuleKey (const juce::String& id) { return ! id.containsChar ('.'); }
 }
 
+/** The text being shown, as something the keyboard can land on and a screen reader can read: an invisible area over
+    the painted text. Up, Down, Page Up, Page Down, Home and End scroll it. */
+class ExplainPanel::Body final : public juce::Component
+{
+public:
+    explicit Body (ExplainPanel& panel) : owner (panel)
+    {
+        setWantsKeyboardFocus (true);
+        setInterceptsMouseClicks (false, false);
+        setPaintingIsUnclipped (true);
+    }
+
+    void setText (const juce::String& text)
+    {
+        if (getTitle() == text)
+            return;
+
+        setTitle (text);
+
+        if (auto* handler = getAccessibilityHandler())
+            handler->notifyAccessibilityEvent (juce::AccessibilityEvent::titleChanged);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        if (hasKeyboardFocus (false))
+            ScratchpadLookAndFeel::drawFocusRing (g, getLocalBounds().toFloat().reduced (3.0f), 8.0f, paletteOf (*this).ink);
+    }
+
+    bool keyPressed (const juce::KeyPress& key) override
+    {
+        if (key.getModifiers().isAnyModifierKeyDown())
+            return false;
+
+        const float page = (float) juce::jmax (40, getHeight() - 24);
+        const int code = key.getKeyCode();
+
+        if (code == juce::KeyPress::downKey)        owner.scrollBy (lineHeight * 2.0f);
+        else if (code == juce::KeyPress::upKey)     owner.scrollBy (-lineHeight * 2.0f);
+        else if (code == juce::KeyPress::pageDownKey) owner.scrollBy (page);
+        else if (code == juce::KeyPress::pageUpKey)   owner.scrollBy (-page);
+        else if (code == juce::KeyPress::homeKey)   owner.scrollBy (-1.0e6f);
+        else if (code == juce::KeyPress::endKey)    owner.scrollBy (1.0e6f);
+        else
+            return false;
+
+        return true;
+    }
+
+    void focusGained (FocusChangeType) override { repaint(); }
+    void focusLost (FocusChangeType) override { repaint(); }
+
+private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::staticText);
+    }
+
+    ExplainPanel& owner;
+};
+
+/** A glossary link or the "All terms" chip as a real button, so Tab reaches it and Enter opens it. It paints only its
+    focus ring (the chip itself is painted by the panel) and takes no mouse clicks (the panel finds the chip under
+    the pointer). The panel lays these over its painted chips, and moves them when it scrolls. */
+class ExplainPanel::LinkButton final : public juce::Button
+{
+public:
+    explicit LinkButton (ExplainPanel& panel) : juce::Button ("Glossary link"), owner (panel)
+    {
+        setPaintingIsUnclipped (true);
+        setInterceptsMouseClicks (false, false);
+        getProperties().set ("explainId", "control.glossaryLink");
+        onClick = [this] { owner.openLink (linkIndex); };
+    }
+
+    void setLink (int index, const juce::String& label)
+    {
+        linkIndex = index;
+        setTitle (label);
+        setDescription (index < 0 ? "Goes back to the list of glossary terms." : "Opens what the word " + label + " means.");
+    }
+
+    void paintButton (juce::Graphics& g, bool, bool) override
+    {
+        if (hasKeyboardFocus (false))
+            ScratchpadLookAndFeel::drawFocusRing (g, getLocalBounds().toFloat(), (float) juce::jmin (11, getHeight() / 2), paletteOf (*this).ink);
+    }
+
+    void focusGained (FocusChangeType type) override
+    {
+        juce::Button::focusGained (type);
+        owner.revealLink (linkIndex);
+    }
+
+private:
+    ExplainPanel& owner;
+    int linkIndex = 0;
+};
+
 ExplainPanel::ExplainPanel (plugin::ScratchpadProcessor& p)
     : processor (p), scope (p), patchText (p.describePatch())
 {
     setComponentID ("explainPanel");
     setTitle ("Explain");
     setPaintingIsUnclipped (true);
+    setFocusContainerType (FocusContainerType::focusContainer);
+    body = std::make_unique<Body> (*this);
 
     addAndMakeVisible (scope);
 
     glossaryButton.setTitle ("Glossary");
     glossaryButton.setPaintingIsUnclipped (true);
     glossaryButton.getProperties().set (buttonProps::radius, 11.0);
+    glossaryButton.setDescription ("Opens the list of every term the explanations use, in plain English. Press it again to close it.");
     glossaryButton.onClick = [this]
     {
         if (glossaryOpen)
-        {
-            glossaryOpen = false;
-            repaint();
-        }
+            closeGlossary();
         else
-        {
             showGlossary ({});
-        }
     };
     addAndMakeVisible (glossaryButton);
+
+    for (auto* b : { &foldButton, &unfoldButton })
+    {
+        b->getProperties().set ("explainId", "control.explainToggle");
+        b->onClick = [this]
+        {
+            if (onToggleRequested)
+                onToggleRequested();
+        };
+    }
+
+    addAndMakeVisible (foldButton);
+    addChildComponent (unfoldButton);
+    addAndMakeVisible (*body);
+    addAndMakeVisible (patchRegion);
+
+    // Tab, and the screen reader's order: the header buttons, the text and its links, the patch, then the scope.
+    glossaryButton.setExplicitFocusOrder (1);
+    unfoldButton.setExplicitFocusOrder (1);
+    foldButton.setExplicitFocusOrder (2);
+    body->setExplicitFocusOrder (3);
+    patchRegion.setExplicitFocusOrder (1000);
+    scope.setExplicitFocusOrder (1001);
+    refreshReadableText();
 
     // Hear every pointer move in the window, so any control can explain itself without knowing about this panel.
     juce::Desktop::getInstance().addGlobalMouseListener (this);
@@ -61,6 +183,52 @@ void ExplainPanel::visibilityChanged()
         startTimerHz (5);
     else
         stopTimer();
+}
+
+void ExplainPanel::setCollapsed (bool shouldCollapse)
+{
+    if (collapsed == shouldCollapse)
+        return;
+
+    collapsed = shouldCollapse;
+    scope.setVisible (! collapsed); // so its timer stops while nobody can see it
+    glossaryButton.setVisible (! collapsed);
+    foldButton.setVisible (! collapsed);
+    unfoldButton.setVisible (collapsed);
+    resized();
+    repaint();
+}
+
+void ExplainPanel::focusToggleButton()
+{
+    (collapsed ? unfoldButton : foldButton).grabKeyboardFocus();
+}
+
+void ExplainPanel::pinFrom (const juce::Component& from, const juce::String& moduleKey)
+{
+    // The panel is somewhere below the window's top-level component, not necessarily a direct child.
+    const auto find = [] (auto&& self, juce::Component& parent) -> ExplainPanel*
+    {
+        for (auto* child : parent.getChildren())
+        {
+            if (auto* panel = dynamic_cast<ExplainPanel*> (child))
+                return panel;
+
+            if (auto* found = self (self, *child))
+                return found;
+        }
+
+        return nullptr;
+    };
+
+    if (auto* top = from.getTopLevelComponent())
+        if (auto* panel = find (find, *top))
+        {
+            panel->show (moduleKey, true);
+
+            if (panel->collapsed && panel->onToggleRequested)
+                panel->onToggleRequested();
+        }
 }
 
 juce::String ExplainPanel::explainIdOf (const juce::Component* c)
@@ -97,6 +265,198 @@ void ExplainPanel::mouseMove (const juce::MouseEvent& e)
         pointAt (e.eventComponent);
 }
 
+void ExplainPanel::closeGlossary()
+{
+    glossaryOpen = false;
+    glossaryTerm.clear();
+    refreshReadableText();
+    collectLinks();
+    repaint();
+}
+
+void ExplainPanel::refreshReadableText()
+{
+    const auto& content = content::Content::get();
+    juce::String text;
+
+    if (glossaryOpen)
+    {
+        if (glossaryTerm.isEmpty())
+        {
+            text = "Glossary. " + juce::String ((int) content.glossaryInOrder().size()) + " terms.";
+            for (const auto* term : content.glossaryInOrder())
+                text += " " + term->term;
+        }
+        else if (const auto* term = content.glossary (glossaryTerm))
+        {
+            text = term->term + ". " + term->definition;
+        }
+    }
+    else
+    {
+        const content::Entry* entry = content.param (shownId);
+        if (entry == nullptr)
+            entry = content.module (shownId);
+        if (entry == nullptr)
+            entry = content.control (shownId);
+
+        if (entry != nullptr)
+        {
+            text = entry->title;
+            if (entry->explainer.isNotEmpty())
+                text += ". " + entry->explainer;
+            text += ". What it does: " + entry->what + ". Listen for: " + entry->listenFor + ". Try this: " + entry->tryThis;
+        }
+    }
+
+    body->setText (text.trim());
+    patchRegion.setText ("Patch: " + patchText);
+}
+
+juce::String ExplainPanel::getReadableText() const
+{
+    return body != nullptr ? body->getTitle() : juce::String();
+}
+
+void ExplainPanel::collectLinks()
+{
+    const auto& content = content::Content::get();
+    juce::StringArray ids;
+
+    if (glossaryOpen)
+    {
+        if (glossaryTerm.isEmpty())
+        {
+            for (const auto* term : content.glossaryInOrder())
+                ids.add (term->id);
+        }
+        else if (const auto* term = content.glossary (glossaryTerm))
+        {
+            ids = term->seeAlso;
+        }
+    }
+    else
+    {
+        const content::Entry* entry = content.param (shownId);
+        if (entry == nullptr)
+            entry = content.module (shownId);
+        if (entry == nullptr)
+            entry = content.control (shownId);
+        if (entry != nullptr)
+            ids = entry->glossaryTerms;
+    }
+
+    for (auto& button : linkButtons)
+        button->setVisible (false);
+    linkButtons.clear();
+
+    if (glossaryOpen && glossaryTerm.isNotEmpty())
+    {
+        auto button = std::make_unique<LinkButton> (*this);
+        button->setLink (-1, "All terms");
+        button->setExplicitFocusOrder (4);
+        addAndMakeVisible (*button);
+        linkButtons.push_back (std::move (button));
+    }
+
+    for (int i = 0; i < ids.size(); ++i)
+    {
+        const auto* term = content.glossary (ids[i]);
+        if (term == nullptr)
+            continue;
+
+        auto button = std::make_unique<LinkButton> (*this);
+        button->setLink (i, term->term);
+        button->setExplicitFocusOrder (5 + i);
+        addAndMakeVisible (*button);
+        linkButtons.push_back (std::move (button));
+    }
+
+    syncLinks();
+}
+
+void ExplainPanel::syncLinks()
+{
+    const auto& content = content::Content::get();
+
+    for (auto& button : linkButtons)
+    {
+        if (button->getTitle() == "All terms")
+        {
+            button->setBounds (backArea);
+            button->setVisible (glossaryOpen && glossaryTerm.isNotEmpty() && ! backArea.isEmpty());
+            continue;
+        }
+
+        juce::Rectangle<int> area;
+        int index = 0;
+        for (const auto& link : links)
+        {
+            if (const auto* term = content.glossary (link.glossaryId); term != nullptr && term->term == button->getTitle())
+            {
+                area = link.area;
+                button->setLink (index, term->term);
+                break;
+            }
+            ++index;
+        }
+
+        button->setBounds (area);
+        button->setVisible (! area.isEmpty());
+    }
+}
+
+void ExplainPanel::scrollBy (float pixels)
+{
+    if (glossaryOpen)
+    {
+        const float visible = (float) (bodyArea.withBottom (patchArea.getBottom()).getHeight() - 22);
+        glossaryScroll = juce::jlimit (0.0f, std::max (0.0f, glossaryContentHeight - visible), glossaryScroll + pixels);
+    }
+    else
+    {
+        entryScroll = juce::jlimit (0.0f, entryMaxScroll, entryScroll + pixels);
+    }
+
+    repaint();
+}
+
+void ExplainPanel::revealLink (int index)
+{
+    if (index < 0 || index >= (int) links.size())
+        return;
+
+    const auto area = links[(size_t) index].area;
+    const auto visible = bodyArea.withBottom (patchArea.getBottom());
+    if (area.getY() < visible.getY())
+        scrollBy ((float) area.getY() - (float) visible.getY());
+    else if (area.getBottom() > visible.getBottom())
+        scrollBy ((float) area.getBottom() - (float) visible.getBottom());
+}
+
+void ExplainPanel::openLink (int index)
+{
+    if (index < 0)
+    {
+        showGlossary ({});
+        return;
+    }
+
+    if (juce::isPositiveAndBelow (index, (int) links.size()))
+        showGlossary (links[(size_t) index].glossaryId);
+}
+
+bool ExplainPanel::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey && glossaryOpen)
+    {
+        closeGlossary();
+        return true;
+    }
+
+    return false;
+}
+
 void ExplainPanel::globalFocusChanged (juce::Component* focused)
 {
     if (focused != nullptr && getTopLevelComponent()->isParentOf (focused))
@@ -116,6 +476,8 @@ void ExplainPanel::show (const juce::String& id, bool pin)
     shownId = id;
     pinned = pin;
     glossaryOpen = false;
+    refreshReadableText();
+    collectLinks();
     repaint();
 }
 
@@ -124,16 +486,15 @@ void ExplainPanel::showGlossary (const juce::String& termId)
     glossaryOpen = true;
     glossaryTerm = termId;
     glossaryScroll = 0.0f;
+    refreshReadableText();
+    collectLinks();
     repaint();
 }
 
 void ExplainPanel::timerCallback()
 {
-    if (const auto request = getProperties()["pinRequest"].toString(); request.isNotEmpty())
-    {
-        getProperties().remove ("pinRequest");
-        show (request, true);
-    }
+    if (collapsed)
+        return;
 
     const auto text = processor.describePatch();
 
@@ -146,9 +507,20 @@ void ExplainPanel::timerCallback()
 
 void ExplainPanel::resized()
 {
+    if (collapsed)
+    {
+        // The rail: the button that brings the panel back, with its name running down under it.
+        constexpr int button = 32;
+        unfoldButton.setBounds ((getWidth() - button) / 2, pad, button, button);
+        headerRow = backArea = bodyArea = patchArea = scopeArea = {};
+        return;
+    }
+
     auto area = getLocalBounds().reduced (pad, pad);
 
     headerRow = area.removeFromTop (24);
+    foldButton.setBounds (headerRow.removeFromRight (24));
+    headerRow.removeFromRight (6);
     glossaryButton.setBounds (headerRow.removeFromRight (84));
 
     scopeArea = area.removeFromBottom (scopeHeight);
@@ -234,7 +606,7 @@ void ExplainPanel::drawLinks (juce::Graphics& g, const juce::StringArray& terms,
         g.setFont (font);
         g.drawText (term->term, chip, juce::Justification::centred, false);
 
-        links.push_back ({ chip.toNearestInt(), id });
+        links.push_back ({ chip.toNearestInt(), id, term->term });
         x += w + 6.0f;
     }
 
@@ -339,7 +711,7 @@ void ExplainPanel::paintGlossary (juce::Graphics& g, juce::Rectangle<int> bounds
                 g.setColour (p.ink);
                 g.setFont (font);
                 g.drawText (term->term, row.reduced (10.0f, 0.0f), juce::Justification::centredLeft, true);
-                links.push_back ({ row.toNearestInt().getIntersection (bounds), term->id });
+                links.push_back ({ row.toNearestInt().getIntersection (bounds), term->id, term->term });
             }
 
             y += 28.0f;
@@ -390,7 +762,7 @@ void ExplainPanel::paintGlossary (juce::Graphics& g, juce::Rectangle<int> bounds
                 g.fillRoundedRectangle (chip, 11.0f);
                 g.setColour (p.ink);
                 g.drawText (other->term, chip, juce::Justification::centred, false);
-                links.push_back ({ chip.toNearestInt(), id });
+                links.push_back ({ chip.toNearestInt(), id, other->term });
                 x += w + 6.0f;
             }
         }
@@ -403,6 +775,28 @@ void ExplainPanel::paint (juce::Graphics& g)
 {
     const auto& p = paletteOf (*this);
     drawRaised (g, getLocalBounds().toFloat(), 18.0f, p, Elevation::raised, p.surface);
+
+    if (collapsed)
+    {
+        links.clear();
+        backArea = {};
+
+        // The name, reading downwards from under the button.
+        auto titleFont = uiFont (13.0f, Weight::medium);
+        titleFont.setExtraKerningFactor (0.22f);
+        const float length = textWidth (titleFont, "EXPLAIN");
+        const auto origin = juce::Point<float> ((float) getWidth() * 0.5f, (float) unfoldButton.getBottom() + 18.0f);
+
+        g.saveState();
+        g.addTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::halfPi, origin.x, origin.y));
+        g.setFont (titleFont);
+        g.setColour (p.ink);
+        g.drawText ("EXPLAIN", juce::Rectangle<float> (origin.x, origin.y - 9.0f, length + 4.0f, 18.0f),
+                    juce::Justification::centredLeft, false);
+        g.restoreState();
+        syncLinks();
+        return;
+    }
 
     auto titleFont = uiFont (13.0f, Weight::medium);
     titleFont.setExtraKerningFactor (0.22f);
@@ -433,6 +827,7 @@ void ExplainPanel::paint (juce::Graphics& g)
     }
 
     drawCaption (g, "Scope", juce::Rectangle<float> ((float) scopeArea.getX(), (float) scopeArea.getY() - 14.0f, 80.0f, 12.0f), p.ink2);
+    syncLinks();
 }
 
 void ExplainPanel::mouseDown (const juce::MouseEvent& e)

@@ -18,8 +18,8 @@ namespace
 }
 
 //==============================================================================
-Scope::Segments::Segments (juce::StringArray labelsToShow, std::function<void (int)> onPick)
-    : labels (std::move (labelsToShow)), pick (std::move (onPick))
+Scope::Segments::Segments (juce::StringArray labelsToShow, juce::StringArray spokenLabels, std::function<void (int)> onPick)
+    : labels (std::move (labelsToShow)), spoken (std::move (spokenLabels)), pick (std::move (onPick))
 {
     setWantsKeyboardFocus (true);
     setPaintingIsUnclipped (true);
@@ -27,9 +27,14 @@ Scope::Segments::Segments (juce::StringArray labelsToShow, std::function<void (i
 
 void Scope::Segments::setSelected (int i, juce::Colour fill)
 {
+    const bool changed = i != selected;
     selected = i;
     fillColour = fill;
     repaint();
+
+    if (changed)
+        if (auto* handler = getAccessibilityHandler())
+            handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
 }
 
 void Scope::Segments::paint (juce::Graphics& g)
@@ -48,6 +53,7 @@ void Scope::Segments::paint (juce::Graphics& g)
         {
             g.setColour (fillColour);
             g.fillRoundedRectangle (seg, 7.0f);
+            ScratchpadLookAndFeel::drawSelectedEdge (g, seg, 7.0f, p, fillColour, p.well);
         }
 
         g.setColour (i == selected ? p.onAccent : p.ink2);
@@ -67,20 +73,51 @@ void Scope::Segments::mouseDown (const juce::MouseEvent& e)
 
 bool Scope::Segments::keyPressed (const juce::KeyPress& k)
 {
-    if (k.isKeyCode (juce::KeyPress::leftKey) && selected > 0)  { pick (selected - 1); return true; }
-    if (k.isKeyCode (juce::KeyPress::rightKey) && selected + 1 < labels.size()) { pick (selected + 1); return true; }
-    return false;
+    if (k.getModifiers().isAnyModifierKeyDown())
+        return false;
+
+    const int code = k.getKeyCode();
+
+    if ((code == juce::KeyPress::leftKey || code == juce::KeyPress::upKey) && selected > 0)
+        pick (selected - 1);
+    else if ((code == juce::KeyPress::rightKey || code == juce::KeyPress::downKey) && selected + 1 < labels.size())
+        pick (selected + 1);
+    else if (code == juce::KeyPress::homeKey && selected > 0)
+        pick (0);
+    else if (code == juce::KeyPress::endKey && selected + 1 < labels.size())
+        pick (labels.size() - 1);
+    else
+        return false;
+
+    return true;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> Scope::Segments::createAccessibilityHandler()
+{
+    return a11y::makeSelectorHandler (
+        *this, [this] { return spoken[juce::jlimit (0, spoken.size() - 1, selected)]; },
+        [this] (const juce::String& text)
+        {
+            const int found = spoken.indexOf (text.trim(), true);
+            if (found >= 0)
+                pick (found);
+        });
 }
 
 //==============================================================================
 Scope::Scope (plugin::ScratchpadProcessor& p)
     : processor (p),
-      modeButtons ({ "Wave", "Spectrum" }, [this] (int i) { setMode (i == 0 ? Mode::wave : Mode::spectrum); }),
-      tapButtons ({ "Osc", "Filter", "Amp", "FX" }, [this] (int i) { setTap ((ScopeTap) i); })
+      modeButtons ({ "Wave", "Spectrum" }, { "Wave", "Spectrum" }, [this] (int i) { setMode (i == 0 ? Mode::wave : Mode::spectrum); }),
+      tapButtons ({ "Osc", "Filter", "Amp", "FX" }, { "Oscillators", "Filter", "Amp", "Effects" }, [this] (int i) { setTap ((ScopeTap) i); })
 {
     setTitle ("Scope");
-    modeButtons.setTitle ("Scope display: wave or spectrum");
-    tapButtons.setTitle ("Scope tap: where in the signal path to listen");
+    setFocusContainerType (FocusContainerType::focusContainer);
+    modeButtons.setTitle ("Scope display");
+    modeButtons.setDescription ("Wave shows the shape of the sound. Spectrum shows how much of each pitch range is in it.");
+    tapButtons.setTitle ("Scope tap");
+    tapButtons.setDescription ("Where in the signal path the scope listens: after the oscillators, the filter, the amp or the effects.");
+    modeButtons.setExplicitFocusOrder (1);
+    tapButtons.setExplicitFocusOrder (2);
     scratch.resize ((size_t) engine::scopeFifoSize);
 
     for (int i = 0; i < fftSize; ++i)
@@ -96,7 +133,12 @@ Scope::Scope (plugin::ScratchpadProcessor& p)
 
 Scope::~Scope()
 {
-    stopTimer();
+    stopLive();
+}
+
+std::unique_ptr<juce::AccessibilityHandler> Scope::createAccessibilityHandler()
+{
+    return std::make_unique<a11y::DescribedHandler> (*this, juce::AccessibilityRole::group, [this] { return captionText(); });
 }
 
 void Scope::visibilityChanged()
@@ -104,18 +146,25 @@ void Scope::visibilityChanged()
     if (isVisible())
     {
         processor.readScope (scratch.data(), (int) scratch.size()); // drop what queued up while nobody looked
-        startTimerHz (30);
+        startLive (30);
     }
     else
     {
-        stopTimer();
+        stopLive();
     }
+}
+
+void Scope::lookAndFeelChanged()
+{
+    // The selected segments carry a palette colour, so a new theme has to hand them the new one.
+    modeButtons.setSelected (mode == Mode::wave ? 0 : 1, paletteOf (*this).src);
+    tapButtons.setSelected ((int) tap, tapColour (paletteOf (*this)));
 }
 
 void Scope::setMode (Mode m)
 {
     mode = m;
-    modeButtons.setSelected (m == Mode::wave ? 0 : 1, paletteOf (*this).srcInk);
+    modeButtons.setSelected (m == Mode::wave ? 0 : 1, paletteOf (*this).src);
     repaint();
 }
 
@@ -163,7 +212,7 @@ int Scope::findTrigger (const float* x, int count, int searchFrom, int searchTo)
     return -1;
 }
 
-void Scope::timerCallback()
+void Scope::liveTick()
 {
     const int got = processor.readScope (scratch.data(), (int) scratch.size());
 
@@ -198,7 +247,7 @@ void Scope::timerCallback()
 
         // A quiet signal is scaled up so it can be seen; the caption says when it is.
         const float target = 1.0f / std::max (0.25f, shownPeak);
-        waveScale += (target - waveScale) * 0.25f;
+        waveScale = motion::follow (waveScale, target, 0.25f, motion::isReduced());
     }
     else
     {
@@ -226,7 +275,7 @@ void Scope::timerCallback()
 
             // A full-scale sine reads about 0 dB: the Hann window halves it, hence * 4 / N.
             const float db = juce::Decibels::gainToDecibels (m * 4.0f / (float) fftSize, floorDb);
-            bars[(size_t) b] = std::max (db, bars[(size_t) b] - 3.0f); // quick up, slower fall
+            bars[(size_t) b] = motion::fall (bars[(size_t) b], db, 3.0f, motion::isReduced()); // quick up, slower fall
         }
     }
 

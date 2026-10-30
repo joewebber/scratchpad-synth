@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/Accessibility.h"
 #include "ui/LookAndFeel.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -9,13 +10,21 @@ namespace scratchpad::ui
 
 /** The on-screen keyboard drawn in the prototype's style: palette-coloured
     keys with rounded bottoms and a small shadow, labelled with the computer
-    key that plays them. */
+    key that plays them. It is played with the mouse or those computer keys, so it takes no keyboard focus of its
+    own; a screen reader is told how to play it by `describe`. */
 class Keyboard final : public juce::MidiKeyboardComponent
 {
 public:
     using juce::MidiKeyboardComponent::MidiKeyboardComponent;
 
+    std::function<juce::String()> describe;
+
 protected:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<a11y::DescribedHandler> (*this, juce::AccessibilityRole::group, describe);
+    }
+
     void drawWhiteNote (int note, juce::Graphics& g, juce::Rectangle<float> area, bool isDown, bool isOver,
                         juce::Colour, juce::Colour) override
     {
@@ -44,7 +53,7 @@ protected:
             fill = fill.interpolatedWith (p.ink, 0.12f);
 
         drawRaised (g, area.withTop (area.getY() - radius * 2.0f), radius, p, Elevation::small, fill);
-        drawLabel (g, note, area.withTrimmedBottom (4.0f), isDown ? p.onAccent : juce::Colour (0xffc9c5bc));
+        drawLabel (g, note, area.withTrimmedBottom (4.0f), isDown ? p.onAccent : p.keyBlackInk);
     }
 
 private:

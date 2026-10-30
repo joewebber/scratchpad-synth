@@ -21,10 +21,25 @@ inline float readCubic (const float* buffer, int size, int writeIndex, float del
         return buffer[index];
     };
 
-    const float p0 = at (i - 1);
-    const float p1 = at (i);
-    const float p2 = at (i + 1);
-    const float p3 = at (i + 2);
+    float p0, p1, p2, p3;
+
+    // The four taps are consecutive slots, running backwards from p0; they only wrap near the start of the buffer.
+    const int first = writeIndex - (i - 1);
+
+    if (first >= 3)
+    {
+        p0 = buffer[first];
+        p1 = buffer[first - 1];
+        p2 = buffer[first - 2];
+        p3 = buffer[first - 3];
+    }
+    else
+    {
+        p0 = at (i - 1);
+        p1 = at (i);
+        p2 = at (i + 1);
+        p3 = at (i + 2);
+    }
 
     return p1 + 0.5f * t * (p2 - p0 + t * (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3 + t * (3.0f * (p1 - p2) + p3 - p0)));
 }

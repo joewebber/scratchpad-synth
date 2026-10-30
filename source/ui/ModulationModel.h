@@ -1,6 +1,7 @@
 #pragma once
 
 #include "plugin/PluginProcessor.h"
+#include "ui/Motion.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -24,6 +25,9 @@ struct SourceRange
 
 SourceRange sourceRange (engine::ModSource);
 
+/** A destination as it is said aloud: "Filter cutoff", "Osc 2 pulse width", "Pitch (all oscillators)". */
+juce::String destinationLongName (engine::ModDest);
+
 /** A destination's value, in the units of the knob that shows it (cents, percent, dB, Hz,
     percent, percent), after the connections that drive it add up to `sum`. The scales are
     the engine's: see `engine/Modulation.h`. */
@@ -39,6 +43,10 @@ struct ModArc
     float low, high, live;
 };
 
+/** For a screen reader: "Modulated by LFO 1, plus or minus 40 percent; Filter Envelope, up to plus 50 percent.", or
+    nothing if no arc moves the control. */
+juce::String describeArcs (const std::vector<ModArc>&);
+
 /** The editor's view of modulation: the eight connections as they stand, the live source
     values from the audio thread, and the state of a connection being made (dragged, or
     armed by a click). Every control that can be a destination registers itself here so a
@@ -46,7 +54,7 @@ struct ModArc
 
     Message thread only. */
 class ModulationModel final : private juce::ChangeListener,
-                              private juce::Timer
+                              private motion::LiveTimer
 {
 public:
     class Listener
@@ -55,12 +63,14 @@ public:
         virtual ~Listener() = default;
         virtual void modulationChanged() {}   // a slot's source, destination or amount changed
         virtual void connectingChanged() {}   // a drag or an armed handle started or ended
-        virtual void liveUpdated() {}         // new live values, about 30 times a second
+        virtual void liveUpdated() {}         // new live values: about 30 times a second, twice under reduced motion
         virtual void statusChanged() {}       // the one-line message changed
     };
 
     explicit ModulationModel (plugin::ScratchpadProcessor&);
     ~ModulationModel() override;
+
+    using motion::LiveTimer::getLiveIntervalMs; // 0 when stopped
 
     plugin::ScratchpadProcessor& getProcessor() noexcept { return processor; }
 
@@ -115,18 +125,25 @@ public:
     /** Is `target` somewhere `source` can go right now? */
     bool isValidTarget (const ModTarget&, engine::ModSource) const;
 
+    /** Every destination `source` could be connected to right now, in the order of the signal chain. */
+    std::vector<engine::ModDest> validDestinations (engine::ModSource) const;
+
+    /** The keyboard's way to make a connection: a menu of `validDestinations` under `menuTarget`; choosing one
+        connects it at +50%, as a drop does. */
+    void chooseDestination (engine::ModSource, juce::Component& menuTarget);
+
     /** Connects the connecting source to `target`, asking which destination if there is more
         than one, then ends the connection. */
     void dropOn (ModTarget&, juce::Component* menuParent);
 
     //==========================================================================
     /** A one-line message ("All 8 slots are in use") shown for a few seconds. */
-    void showStatus (const juce::String&);
+    void showStatus (const juce::String&, bool announceIt = true);
     const juce::String& getStatus() const noexcept { return status; }
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
-    void timerCallback() override;
+    void liveTick() override;
     void refresh();
     void connect (engine::ModSource, engine::ModDest);
 
@@ -148,7 +165,7 @@ private:
 
     std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true); // for menus that outlive a drop
     juce::String status;
-    int statusTicks = 0;
+    double statusExpiresMs = 0.0; // 0: no message to take down
     bool active = false;
 };
 

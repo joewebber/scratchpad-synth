@@ -283,7 +283,7 @@
     },
     "control.handle": {
       "title": "Modulation handle",
-      "what": "Starts a connection. Drag it onto any knob that shows a ring, or click it and then click a knob, to make that source move the knob automatically.",
+      "what": "Starts a connection. Drag it onto any knob that shows a ring, or click it and then click a knob, to make that source move the knob automatically. From the keyboard, press Enter on it and choose what it should move from the list.",
       "listenFor": "The knob you drop it on starts to move by itself, and an arc shows how far it travels.",
       "tryThis": "Drag the LFO 1 handle onto Filter cutoff, hold a note, then change the amount in the connection list.",
       "glossaryTerms": [
@@ -372,6 +372,20 @@
         "oscillator"
       ]
     },
+    "control.savePatch": {
+      "title": "Save patch",
+      "what": "Saves the whole patch to a file on your computer, so you can come back to it later or share it. Its name appears at the top.",
+      "listenFor": "Nothing changes in the sound. The patch name at the top becomes the name of the file.",
+      "tryThis": "Make a sound you like, click Save, then click New patch and open it again.",
+      "glossaryTerms": []
+    },
+    "control.openPatch": {
+      "title": "Open patch",
+      "what": "Replaces the current patch with one you saved earlier. Undo can bring your previous patch back.",
+      "listenFor": "The controls and the sound change to the saved patch.",
+      "tryThis": "Save a patch, change a few knobs, then open the file to hear it return.",
+      "glossaryTerms": []
+    },
     "control.undo": {
       "title": "Undo",
       "what": "Reverses your last change to the patch, such as a knob move, adding a module or a new connection.",
@@ -423,6 +437,27 @@
         "hard-sync",
         "fm"
       ]
+    },
+    "control.viewMenu": {
+      "title": "View options",
+      "what": "Opens a menu for how the window looks: a dark or light theme, reduced motion, and whether the Explain panel is showing. These are your preferences, so a patch does not store them.",
+      "listenFor": "The sound never changes. The colours change with the theme, and with reduced motion the meters and moving dots update less often and without smoothing.",
+      "tryThis": "Choose Light, then switch back to Dark. To change the window's size, drag a corner of it.",
+      "glossaryTerms": []
+    },
+    "control.explainToggle": {
+      "title": "Fold this panel",
+      "what": "Folds this panel away to a narrow strip, which gives the signal chain more room, or brings it back. A smaller window starts with it folded.",
+      "listenFor": "The sound never changes. The signal chain gets wider when the panel is folded.",
+      "tryThis": "Fold the panel, then use the arrow on the strip to bring it back.",
+      "glossaryTerms": []
+    },
+    "control.glossaryLink": {
+      "title": "Glossary term",
+      "what": "Opens the plain-English meaning of a word this explanation uses. You can reach every term with the Tab key and open it with Enter.",
+      "listenFor": "The sound never changes. The panel swaps to the word's meaning.",
+      "tryThis": "Open one, then use All terms to go back, or press Escape to leave the glossary.",
+      "glossaryTerms": []
     }
   },
   "params": {

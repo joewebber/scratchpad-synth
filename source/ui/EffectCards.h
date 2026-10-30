@@ -3,6 +3,7 @@
 #include "engine/EngineParams.h"
 #include "plugin/Modules.h"
 #include "plugin/PluginProcessor.h"
+#include "ui/Accessibility.h"
 #include "ui/Knob.h"
 #include "ui/ModuleCards.h"
 #include "ui/ToggleChip.h"
@@ -35,6 +36,9 @@ public:
     void visibilityChanged() override;
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    juce::String describe() const;
+
     using Values = std::array<float, 8>;
 
     void timerCallback() override;
@@ -83,6 +87,9 @@ public:
 
     engine::EffectKind getKind() const noexcept { return kind; }
     EffectGrip& getGrip() noexcept { return grip; }
+
+    /** Where this effect is among the effects in the patch (1 is first), for the grip's description. */
+    void setPosition (int position, int count);
 
     static constexpr int width = 280, height = 102;
 

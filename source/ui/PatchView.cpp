@@ -26,6 +26,8 @@ namespace
     constexpr int cardsOffset = perVoiceCaptionTop + perVoiceCaptionHeight + 1; // the cards start this far under the well's top
     constexpr int stripPad = 8, stripSidePad = 12, stripGap = 10;
 
+    juce::String oscName (int index) { return "Oscillator " + juce::String (index + 1); }
+
     constexpr int sourcesWidth = OscillatorCard::width;
     constexpr int filterWidth = FilterCard::width;
     constexpr int ampWidth = AmpCard::width;
@@ -138,11 +140,13 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     setTitle ("Signal chain");
     setPaintingIsUnclipped (true);
     setInterceptsMouseClicks (false, true);
+    setFocusContainerType (FocusContainerType::focusContainer); // so a screen reader nests the cards under "Signal chain"
 
     addButton.setTitle ("Add module");
     addButton.setPaintingIsUnclipped (true);
     addButton.getProperties().set (buttonProps::radius, 13.0);
     addButton.onClick = [this] { showAddMenu(); };
+    addButton.setDescription ("Opens a list of the modules you can add: sources, a filter, envelopes, LFOs and effects.");
 
     addButton.getProperties().set ("explainId", "control.addModule");
     for (auto* slot : { &osc2Slot, &osc3Slot, &noiseSlot, &filterSlot, &filterEnvSlot, &ampEnvSlot, &lfo1Slot, &lfo2Slot })
@@ -158,14 +162,14 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     for (const auto& s : slots)
     {
         const auto which = s.which;
-        s.slot->onClick = [this, which] { processor.addModule (which); };
+        s.slot->onClick = [this, which] { addModuleFromUi (which); };
         addChildComponent (*s.slot);
     }
 
     for (size_t i = 0; i < effectSlotStorage.size(); ++i)
     {
         const auto which = effectModule ((engine::EffectKind) i);
-        effectSlotStorage[i].onClick = [this, which] { processor.addModule (which); };
+        effectSlotStorage[i].onClick = [this, which] { addModuleFromUi (which); };
         addChildComponent (effectSlotStorage[i]);
     }
 
@@ -199,10 +203,21 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     osc2Card.onMoreClicked = [this] { toggleExtras (1); };
     osc3Card.onMoreClicked = [this] { toggleExtras (2); };
 
+    for (int i = 0; i < 3; ++i)
+        oscillatorExtras (i).onClose = [this, i] { closeExtras (i); };
+
     addAndMakeVisible (addButton);
     addAndMakeVisible (sourcesPanel);
     addAndMakeVisible (connectionsPanel);
     addAndMakeVisible (overlay); // last, so it is on top
+    addAndMakeVisible (listenRegion);
+    addAndMakeVisible (perVoiceRegion);
+    addAndMakeVisible (effectsRegion);
+
+    perVoiceRegion.setText ("Per voice: every note you hold gets its own copy of this section");
+    effectsRegion.setText ("Effects. Global: the voices are mixed first, then pass through these from left to right. "
+                           "Press the left or right arrow key on an effect's reorder handle to change the order.");
+    setFocusOrders();
 
     for (size_t i = 0; i < plugin::allModules.size(); ++i)
         presenceWatchers[i] = std::make_unique<juce::ParameterAttachment> (
@@ -211,7 +226,11 @@ PatchView::PatchView (plugin::ScratchpadProcessor& p)
     processor.getEffectsBroadcaster().addChangeListener (this);
 
     model.addListener (this);
+    for (const auto m : plugin::allModules)
+        lastPresence[(size_t) m] = present (m);
+
     refreshModules();
+    updateListenRegion();
 }
 
 PatchView::~PatchView()
@@ -292,7 +311,7 @@ void PatchView::showAddMenu()
                         [safe] (int result)
                         {
                             if (safe != nullptr && result >= 1 && result <= (int) plugin::allModules.size())
-                                safe->processor.addModule (plugin::allModules[(size_t) result - 1]);
+                                safe->addModuleFromUi (plugin::allModules[(size_t) result - 1]);
                         });
 }
 
@@ -304,8 +323,104 @@ plugin::Presence PatchView::presence() const
     return result;
 }
 
+void PatchView::setFocusOrders()
+{
+    // Reading order, which is also the Tab order. A card and the dashed slot that stands in for it share a number
+    // (only one of them shows at a time); things with the same number go top to bottom, then left to right.
+    int order = 1;
+    const auto next = [&order] (std::initializer_list<juce::Component*> group)
+    {
+        for (auto* c : group)
+            c->setExplicitFocusOrder (order);
+
+        ++order;
+    };
+
+    next ({ &addButton });
+    next ({ &listenRegion });
+    next ({ &perVoiceRegion });
+    next ({ &osc1Card });
+    next ({ &osc1Extras });
+    next ({ &osc2Card, &osc2Slot });
+    next ({ &osc2Extras });
+    next ({ &osc3Card, &osc3Slot });
+    next ({ &osc3Extras });
+    next ({ &noiseCard, &noiseSlot });
+    next ({ &filterCard, &filterSlot });
+    next ({ &filterEnvCard, &filterEnvSlot });
+    next ({ &ampCard });
+    next ({ &ampEnvCard, &ampEnvSlot });
+    next ({ &voicingCard });
+    next ({ &outputCard });
+    next ({ &effectsRegion });
+    next ({ &effectCardStorage[0], &effectCardStorage[1], &effectCardStorage[2], &effectCardStorage[3],
+            &effectSlotStorage[0], &effectSlotStorage[1], &effectSlotStorage[2], &effectSlotStorage[3] });
+    next ({ &lfo1Card, &lfo1Slot });
+    next ({ &lfo2Card, &lfo2Slot });
+    next ({ &sourcesPanel });
+    next ({ &connectionsPanel });
+    next ({ &overlay });
+}
+
+ModuleCard* PatchView::cardFor (Module m)
+{
+    switch (m)
+    {
+        case Module::osc2:       return &osc2Card;
+        case Module::osc3:       return &osc3Card;
+        case Module::noise:      return &noiseCard;
+        case Module::filter:     return &filterCard;
+        case Module::ampEnv:     return &ampEnvCard;
+        case Module::filterEnv:  return &filterEnvCard;
+        case Module::lfo1:       return &lfo1Card;
+        case Module::lfo2:       return &lfo2Card;
+        case Module::distortion: return &effectCardStorage[(size_t) engine::EffectKind::distortion];
+        case Module::chorus:     return &effectCardStorage[(size_t) engine::EffectKind::chorus];
+        case Module::delay:      return &effectCardStorage[(size_t) engine::EffectKind::delay];
+        case Module::reverb:     return &effectCardStorage[(size_t) engine::EffectKind::reverb];
+    }
+
+    return nullptr;
+}
+
+SlotButton* PatchView::slotFor (Module m)
+{
+    switch (m)
+    {
+        case Module::osc2:       return &osc2Slot;
+        case Module::osc3:       return &osc3Slot;
+        case Module::noise:      return &noiseSlot;
+        case Module::filter:     return &filterSlot;
+        case Module::ampEnv:     return &ampEnvSlot;
+        case Module::filterEnv:  return &filterEnvSlot;
+        case Module::lfo1:       return &lfo1Slot;
+        case Module::lfo2:       return &lfo2Slot;
+        case Module::distortion: return &effectSlotStorage[(size_t) engine::EffectKind::distortion];
+        case Module::chorus:     return &effectSlotStorage[(size_t) engine::EffectKind::chorus];
+        case Module::delay:      return &effectSlotStorage[(size_t) engine::EffectKind::delay];
+        case Module::reverb:     return &effectSlotStorage[(size_t) engine::EffectKind::reverb];
+    }
+
+    return nullptr;
+}
+
+void PatchView::addModuleFromUi (Module which)
+{
+    focusNewModule = which;
+    processor.addModule (which);
+    focusNewModule.reset();
+}
+
+void PatchView::updateListenRegion()
+{
+    listenRegion.setText (model.getStatus().isNotEmpty() ? model.getStatus() : "Listen for: " + listenHint());
+}
+
 void PatchView::refreshModules()
 {
+    // Where the keyboard is now, before cards come and go: a card that goes takes its focus with it.
+    auto* focused = juce::Component::getCurrentlyFocusedComponent();
+
     const bool hasOsc2 = present (Module::osc2), hasOsc3 = present (Module::osc3), hasNoise = present (Module::noise);
     const bool hasFilter = present (Module::filter), hasFilterEnv = present (Module::filterEnv),
                hasAmpEnv = present (Module::ampEnv), hasLfo1 = present (Module::lfo1), hasLfo2 = present (Module::lfo2);
@@ -359,6 +474,44 @@ void PatchView::refreshModules()
 
     refreshExtras();
     resized();
+    updateListenRegion();
+
+    // What changed: one module added or taken away is said aloud, and the keyboard follows it. Several at once (a
+    // patch opened, undone or started again) are the patch's news, not each module's.
+    std::vector<Module> added, removed;
+    for (const auto m : plugin::allModules)
+    {
+        const bool now = present (m);
+
+        if (now != lastPresence[(size_t) m])
+            (now ? added : removed).push_back (m);
+
+        lastPresence[(size_t) m] = now;
+    }
+
+    if (added.size() == 1 && removed.empty())
+        a11y::announce (plugin::ScratchpadProcessor::moduleName (added.front()) + " added");
+    else if (removed.size() == 1 && added.empty())
+        a11y::announce (plugin::ScratchpadProcessor::moduleName (removed.front()) + " removed");
+
+    // A module the user just added offers its first control. A module that goes while the keyboard was inside it
+    // leaves the dashed slot that takes its place.
+    if (focusNewModule.has_value() && added.size() == 1 && added.front() == *focusNewModule)
+    {
+        if (auto* card = cardFor (*focusNewModule))
+            card->focusFirstControl();
+    }
+    else if (focused != nullptr && removed.size() == 1 && juce::Component::getCurrentlyFocusedComponent() == nullptr)
+    {
+        const auto gone = removed.front();
+        const bool insideOscillator = (gone == Module::osc2 && (osc2Card.isParentOf (focused) || osc2Extras.isParentOf (focused)))
+                                   || (gone == Module::osc3 && (osc3Card.isParentOf (focused) || osc3Extras.isParentOf (focused)));
+
+        if (auto* card = cardFor (gone))
+            if (insideOscillator || card->isParentOf (focused) || card == focused)
+                if (auto* slot = slotFor (gone))
+                    slot->grabKeyboardFocus();
+    }
 
     // Panels paint their shadows outside their bounds; clear what a removed card left behind.
     if (auto* parent = getParentComponent())
@@ -374,17 +527,23 @@ void PatchView::refreshModules()
 
 void PatchView::refreshExtras()
 {
+    auto* focused = juce::Component::getCurrentlyFocusedComponent();
+
     // A drawer belongs to its oscillator: it goes when the oscillator does.
     if ((openExtras == 1 && ! present (Module::osc2)) || (openExtras == 2 && ! present (Module::osc3)))
         openExtras = -1;
 
-    OscillatorCard* const cards[] = { &osc1Card, &osc2Card, &osc3Card };
-    OscillatorExtras* const extras[] = { &osc1Extras, &osc2Extras, &osc3Extras };
-
     for (int i = 0; i < 3; ++i)
     {
-        cards[i]->setMoreOpen (openExtras == i);
-        extras[i]->setVisible (openExtras == i);
+        auto& extras = oscillatorExtras (i);
+        const bool wasOpen = extras.isVisible();
+
+        oscillatorCard (i).setMoreOpen (openExtras == i);
+        extras.setVisible (openExtras == i);
+
+        // The keyboard was in a drawer that has just closed: back to the chevron that opened it.
+        if (wasOpen && openExtras != i && focused != nullptr && extras.isParentOf (focused) && oscillatorCard (i).isVisible())
+            oscillatorCard (i).focusMoreButton();
     }
 }
 
@@ -394,8 +553,16 @@ void PatchView::toggleExtras (int oscillator)
     refreshExtras();
     resized();
 
+    a11y::announce (oscName (oscillator) + " extras " + (openExtras == oscillator ? "open" : "closed"));
+
     // The drawer's shadow reaches outside its bounds.
     repaint();
+}
+
+void PatchView::closeExtras (int oscillator)
+{
+    if (openExtras == oscillator)
+        toggleExtras (oscillator);
 }
 
 //==============================================================================
@@ -488,6 +655,12 @@ void PatchView::moveEffectTo (engine::EffectKind kind, int destinationIndex)
     // `moveEffect` speaks in positions of the full four-entry order, which includes effects that are not in the patch.
     const auto positionOf = [&order] (engine::EffectKind k) { return (int) (std::find (order.begin(), order.end(), k) - order.begin()); };
     processor.moveEffect (positionOf (kind), positionOf (slots.present[(size_t) destinationIndex]));
+
+    const auto after = effectSlots();
+    for (int i = 0; i < after.numPresent; ++i)
+        if (after.present[(size_t) i] == kind)
+            a11y::announce (plugin::ScratchpadProcessor::moduleName (effectModule (kind)) + " moved to position "
+                            + juce::String (i + 1) + " of " + juce::String (after.numPresent));
 }
 
 void PatchView::nudgeEffect (engine::EffectKind kind, int direction)
@@ -580,7 +753,7 @@ void PatchView::paint (juce::Graphics& g)
         const auto target = effectPlace (effectDrag.to);
         const float x = effectDrag.to > effectDrag.from ? (float) target.getRight() + (float) effectGap * 0.5f
                                                         : (float) target.getX() - (float) effectGap * 0.5f;
-        g.setColour (p.accent);
+        g.setColour (p.accentInk);
         g.fillRoundedRectangle (x - 2.0f, (float) target.getY() - 4.0f, 4.0f, (float) target.getHeight() + 8.0f, 2.0f);
     }
 }
@@ -602,10 +775,12 @@ void PatchView::resized()
     addButton.setBounds (getWidth() - panelPad - addWidth, titleRowTop - 1, addWidth, titleRowHeight + 2);
     const int pillX = (int) std::ceil (chainTitleRight) + 12;
     listenPill = { pillX, titleRowTop, addButton.getX() - 12 - pillX, titleRowHeight };
+    listenRegion.setBounds (listenPill);
 
     // The row of stages, centred in the panel.
     const int x0 = panelPad + (getWidth() - 2 * panelPad - rowWidth) / 2;
     well = { x0, wellTop, wellWidth, chainHeight - wellTop - effectsBlock };
+    perVoiceRegion.setBounds (well.getX() + wellPad, well.getY() + perVoiceCaptionTop, well.getWidth() - 2 * wellPad, perVoiceCaptionHeight);
     const int cardsTop = well.getY() + cardsOffset;
 
     // Sources: the cards that are present, then one row of dashed chips for the ones that are not.
@@ -682,11 +857,16 @@ void PatchView::resized()
     // The effects row: present effects take the places from the left, the dashed slots of the others follow.
     effectsCaption = { x0, well.getBottom() + effectsGapAbove, rowWidth, effectsCaptionHeight };
     effectsRow = { x0, effectsCaption.getBottom(), rowWidth, EffectCard::height };
+    effectsRegion.setBounds (effectsCaption);
 
     const auto slots = effectSlots();
     for (int i = 0; i < slots.numPresent; ++i)
+    {
+        effectCard (slots.present[(size_t) i]).setPosition (i + 1, slots.numPresent);
+
         if (! (effectDrag.active && effectDrag.kind == slots.present[(size_t) i])) // a card being dragged stays under the pointer
             effectCard (slots.present[(size_t) i]).setBounds (effectPlace (i));
+    }
     for (int i = 0; i < slots.numAbsent; ++i)
         effectSlot (slots.absent[(size_t) i]).setBounds (effectPlace (slots.numPresent + i));
 

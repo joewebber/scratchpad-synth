@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/Accessibility.h"
 #include "ui/ModArcs.h"
 #include "ui/ModulationModel.h"
 #include "ui/Knob.h"
@@ -14,7 +15,9 @@ namespace scratchpad::ui
 
 /** A dial that has no control of its own: its value is fixed (the amp stage's level is
     always full, pan always centred), so all it does is show what modulation does to it,
-    and take a handle dropped on it. Drawn like a `Knob`, at the same size. */
+    and take a handle dropped on it. Drawn like a `Knob`, at the same size. A screen reader gets its name, its
+    fixed value, and which connections move it. It takes no keyboard focus: the connection is made from the
+    source's handle, which lists this as a destination. */
 class ModDial final : public juce::Component,
                       public ModTarget,
                       private ModulationModel::Listener
@@ -87,6 +90,19 @@ public:
     }
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<a11y::DescribedHandler> (
+            *this, juce::AccessibilityRole::staticText,
+            [this]
+            {
+                return ("Fixed: it shows the effect of modulation and cannot be turned. " + describeArcs (getArcs())).trim();
+            },
+            juce::AccessibilityActions {},
+            juce::AccessibilityHandler::Interfaces { std::make_unique<a11y::ReadOnlyTextValue> (
+                [this] { return valueText == "C" ? juce::String ("centre") : a11y::spokenValue (valueText); }) });
+    }
+
     static constexpr float discAreaHeight() { return (float) (Knob::knobHeight - Knob::pillHeight - Knob::captionHeight); }
 
     void modulationChanged() override { repaint(); }

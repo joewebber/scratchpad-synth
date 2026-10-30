@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/FastFloor.h"
 #include "dsp/BlepTable.h"
 
 #include <algorithm>
@@ -136,7 +137,7 @@ namespace detail
             clear();
 
             double p = phaseNow - (double) BlepTable::halfWidth * dt;
-            p -= std::floor (p);
+            p -= fastFloor (p);
 
             for (int i = 0; i < BlepTable::halfWidth; ++i)
             {
@@ -240,13 +241,16 @@ namespace detail
             const float* b = ramp ? table.rampRow (row + 1) : table.stepRow (row + 1);
             const float gain = (float) amount * bandLimit;
 
-            // Tap j lands on the sample (j - halfWidth) after this one.
-            size_t slot = (pos + BlepTable::halfWidth) & mask;
-            for (int j = 0; j < BlepTable::width; ++j)
-            {
-                ring[slot] += gain * (a[j] + (b[j] - a[j]) * blend);
-                slot = (slot + 1) & mask;
-            }
+            // Tap j lands on the sample (j - halfWidth) after this one. The ring is as long as the kernel, so the
+            // taps are one run up to the end of the ring and a second from its start: no index mask in the loop.
+            const int slot = (int) ((pos + BlepTable::halfWidth) & mask);
+            const int untilWrap = BlepTable::width - slot;
+
+            for (int j = 0; j < untilWrap; ++j)
+                ring[(size_t) (slot + j)] += gain * (a[j] + (b[j] - a[j]) * blend);
+
+            for (int j = untilWrap; j < BlepTable::width; ++j)
+                ring[(size_t) (j - untilWrap)] += gain * (a[j] + (b[j] - a[j]) * blend);
         }
 
         Kind kind;
@@ -313,7 +317,7 @@ public:
         primed from the phase history when they next run, so there is no gap. */
     void jumpTo (double newPhase) noexcept
     {
-        phase = newPhase - std::floor (newPhase);
+        phase = newPhase - fastFloor (newPhase);
         fresh = false;
         active.fill (false);
     }
@@ -358,7 +362,7 @@ private:
             if (offset == 0.0 && lastOffset == 0.0 && dt > 0.0)
             {
                 double oldPhase = phase - f * dt;
-                oldPhase -= std::floor (oldPhase);
+                oldPhase -= fastFloor (oldPhase);
                 syncReset = { f, oldPhase };
                 hasReset = true;
             }
@@ -394,7 +398,7 @@ private:
         if (offset != 0.0)
         {
             p += offset;
-            p -= std::floor (p);
+            p -= fastFloor (p);
         }
 
         return shape.tick (p, advance, pulseWidth, ! fresh && ! suppressEdges, bandLimit, hasReset ? &syncReset : nullptr);
@@ -410,7 +414,7 @@ private:
         lastOffset = offset;
         phase += dt;
         if (phase >= 1.0)
-            phase -= std::floor (phase);
+            phase -= fastFloor (phase);
     }
 
     using Shape = detail::BandLimitedShape;

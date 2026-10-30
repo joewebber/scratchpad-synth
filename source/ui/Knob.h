@@ -1,5 +1,9 @@
 #pragma once
 
+#include "content/Content.h"
+#include "plugin/ModulationInfo.h"
+#include "ui/Accessibility.h"
+#include "ui/KeyboardSlider.h"
 #include "ui/LookAndFeel.h"
 #include "ui/ModArcs.h"
 #include "ui/ModulationModel.h"
@@ -20,8 +24,13 @@ namespace scratchpad::ui
 
     Vertical drag, Shift for fine adjustment (both built into juce::Slider),
     double-click to reset, scroll wheel, and click the value to type one.
+    From the keyboard it is a `KeyboardSlider`: arrow keys, Page Up and Down, Home and End, Delete to reset,
+    and Enter to type a value.
     One drag is one undo step, named "<name> <old> -> <new>", where the name is
     the accessible name if given (it tells Osc 2's Level from Osc 1's), else the caption.
+
+    A screen reader hears the accessible name, the value in words, and a description: what the parameter does
+    (the Explain panel's sentence) and, if connections move it, which ones and how far.
 
     A knob that modulation can reach calls `setModulation`: it then shows an arc for each
     connection that moves it, and is somewhere a handle can be dropped. */
@@ -33,7 +42,7 @@ public:
     Knob (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
           const juce::String& captionText, juce::UndoManager& undoToUse,
           const juce::String& accessibleName = {})
-        : caption (captionText), undo (undoToUse)
+        : caption (captionText), paramId (paramID), undo (undoToUse)
     {
         param = state.getParameter (paramID);
         jassert (param != nullptr);
@@ -50,6 +59,7 @@ public:
         slider.setScrollWheelEnabled (true);
         slider.setTitle (accessibleName.isEmpty() ? captionText : accessibleName);
         slider.setPaintingIsUnclipped (true);
+        slider.describe = [this] { return describeKnob(); };
 
         setPaintingIsUnclipped (true); // the caption may overhang the knob's bounds
         addAndMakeVisible (slider);
@@ -60,6 +70,7 @@ public:
 
         slider.valueFromTextFunction = [this] (const juce::String& text) { return parseTyped (text); };
         slider.updateText();
+        slider.tidyValueLabel();
 
         slider.onDragStart = [this] { valueAtDragStart = slider.getValue(); };
         slider.onDragEnd = [this]
@@ -84,6 +95,11 @@ public:
     {
         slider.setColour (juce::Slider::rotarySliderFillColourId, c);
     }
+
+    /** What a screen reader is told when the knob is dimmed, in place of nothing: why it is not in use. */
+    void setDisabledNote (const juce::String& why) { disabledNote = why; }
+
+    juce::Slider& getSlider() noexcept { return slider; }
 
     /** Makes this knob a destination for `dests` (the first is the default for a drop). With
         `hardWiredFilterEnvAmount`, the filter envelope's own amount shows as one more arc. */
@@ -140,6 +156,12 @@ public:
 
     void enablementChanged() override { repaint(); }
 
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        // The slider inside carries the name, value and description; the box round it adds nothing.
+        return a11y::makeIgnoredHandler (*this);
+    }
+
     static constexpr int knobWidth = 52;
     static constexpr int pillHeight = 17;
     static constexpr int captionHeight = 14;
@@ -167,6 +189,23 @@ private:
                 return true;
 
         return false;
+    }
+
+    /** What the knob does, then which connections move it and how far. */
+    juce::String describeKnob() const
+    {
+        juce::String text;
+
+        if (const auto* entry = content::Content::get().param (paramId))
+            text = entry->what;
+
+        if (! slider.isEnabled() && disabledNote.isNotEmpty())
+            text = disabledNote + " " + text;
+
+        if (model == nullptr)
+            return text;
+
+        return (text + " " + describeArcs (getArcs())).trim();
     }
 
     /** Understands what the parameter prints: "-inf", "Off", "2.0 kHz", "300 ms", "+7 c", "50%".
@@ -200,9 +239,9 @@ private:
     }
 
     juce::RangedAudioParameter* param = nullptr;
-    juce::String caption;
+    juce::String caption, paramId, disabledNote;
     juce::UndoManager& undo;
-    juce::Slider slider;
+    KeyboardSlider slider;
     std::unique_ptr<juce::SliderParameterAttachment> attachment;
     double valueAtDragStart = 0.0;
 

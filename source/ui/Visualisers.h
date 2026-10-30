@@ -1,6 +1,7 @@
 #pragma once
 
 #include "plugin/PluginProcessor.h"
+#include "ui/Accessibility.h"
 #include "ui/LookAndFeel.h"
 #include "ui/ModulationModel.h"
 
@@ -10,7 +11,8 @@ namespace scratchpad::ui
 {
 
 /** The filter's response curve, 20 Hz to 20 kHz: computed from the settings, not measured, so it
-    moves the instant a knob does. The cutoff is marked with a line and its value. */
+    moves the instant a knob does. The cutoff is marked with a line and its value. A screen reader is told the
+    filter type, the cutoff and the resonance. */
 class FilterCurve final : public juce::Component,
                           private juce::Timer
 {
@@ -24,6 +26,7 @@ public:
     static float dbToFraction (float db) noexcept;
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
     void timerCallback() override;
 
     plugin::ScratchpadProcessor& processor;
@@ -53,6 +56,7 @@ public:
     static float playheadX (const Shape&, int stage, float level) noexcept;
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
     void liveUpdated() override;
     void timerCallback() override;
 

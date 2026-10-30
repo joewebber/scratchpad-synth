@@ -2,6 +2,7 @@
 
 #include "plugin/Modules.h"
 #include "plugin/PluginProcessor.h"
+#include "ui/Accessibility.h"
 #include "ui/ChoiceSegments.h"
 #include "ui/HeaderButtons.h"
 #include "ui/IconButton.h"
@@ -24,7 +25,11 @@ namespace scratchpad::ui
 /** A small raised card holding one module's controls. Cards for modules the
     user added have a remove button in the header row; it stays alive when the
     module goes away (the card is only hidden), so it may be clicked and the
-    module removed in the same call. */
+    module removed in the same call.
+
+    To a screen reader a card is a named group (its title is the module's name, its description what the module
+    does) holding its controls. Tab visits, in this order: bypass, solo, explain and remove (those the card has),
+    then the card's own controls in the order its constructor gives (`setFocusOrder`). */
 class ModuleCard : public juce::Component
 {
 public:
@@ -35,7 +40,16 @@ public:
     /** Names the module for the Explain panel: hovering anywhere on the card explains it, and the "?" button asks. */
     void setExplainKey (const juce::String& moduleKey);
 
+    /** Puts the keyboard on the card's first control (what a newly added module offers first). */
+    void focusFirstControl();
+
 protected:
+    /** The card's own controls in Tab order, after the header buttons. The first is where `focusFirstControl` lands,
+        unless `entry` says otherwise. */
+    void setFocusOrder (const std::vector<juce::Component*>& controls, juce::Component* entry = nullptr);
+
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
     void makeRemovable (const juce::String& accessibleName, std::function<void()> onRemove);
 
     /** Adds "?" and, for modules that have them, "B" (bypass) and "S" (solo, sources only) for the module
@@ -67,11 +81,13 @@ private:
     std::unique_ptr<IconButton> removeButton;
     std::unique_ptr<HeaderToggle> explainButton, bypassButton, soloButton;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> stateWatchers;
+    juce::Component::SafePointer<juce::Component> entryControl;
 };
 
 /** The small chevron on an oscillator card that opens its extras (unison, anti-aliasing, sync, and ring and FM on
     Oscillator 1). A dot marks a card whose extras are doing something: calm for unison, sync, ring or FM, in the
-    accent colour when anti-aliasing is off. */
+    accent colour when anti-aliasing is off. To a screen reader it is a toggle button: "pressed" while the extras
+    are open. */
 class MoreButton final : public juce::Button
 {
 public:
@@ -110,6 +126,9 @@ public:
     std::function<void()> onMoreClicked;
     void setMoreOpen (bool isOpen) { moreButton.setOpen (isOpen); }
 
+    /** Puts the keyboard on the chevron (where it goes back to when its drawer is closed with Escape). */
+    void focusMoreButton() { moreButton.grabKeyboardFocus(); }
+
     static constexpr int width = 448, height = 82;
 
 private:
@@ -129,6 +148,7 @@ private:
     int wave = 2;
     bool aliasingOff = false;
 
+    a11y::Region waveRegion { a11y::Region::Kind::image };
     juce::Rectangle<int> waveWell, headerRow;
 };
 
@@ -148,6 +168,11 @@ public:
 
     static constexpr int width = OscillatorCard::width, height = 100;
 
+    /** Called when Escape is pressed anywhere in the drawer: the owner closes it. */
+    std::function<void()> onClose;
+
+    bool keyPressed (const juce::KeyPress&) override;
+
 private:
     void applyColours();
     void watch (const char* id);
@@ -163,6 +188,7 @@ private:
     std::unique_ptr<ChoiceSegments> fmTarget;    // Oscillator 1
     std::vector<std::unique_ptr<juce::ParameterAttachment>> watchers;
 
+    a11y::Region statusRegion;
     juce::String status;
     bool statusIsWarning = false;
     juce::Rectangle<int> statusArea;
@@ -180,6 +206,8 @@ public:
     static constexpr int width = OscillatorCard::width, height = OscillatorCard::height;
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
     void applyColours();
 
     ChoiceSegments colour;
@@ -246,6 +274,8 @@ public:
     static constexpr int width = FilterCard::width, height = 104;
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
     plugin::ScratchpadProcessor& processor;
     ModDial level, pan;
     juce::Rectangle<int> textArea;

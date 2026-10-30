@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/Accessibility.h"
 #include "ui/ChoiceSegments.h"
 #include "ui/Knob.h"
 #include "ui/ModArcs.h"
@@ -15,8 +16,11 @@
 namespace scratchpad::ui
 {
 
-/** The round handle a connection starts from. Drag it onto a knob, or click it and then click a
-    knob. Escape (or clicking it again) lets go. Disabled while its module is not in the patch. */
+/** The round handle a connection starts from. Drag it onto a knob, or click it and then click a knob. Escape (or
+    clicking it again) lets go. Disabled while its module is not in the patch.
+
+    From the keyboard, Enter or Space opens a menu of what the source can move (`ModulationModel::chooseDestination`);
+    choosing one connects it at +50%. If the handle was armed with a click, Enter or Space puts it down again. */
 class SourceHandle final : public juce::Component,
                            private ModulationModel::Listener
 {
@@ -38,7 +42,9 @@ public:
     static constexpr int diameter = 26;
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
     void connectingChanged() override { repaint(); }
+    void activate();
     juce::Point<int> centreOnScreen() const;
     bool isConnectingFromHere() const;
 
@@ -86,6 +92,7 @@ private:
     float shownHz = -1.0f;
 
     juce::Rectangle<int> headerRow, vizWell;
+    a11y::Region vizRegion { a11y::Region::Kind::image };
 };
 
 /** Handles for the sources that are not LFOs: the two envelopes, velocity, mod wheel,
@@ -117,7 +124,12 @@ private:
 };
 
 /** One of the eight connection slots: source, destination and amount. Drag sideways to change
-    the amount, double-click to put it back to +50%, click the cross (or press Delete) to remove it. */
+    the amount, double-click to put it back to +50%, click the cross (or press Delete) to remove it.
+
+    From the keyboard an occupied row takes the focus: Left and Down lower the amount by 1, Right and Up raise it by
+    1 (Shift or Page Up and Down: 10); Home or Enter puts it back to +50%; Delete or Backspace removes the connection
+    and moves the focus on; Shift+F10 opens the same remove menu as a right-click. To a screen reader an occupied
+    row is a slider whose value is the amount, so it can be set directly. An empty row is only text. */
 class ConnectionRow final : public juce::Component
 {
 public:
@@ -140,6 +152,9 @@ public:
     static constexpr int height = 24;
 
 private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    void showRemoveMenu();
+    void remove();
     juce::Rectangle<int> removeArea() const { return getLocalBounds().removeFromRight (22); }
     void nudge (float percent);
 
@@ -147,8 +162,9 @@ private:
     const int slot;
     bool overRemove = false;
     bool dragging = false;
-    int lastDragX = 0;
     float amountPercent = 0.0f;
+    bool wasActive = false;
+    int lastDragX = 0;
 };
 
 /** All eight slots at a glance, two columns of four. */

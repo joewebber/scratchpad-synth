@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/Neumorph.h"
+#include "ui/Contrast.h"
 #include "ui/Theme.h"
 #include "ui/Typography.h"
 
@@ -42,8 +43,16 @@ public:
     void drawLabel (juce::Graphics&, juce::Label&) override;
     juce::Font getLabelFont (juce::Label&) override;
 
+    /** The plugin window's resize grip, in palette colours. */
+    void drawCornerResizer (juce::Graphics&, int w, int h, bool isMouseOver, bool isMouseDragging) override;
+
     /** Rounded rectangle with a visible keyboard-focus ring, used by every control. */
     static void drawFocusRing (juce::Graphics&, juce::Rectangle<float> bounds, float radius, juce::Colour);
+
+    /** A thin outline round a filled "selected" or "on" shape, drawn only where the fill is too close to what it sits on
+        (`behind`) to be told apart, as the pale family colours are on the light theme. */
+    static void drawSelectedEdge (juce::Graphics&, juce::Rectangle<float> bounds, float radius, const Palette&,
+                                  juce::Colour fill, juce::Colour behind);
 
 private:
     void applyColours();

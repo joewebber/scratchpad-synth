@@ -6,6 +6,7 @@
 #include "plugin/PluginEditor.h"
 
 #include <algorithm>
+#include <map>
 #include <optional>
 
 namespace scratchpad::plugin
@@ -22,14 +23,6 @@ namespace
         (void) apvts.copyState();
     }
 
-    void setParamValue (juce::AudioProcessorValueTreeState& apvts, const char* id, float unnormalisedValue)
-    {
-        // Goes through the ValueTree with the undo manager, so the change is
-        // recorded in the current transaction straight away.
-        auto v = apvts.getParameterAsValue (id);
-        v = unnormalisedValue;
-    }
-
     float defaultOf (juce::AudioProcessorValueTreeState& apvts, const char* id)
     {
         auto* p = apvts.getParameter (id);
@@ -39,6 +32,12 @@ namespace
     const juce::Identifier& effectOrderId()
     {
         static const juce::Identifier id { params::effectOrderProperty };
+        return id;
+    }
+
+    const juce::Identifier& patchNameId()
+    {
+        static const juce::Identifier id { patch::nameProperty };
         return id;
     }
 
@@ -213,6 +212,45 @@ void ScratchpadProcessor::prepareToPlay (double sampleRate, int)
 
     // The band-limited oscillators and the oversampled distortion run a fixed number of samples late.
     setLatencySamples (dsp::Oscillator::latencySamples + synthEngine.getEffectsLatencySamples());
+}
+
+double tailLengthSeconds (const engine::EngineParams& p) noexcept
+{
+    // Slack for the gate's 2 ms ramp, a stolen voice's 5 ms fade, the oscillators' 16 samples and the distortion's delay.
+    constexpr double slack = 0.02;
+    constexpr double longestPart = 20.0; // no single part (the delay's repeats, the release) is reported longer
+
+    // The voice: the amp envelope's release, else only the declick gate.
+    double seconds = p.ampEnv.enabled ? juce::jmin ((double) p.ampEnv.release, longestPart) : 0.0;
+
+    // Effects run in series, so a tail that enters the next effect leaves it later: the tails add.
+    if (p.reverb.enabled)
+    {
+        // `decaySeconds` is the time for the tail to fall 60 dB; the longest of the reverb's eight lines adds its own length.
+        constexpr double longestLine = 0.0663 * 2.0; // 66.3 ms at the largest size (see Reverb.h)
+        seconds += juce::jmin ((double) p.reverb.decaySeconds, longestPart) + longestLine;
+    }
+
+    if (p.delay.enabled)
+    {
+        // The n-th echo has fed back n - 1 times: it is 60 dB down once feedback^(n - 1) <= 0.001. Feedback is capped at
+        // 0.95 by the parameter, and anything near 1 is held to `longestPart` rather than reported as endless.
+        const double time = (double) p.delay.timeMs * 0.001;
+        const double feedback = juce::jlimit (0.0, 0.999, (double) p.delay.feedback);
+        const double repeats = feedback < 1.0e-3 ? 0.0 : std::ceil (std::log (0.001) / std::log (feedback));
+        seconds += juce::jmin ((1.0 + repeats) * time, longestPart);
+    }
+
+    if (p.chorus.enabled)
+        seconds += 0.03; // its longest delay, about 12 ms centre plus sweep
+
+    return seconds + slack;
+}
+
+double ScratchpadProcessor::getTailLengthSeconds() const
+{
+    // Cached parameter atomics only: hosts may call this from any thread.
+    return tailLengthSeconds (readParams());
 }
 
 bool ScratchpadProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -445,7 +483,10 @@ void ScratchpadProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         const int eventPosition = juce::jlimit (position, numSamples, metadata.samplePosition);
         renderRange (buffer, position, eventPosition - position);
         position = eventPosition;
-        synthEngine.handleMidi (metadata.getMessage());
+        // The engine only acts on channel messages (three bytes at most). Copying anything longer (SysEx, which a
+        // host may send to any instrument) into a MidiMessage would allocate on the audio thread.
+        if (metadata.numBytes <= 3)
+            synthEngine.handleMidi (metadata.getMessage());
     }
 
     renderRange (buffer, position, numSamples - position);
@@ -467,6 +508,14 @@ juce::AudioProcessorEditor* ScratchpadProcessor::createEditor()
     return new ScratchpadEditor (*this);
 }
 
+void ScratchpadProcessor::setParamValue (const char* id, float unnormalisedValue)
+{
+    // Goes through the ValueTree with the undo manager, so the change is
+    // recorded in the current transaction straight away.
+    auto v = apvts.getParameterAsValue (id);
+    v = unnormalisedValue;
+}
+
 void ScratchpadProcessor::changeWave (int waveIndex)
 {
     const auto names = params::waveNames();
@@ -479,7 +528,7 @@ void ScratchpadProcessor::changeWave (int waveIndex)
     flushPendingChanges (apvts);
     undoManager.beginNewTransaction ("Osc 1 wave " + names[previous].toLowerCase()
                                      + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 ")) + names[next].toLowerCase());
-    setParamValue (apvts, params::osc1Wave, (float) next);
+    setParamValue (params::osc1Wave, (float) next);
 }
 
 void ScratchpadProcessor::newPatch()
@@ -489,10 +538,114 @@ void ScratchpadProcessor::newPatch()
 
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
-            setParamValue (apvts, ranged->paramID.toRawUTF8(), defaultOf (apvts, ranged->paramID.toRawUTF8()));
+            setParamValue (ranged->paramID.toRawUTF8(), defaultOf (apvts, ranged->paramID.toRawUTF8()));
 
     if (getEffectOrder() != defaultEffectOrder)
         setEffectOrderProperty (defaultEffectOrder);
+
+    apvts.state.removeProperty (patchNameId(), &undoManager);
+}
+
+juce::File ScratchpadProcessor::getPatchesDirectory()
+{
+    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+        .getChildFile ("Scratchpad Synth")
+        .getChildFile ("Patches");
+}
+
+juce::String ScratchpadProcessor::getPatchName() const
+{
+    const auto name = apvts.state.getProperty (patchNameId()).toString();
+    return name.isEmpty() ? juce::String (patch::untitledName) : name;
+}
+
+bool ScratchpadProcessor::savePatch (const juce::File& file)
+{
+    if (file.isDirectory())
+        return false;
+
+    const auto name = file.getFileNameWithoutExtension();
+
+    // The file carries the name it is saved under; the live patch only takes it once the write has worked.
+    auto state = apvts.copyState();
+    state.setProperty (patchNameId(), name, nullptr);
+
+    auto xml = state.createXml();
+
+    if (xml == nullptr || ! file.getParentDirectory().createDirectory().wasOk())
+        return false;
+
+    patch::stamp (*xml);
+
+    // Written beside the target and swapped in, so a failed or interrupted save never leaves half a patch.
+    juce::TemporaryFile temporary (file);
+
+    if (! xml->writeTo (temporary.getFile()) || ! temporary.overwriteTargetFileWithTemporary())
+        return false;
+
+    // The name describes where the patch lives, not an edit to it, so it is not an undo step.
+    apvts.state.setProperty (patchNameId(), name, nullptr);
+    return true;
+}
+
+bool ScratchpadProcessor::loadPatch (const juce::File& file)
+{
+    if (! file.existsAsFile())
+        return false;
+
+    // The parser forgives a missing closing tag; a patch cut off by a full disk or an interrupted copy must not
+    // open as a half-loaded one.
+    juce::XmlDocument document (file);
+    auto xml = document.getDocumentElement();
+
+    // Every file we write carries a stamp, as the last attribute of its first tag, so a file without one is not
+    // ours or was cut off inside that tag. Only host sessions can be unstamped (M1's were).
+    if (xml == nullptr || document.getLastParseError().isNotEmpty() || ! xml->hasAttribute (patch::schemaVersionAttribute))
+        return false;
+
+    const auto result = patch::migrate (*xml, apvts.state.getType().toString());
+
+    if (result == patch::MigrationResult::invalid || result == patch::MigrationResult::tooNew)
+        return false;
+
+    const auto tree = juce::ValueTree::fromXml (*xml);
+    const auto name = file.getFileNameWithoutExtension();
+
+    std::map<juce::String, float> saved;
+
+    for (const auto child : tree)
+        if (child.hasType ("PARAM") && child.hasProperty ("id") && child.hasProperty ("value"))
+            saved[child["id"].toString()] = (float) (double) child["value"];
+
+    flushPendingChanges (apvts);
+    undoManager.beginNewTransaction ("Opened " + name);
+
+    // Every parameter goes through the value tree with the undo manager, so the whole patch is one step. Those
+    // the file does not mention take their defaults, as in a host session.
+    for (auto* p : getParameters())
+    {
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            const auto id = ranged->paramID.toRawUTF8();
+            const auto found = saved.find (ranged->paramID);
+            const auto target = found != saved.end() ? found->second : defaultOf (apvts, id);
+
+            // One already there is left alone, so the undo step holds only what the file really changes.
+            if (std::abs (ranged->getValue() - ranged->convertTo0to1 (target)) > 1.0e-6f)
+                setParamValue (id, target);
+        }
+    }
+
+    // Every patch has oscillator 1, even one saved before the wave picker went away.
+    setParamValue (params::osc1Enabled, 1.0f);
+
+    const auto order = parseEffectOrder (tree.getProperty (effectOrderId()).toString()).value_or (defaultEffectOrder);
+
+    if (getEffectOrder() != order)
+        setEffectOrderProperty (order);
+
+    apvts.state.setProperty (patchNameId(), name, &undoManager);
+    return true;
 }
 
 namespace
@@ -600,16 +753,16 @@ void ScratchpadProcessor::addModule (Module m)
     undoManager.beginNewTransaction ("Added " + moduleName (m));
 
     for (const char* id : parametersOf (m))
-        setParamValue (apvts, id, defaultOf (apvts, id));
+        setParamValue (id, defaultOf (apvts, id));
 
     if (m == Module::osc2 || m == Module::osc3)
     {
         const auto& ids = params::osc[m == Module::osc2 ? 1u : 2u];
-        setParamValue (apvts, ids.wave, oscPointers[0].wave->load (std::memory_order_relaxed));
-        setParamValue (apvts, ids.fine, params::newOscillatorFineCents);
+        setParamValue (ids.wave, oscPointers[0].wave->load (std::memory_order_relaxed));
+        setParamValue (ids.fine, params::newOscillatorFineCents);
     }
 
-    setParamValue (apvts, enabledOf (m), 1.0f);
+    setParamValue (enabledOf (m), 1.0f);
 }
 
 void ScratchpadProcessor::removeModule (Module m)
@@ -621,14 +774,14 @@ void ScratchpadProcessor::removeModule (Module m)
     undoManager.beginNewTransaction ("Removed " + moduleName (m));
 
     for (const char* id : parametersOf (m))
-        setParamValue (apvts, id, defaultOf (apvts, id));
+        setParamValue (id, defaultOf (apvts, id));
 
     for (const auto& suffix : { ".bypass", ".solo" })
     {
         const auto id = moduleKey (m) + suffix;
 
         if (apvts.getParameter (id) != nullptr)
-            setParamValue (apvts, id.toRawUTF8(), 0.0f);
+            setParamValue (id.toRawUTF8(), 0.0f);
     }
 
     // Connections that start or end at the module have nothing left to talk to.
@@ -701,18 +854,18 @@ ScratchpadProcessor::ConnectResult ScratchpadProcessor::connectMod (engine::ModS
 
     flushPendingChanges (apvts);
     undoManager.beginNewTransaction ("Connected " + modulation::connectionText (created));
-    setParamValue (apvts, ids.source, (float) (int) source);
-    setParamValue (apvts, ids.dest, (float) (int) destination);
-    setParamValue (apvts, ids.amount, params::modAmountDefault);
+    setParamValue (ids.source, (float) (int) source);
+    setParamValue (ids.dest, (float) (int) destination);
+    setParamValue (ids.amount, params::modAmountDefault);
     return ConnectResult::created;
 }
 
 void ScratchpadProcessor::clearModSlot (int slot)
 {
     const auto& ids = params::mod[(size_t) slot];
-    setParamValue (apvts, ids.source, 0.0f);
-    setParamValue (apvts, ids.dest, 0.0f);
-    setParamValue (apvts, ids.amount, defaultOf (apvts, ids.amount));
+    setParamValue (ids.source, 0.0f);
+    setParamValue (ids.dest, 0.0f);
+    setParamValue (ids.amount, defaultOf (apvts, ids.amount));
 }
 
 void ScratchpadProcessor::disconnectMod (int slot)
@@ -807,7 +960,7 @@ void ScratchpadProcessor::setBypassed (const juce::String& key, bool shouldBypas
 
     flushPendingChanges (apvts);
     undoManager.beginNewTransaction ((shouldBypass ? "Bypassed " : "Un-bypassed ") + moduleLabel (key));
-    setParamValue (apvts, (key + ".bypass").toRawUTF8(), shouldBypass ? 1.0f : 0.0f);
+    setParamValue ((key + ".bypass").toRawUTF8(), shouldBypass ? 1.0f : 0.0f);
 }
 
 void ScratchpadProcessor::setSoloed (const juce::String& key, bool shouldSolo)
@@ -821,9 +974,9 @@ void ScratchpadProcessor::setSoloed (const juce::String& key, bool shouldSolo)
     if (shouldSolo)
         for (int i = 0; i < params::numSoloable; ++i)
             if (juce::String (params::bypassKeys[(size_t) i]) != key && isSoloed (params::bypassKeys[(size_t) i]))
-                setParamValue (apvts, (juce::String (params::bypassKeys[(size_t) i]) + ".solo").toRawUTF8(), 0.0f);
+                setParamValue ((juce::String (params::bypassKeys[(size_t) i]) + ".solo").toRawUTF8(), 0.0f);
 
-    setParamValue (apvts, (key + ".solo").toRawUTF8(), shouldSolo ? 1.0f : 0.0f);
+    setParamValue ((key + ".solo").toRawUTF8(), shouldSolo ? 1.0f : 0.0f);
 }
 
 //==============================================================================
@@ -848,12 +1001,17 @@ void ScratchpadProcessor::valueTreePropertyChanged (juce::ValueTree& tree, const
 {
     if (tree == apvts.state && property == effectOrderId())
         refreshEffectOrder();
+    else if (tree == apvts.state && property == patchNameId())
+        patchNameBroadcaster.sendChangeMessage();
 }
 
 void ScratchpadProcessor::valueTreeRedirected (juce::ValueTree& tree)
 {
     if (tree == apvts.state)
+    {
         refreshEffectOrder();
+        patchNameBroadcaster.sendChangeMessage();
+    }
 }
 
 void ScratchpadProcessor::moveEffect (int fromPosition, int toPosition)

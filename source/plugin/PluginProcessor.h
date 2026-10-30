@@ -17,6 +17,11 @@
 namespace scratchpad::plugin
 {
 
+/** An upper bound, in seconds, on how long the sound goes on after the last note-off for this patch: the amp envelope's
+    release (else a few milliseconds of gate), plus the tails of the effects that are present and not bypassed (the
+    reverb's decay time, the delay's repeats until they are 60 dB down, a little for the chorus). Each part is held to 20 s. */
+double tailLengthSeconds (const engine::EngineParams&) noexcept;
+
 class ScratchpadProcessor final : public juce::AudioProcessor,
                                   private juce::ValueTree::Listener
 {
@@ -38,12 +43,12 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override;
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    const juce::String getProgramName (int) override { return "Current patch"; } // the VST3 validator rejects a program with no name
     void changeProgramName (int, const juce::String&) override {}
 
     void getStateInformation (juce::MemoryBlock& destData) override;
@@ -52,6 +57,27 @@ public:
     // Patch operations (message thread). Each is one named undo step.
     void changeWave (int waveIndex);
     void newPatch();
+
+    /** Patch files (message thread). The file is the host's state XML, so a saved patch is exactly what a session
+        would hold; see `patch::fileExtension` and `docs/architecture.md`.
+
+        `savePatch` writes the patch to `file` (creating its folder), names the patch after the file's stem and
+        returns false, changing nothing, if the file cannot be written.
+
+        `loadPatch` replaces the whole patch with the file's, as one undo step named "Opened <name>", and names
+        it after the file's stem. Parameters the file does not mention come up at their defaults, like a host
+        session. It returns false and leaves the current patch alone for a missing or unreadable file, XML that
+        is not a Scratchpad patch, or a patch saved by a newer version. */
+    bool savePatch (const juce::File& file);
+    bool loadPatch (const juce::File& file);
+
+    /** `<Documents>/Scratchpad Synth/Patches`, where the Save and Open dialogs start. Not created until a save. */
+    static juce::File getPatchesDirectory();
+
+    /** The patch's name: the stem of the file it was last saved or opened as, or "Untitled patch". New patch resets
+        it, and undo restores it. The broadcaster fires after every change to it, by any route. */
+    juce::String getPatchName() const;
+    juce::ChangeBroadcaster& getPatchNameBroadcaster() noexcept { return patchNameBroadcaster; }
 
     /** Modules the user adds to oscillator 1, which every patch has. Presence is
         the module's `enabled` parameter. Adding resets the module's
@@ -137,6 +163,9 @@ public:
 private:
     engine::EngineParams readParams() const noexcept;
     void clearModSlot (int slot);
+
+    /** Writes a parameter's value into the state tree as part of the current undo transaction (see the constructor). */
+    void setParamValue (const char* id, float unnormalisedValue);
     void renderRange (juce::AudioBuffer<float>& buffer, int start, int count) noexcept;
 
     engine::SynthEngine synthEngine;
@@ -230,6 +259,7 @@ private:
 
     std::atomic<std::uint32_t> packedEffectOrder { 0xE4u };
     juce::ChangeBroadcaster effectsBroadcaster;
+    juce::ChangeBroadcaster patchNameBroadcaster;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScratchpadProcessor)
 };

@@ -88,6 +88,41 @@ EffectDisplay::Values EffectDisplay::read() const
     return v;
 }
 
+std::unique_ptr<juce::AccessibilityHandler> EffectDisplay::createAccessibilityHandler()
+{
+    return a11y::makeImageHandler (*this, [this] { return describe(); });
+}
+
+juce::String EffectDisplay::describe() const
+{
+    const auto text = [this] (const char* id) { return a11y::spokenValue (processor.apvts.getParameter (id)->getCurrentValueAsText()); };
+
+    switch (kind)
+    {
+        case engine::EffectKind::distortion:
+            return "How hard the sound is squashed: drive " + text (params::distortionDrive) + ", tone " + text (params::distortionTone)
+                   + ", mix " + text (params::distortionMix) + ".";
+
+        case engine::EffectKind::chorus:
+            return "A slowly swaying delay: rate " + text (params::chorusRate) + ", depth " + text (params::chorusDepth)
+                   + ", mix " + text (params::chorusMix) + ".";
+
+        case engine::EffectKind::delay:
+        {
+            const bool synced = rawValue (processor, params::delaySync) > 0.5f;
+            return juce::String ("Echoes that repeat and fade: ") + (synced ? "one every " + text (params::delayDivision) + " note" : "time " + text (params::delayTime))
+                   + ", feedback " + text (params::delayFeedback) + ", mix " + text (params::delayMix)
+                   + ", ping-pong " + text (params::delayPingPong).toLowerCase() + ".";
+        }
+
+        case engine::EffectKind::reverb:
+            return "A fading tail: size " + text (params::reverbSize) + ", decay " + text (params::reverbDecay)
+                   + ", damping " + text (params::reverbDamping) + ", mix " + text (params::reverbMix) + ".";
+    }
+
+    return {};
+}
+
 void EffectDisplay::timerCallback()
 {
     const auto now = read();
@@ -406,6 +441,22 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
     addAndMakeVisible (grip);
     addAndMakeVisible (display);
     applyColours();
+
+    // Tab order: the grip, the chips on the left, then the knobs left to right (the delay's note length takes its
+    // time knob's place), then the picture. A newly added effect offers its first knob.
+    std::vector<juce::Component*> order { &grip };
+    for (auto* chip : { (juce::Component*) syncChip.get(), (juce::Component*) pingPongChip.get() })
+        if (chip != nullptr)
+            order.push_back (chip);
+    for (auto* knob : row)
+    {
+        order.push_back (knob);
+
+        if (knob == row.front() && alternateKnob != nullptr)
+            order.push_back (alternateKnob);
+    }
+    order.push_back (&display);
+    setFocusOrder (order, row.front());
 }
 
 Knob* EffectCard::addKnob (const char* id, const char* caption, const juce::String& accessibleSuffix, bool inRow)
@@ -418,6 +469,11 @@ Knob* EffectCard::addKnob (const char* id, const char* caption, const juce::Stri
         row.push_back (knob);
 
     return knob;
+}
+
+void EffectCard::setPosition (int position, int count)
+{
+    grip.setDescription ("Position " + juce::String (position) + " of " + juce::String (count) + " in the chain. Press the left or right arrow key, or drag sideways, to move this effect earlier or later.");
 }
 
 void EffectCard::showDelayMode (bool synced)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/FastFloor.h"
 #include "dsp/FractionalRead.h"
 
 #include <algorithm>
@@ -154,7 +155,7 @@ private:
                 const auto js = (size_t) j;
 
                 modPhase[js] += modIncrement[js];
-                modPhase[js] -= std::floor (modPhase[js]);
+                modPhase[js] -= fastFloor (modPhase[js]);
 
                 const float delay = baseSamples[js] * lineScale
                                     + modDepthSamples * (float) std::sin (2.0 * std::numbers::pi * modPhase[js]);

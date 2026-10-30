@@ -92,12 +92,18 @@ namespace
     using juce::AudioParameterIntAttributes;
     using juce::ParameterID;
 
-    /** Logarithmic taper between two positive limits. */
+    /** Logarithmic taper between two positive limits. The maths is done in double: a float `pow` and `log` do not
+        invert each other closely enough (about 5e-7 relative at the ends of a 1000:1 range), so a value that went
+        into the state tree and out again came back a few ulps different, and the APVTS then rewrote the tree
+        (through the undo manager) when it flushed, which cleared Redo. In double the round trip lands back on the same
+        float, so `convertTo0to1 (convertFrom0to1 (n)) == n`; `UndoFlushTests` checks every parameter. */
     juce::NormalisableRange<float> logRange (float lo, float hi)
     {
         return { lo, hi,
-                 [] (float start, float end, float t) { return start * std::pow (end / start, t); },
-                 [] (float start, float end, float v) { return std::log (v / start) / std::log (end / start); },
+                 [] (float start, float end, float t)
+                 { return (float) ((double) start * std::pow ((double) end / (double) start, (double) t)); },
+                 [] (float start, float end, float v)
+                 { return (float) (std::log ((double) v / (double) start) / std::log ((double) end / (double) start)); },
                  [] (float start, float end, float v) { return juce::jlimit (start, end, v); } };
     }
 

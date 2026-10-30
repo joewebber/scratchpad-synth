@@ -2,6 +2,7 @@
 
 #include "plugin/PluginProcessor.h"
 #include "plugin/Suggestion.h"
+#include "ui/Accessibility.h"
 #include "ui/ChoiceSegments.h"
 #include "ui/EffectCards.h"
 #include "ui/Knob.h"
@@ -15,6 +16,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 
 namespace scratchpad::ui
 {
@@ -37,7 +39,14 @@ namespace scratchpad::ui
     is open at a time; it is the editor's own state and is never saved.
 
     A transparent overlay on top draws the cable while a connection is being made and owns the
-    arcs around modulated knobs. */
+    arcs around modulated knobs.
+
+    Keyboard and screen reader: Tab visits the chain in reading order (see `setFocusOrders`): the "Add module"
+    button, then the sources top to bottom, the filter and its envelope, the amp, its envelope and the voicing, the
+    output, the effects left to right, then the modulation strip (the LFOs, the other sources, the eight
+    connection slots). An open drawer follows its oscillator. Adding a module from the keyboard puts the focus on
+    the new card's first control; removing one puts it on the dashed slot that takes its place. Module, connection
+    and effect-order changes are announced. */
 class PatchView final : public juce::Component,
                         private ModulationModel::Listener,
                         private juce::ChangeListener
@@ -52,6 +61,9 @@ public:
 
     /** Puts down a handle that is being held, if one is. True if there was one. */
     bool cancelConnecting();
+
+    /** Where the keyboard goes to add a module: used by the slots and the menu, so the new card gets the focus. */
+    void addModuleFromUi (plugin::Module);
 
 private:
     /** Effects in the present / absent split the effects row is laid out from. */
@@ -72,12 +84,20 @@ private:
     void refreshModules();
     void refreshExtras();
     void toggleExtras (int oscillator);
+    void closeExtras (int oscillator);
     void showAddMenu();
+    void setFocusOrders();
+    void updateListenRegion();
+    ModuleCard* cardFor (plugin::Module);
+    SlotButton* slotFor (plugin::Module);
+    OscillatorCard& oscillatorCard (int index) { return index == 0 ? osc1Card : index == 1 ? osc2Card : osc3Card; }
+    OscillatorExtras& oscillatorExtras (int index) { return index == 0 ? osc1Extras : index == 1 ? osc2Extras : osc3Extras; }
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::makeGroupHandler (*this); }
     juce::String listenHint() const;
     bool present (plugin::Module m) const { return processor.isModulePresent (m); }
     plugin::Presence presence() const;
-    void statusChanged() override { repaint (listenPill); }
-    void modulationChanged() override { repaint (listenPill); }
+    void statusChanged() override { repaint (listenPill); updateListenRegion(); }
+    void modulationChanged() override { repaint (listenPill); updateListenRegion(); }
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
     EffectSlots effectSlots() const;
@@ -119,7 +139,11 @@ private:
 
     ModOverlay overlay { model };
 
+    a11y::Region listenRegion, perVoiceRegion, effectsRegion;
+
     std::array<std::unique_ptr<juce::ParameterAttachment>, plugin::allModules.size()> presenceWatchers;
+    std::array<bool, plugin::allModules.size()> lastPresence {};
+    std::optional<plugin::Module> focusNewModule; // set while the UI adds a module, so its card takes the focus
 
     int openExtras = -1; // the oscillator whose drawer is open, or -1
     EffectDrag effectDrag;

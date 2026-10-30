@@ -1,6 +1,7 @@
 #include "ui/ModuleCards.h"
 
 #include "plugin/Parameters.h"
+#include "ui/ExplainPanel.h"
 #include "ui/WaveGlyphs.h"
 
 #include <cmath>
@@ -62,6 +63,7 @@ namespace
 ModuleCard::ModuleCard()
 {
     setPaintingIsUnclipped (true);
+    setFocusContainerType (FocusContainerType::focusContainer); // so a screen reader nests the controls under their card
 }
 
 void ModuleCard::paint (juce::Graphics& g)
@@ -70,9 +72,40 @@ void ModuleCard::paint (juce::Graphics& g)
     drawRaised (g, getLocalBounds().toFloat(), 12.0f, p, Elevation::small, p.surface);
 }
 
+std::unique_ptr<juce::AccessibilityHandler> ModuleCard::createAccessibilityHandler()
+{
+    return std::make_unique<a11y::DescribedHandler> (*this, juce::AccessibilityRole::group,
+                                                     [this]
+                                                     {
+                                                         const auto* entry = content::Content::get().module (getProperties()["explainId"].toString());
+                                                         return entry != nullptr ? entry->what : juce::String();
+                                                     });
+}
+
+void ModuleCard::setFocusOrder (const std::vector<juce::Component*>& controls, juce::Component* entry)
+{
+    int order = 1;
+
+    for (auto* c : std::initializer_list<juce::Component*> { bypassButton.get(), soloButton.get(), explainButton.get(), removeButton.get() })
+        if (c != nullptr)
+            c->setExplicitFocusOrder (order++);
+
+    entryControl = entry != nullptr ? entry : controls.empty() ? nullptr : controls.front();
+
+    for (auto* c : controls)
+        c->setExplicitFocusOrder (order++);
+}
+
+void ModuleCard::focusFirstControl()
+{
+    if (entryControl != nullptr)
+        entryControl->grabKeyboardFocus();
+}
+
 void ModuleCard::makeRemovable (const juce::String& accessibleName, std::function<void()> onRemove)
 {
     removeButton = std::make_unique<IconButton> (accessibleName, "M5.5 5.5l5 5 M10.5 5.5l-5 5", 16.0f, 1.3f);
+    removeButton->setDescription ("Takes this module out of the patch and puts its settings back to their defaults. You can undo it.");
     removeButton->getProperties().set ("explainId", "control.remove");
     removeButton->onClick = std::move (onRemove);
     addAndMakeVisible (*removeButton);
@@ -122,19 +155,15 @@ void ModuleCard::makeControllable (plugin::ScratchpadProcessor& p, const juce::S
     isSoloable = soloable;
     setExplainKey (key);
 
-    explainButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::explain, "Explain this module");
-    explainButton->onClick = [this]
-    {
-        if (auto* top = getTopLevelComponent())
-            if (auto* panel = top->findChildWithID ("explainPanel"))
-                panel->getProperties().set ("pinRequest", controlKey); // picked up by the panel's timer
-    };
+    explainButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::explain, "Explain " + getTitle());
+    explainButton->setDescription ("Shows what the " + getTitle() + " is and does in the Explain panel, and keeps it there.");
+    explainButton->onClick = [this] { ExplainPanel::pinFrom (*this, controlKey); };
     explainButton->getProperties().set ("explainId", key);
     addAndMakeVisible (*explainButton);
 
     if (bypassable)
     {
-        bypassButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::bypass, "Bypass");
+        bypassButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::bypass, getTitle() + " bypass");
         bypassButton->onClick = [this] { controlled->setBypassed (controlKey, ! controlled->isBypassed (controlKey)); };
         addAndMakeVisible (*bypassButton);
         stateWatchers.push_back (std::make_unique<juce::ParameterAttachment> (
@@ -143,7 +172,7 @@ void ModuleCard::makeControllable (plugin::ScratchpadProcessor& p, const juce::S
 
     if (soloable)
     {
-        soloButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::solo, "Solo");
+        soloButton = std::make_unique<HeaderToggle> (HeaderToggle::Kind::solo, getTitle() + " solo");
         soloButton->onClick = [this] { controlled->setSoloed (controlKey, ! controlled->isSoloed (controlKey)); };
         addAndMakeVisible (*soloButton);
 
@@ -169,16 +198,10 @@ void ModuleCard::refreshState()
         anySolo = anySolo || controlled->isSoloed (params::bypassKeys[(size_t) i]);
 
     if (bypassButton != nullptr)
-    {
         bypassButton->setOn (bypassed);
-        bypassButton->setTitle (bypassed ? "Bypass, on" : "Bypass, off");
-    }
 
     if (soloButton != nullptr)
-    {
         soloButton->setOn (soloed);
-        soloButton->setTitle (soloed ? "Solo, on" : "Solo, off");
-    }
 
     // A bypassed module, or a source another one's solo has muted, is shown faded.
     setAlpha (bypassed || (isSoloable && anySolo && ! soloed) ? 0.5f : 1.0f);
@@ -207,14 +230,18 @@ MoreButton::MoreButton (const juce::String& oscillatorName)
 {
     setPaintingIsUnclipped (true);
     setClickingTogglesState (false);
+    setToggleable (true);
+    setTitle (oscillatorName + " more options");
     getProperties().set ("explainId", "control.oscMore");
     refreshTitle();
 }
 
 void MoreButton::refreshTitle()
 {
-    setTitle (name + " more options, " + (open ? "open" : "closed"));
-    setDescription (marker == Marker::warning ? "Anti-aliasing is off" : marker == Marker::inUse ? "Extras in use" : juce::String());
+    // The title stays put: "pressed" (open) is the toggle state, and what the dot means is in the description.
+    setToggleState (open, juce::dontSendNotification);
+    setDescription ("Shows or hides the extras for " + name + ": unison, anti-aliasing and more."
+                    + (marker == Marker::warning ? " Anti-aliasing is off." : marker == Marker::inUse ? " Some extras are in use." : juce::String()));
 }
 
 void MoreButton::setOpen (bool shouldBeOpen)
@@ -267,7 +294,7 @@ void MoreButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
         const auto dot = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ bounds.getRight() - 2.0f, bounds.getY() + 2.0f });
         g.setColour (p.surface);
         g.fillEllipse (dot.expanded (1.5f));
-        g.setColour (marker == Marker::warning ? p.accent : p.srcInk);
+        g.setColour (marker == Marker::warning ? p.accentInk : p.srcInk);
         g.fillEllipse (dot);
     }
 
@@ -314,8 +341,15 @@ OscillatorCard::OscillatorCard (plugin::ScratchpadProcessor& p, ModulationModel&
 
     moreButton.onClick = [this] { if (onMoreClicked) onMoreClicked(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &waveSelector, &phaseReset, &octave, &semitone, &fine, &level, &pulseWidth, &moreButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &waveSelector, &phaseReset, &octave, &semitone, &fine, &level, &pulseWidth, &moreButton, &waveRegion })
         addAndMakeVisible (c);
+
+    waveRegion.setTitle (oscName (index) + " waveform");
+    waveRegion.setDescriber ([this]
+                             {
+                                 return params::waveNames()[wave] + " wave" + (aliasingOff ? ". Anti-aliasing is off, so expect harsh extra tones." : juce::String());
+                             });
+    setFocusOrder ({ &waveSelector, &waveRegion, &phaseReset, &moreButton, &octave, &semitone, &fine, &level, &pulseWidth });
 
     // The chevron's dot and the wave well's warning follow the extras' parameters, however they change.
     const auto& ids = params::osc[(size_t) index];
@@ -382,6 +416,7 @@ void OscillatorCard::resized()
     constexpr int top = 4, midX = 70, midWidth = 104, knobsX = 182, resetWidth = 88, moreWidth = 20;
 
     waveWell = { pad, top, 56, 46 };
+    waveRegion.setBounds (waveWell);
     placeBypassSolo ({ pad + 4, top + 50 });
     headerRow = { midX, top, midWidth, 20 };
     placeRemoveButton (headerRow);
@@ -417,7 +452,7 @@ void OscillatorCard::paint (juce::Graphics& g)
     // Anti-aliasing off is a state to notice, not an alarm: an accent outline and a small tag on the picture.
     if (aliasingOff)
     {
-        g.setColour (p.accent);
+        g.setColour (p.accentInk);
         g.drawRoundedRectangle (waveWell.toFloat().reduced (0.75f), 10.0f, 1.5f);
 
         const auto font = uiFont (11.0f, Weight::medium);
@@ -447,6 +482,8 @@ OscillatorExtras::OscillatorExtras (plugin::ScratchpadProcessor& p, int oscillat
     for (auto* c : std::initializer_list<juce::Component*> { &unison, &detune, &spread, &antiAlias })
         addAndMakeVisible (c);
 
+    addAndMakeVisible (statusRegion);
+
     watch (params::osc[(size_t) index].antiAlias);
     watch (params::osc[(size_t) index].unison);
 
@@ -456,6 +493,7 @@ OscillatorExtras::OscillatorExtras (plugin::ScratchpadProcessor& p, int oscillat
         sync = std::make_unique<ToggleChip> (p.apvts, ids.sync, "Sync to Osc 1", oscName (index) + " hard sync", p.undoManager, &Palette::srcInk);
         addAndMakeVisible (*sync);
         watch (ids.sync);
+        setFocusOrder ({ &unison, &detune, &spread, &antiAlias, sync.get(), &statusRegion });
     }
     else
     {
@@ -466,6 +504,10 @@ OscillatorExtras::OscillatorExtras (plugin::ScratchpadProcessor& p, int oscillat
 
         for (auto* c : std::initializer_list<juce::Component*> { ring.get(), fm.get(), fmTarget.get() })
             addAndMakeVisible (c);
+
+        ring->setDisabledNote ("Not in use: it needs Oscillator 2 in the patch.");
+        fm->setDisabledNote ("Not in use: its target oscillator is not in the patch.");
+        setFocusOrder ({ &unison, &detune, &spread, ring.get(), fm.get(), fmTarget.get(), &antiAlias, &statusRegion });
 
         watch (params::ringLevel);
         watch (params::fmAmount);
@@ -543,6 +585,7 @@ void OscillatorExtras::refreshState()
         status = "Unison stacks detuned copies for a thicker, wider sound.";
 
     statusIsWarning = aliasingOff;
+    statusRegion.setText (status);
     repaint();
 }
 
@@ -577,6 +620,18 @@ void OscillatorExtras::resized()
     }
 
     statusArea = { pad, top + Knob::knobHeight + 4, width - 2 * pad, 16 };
+    statusRegion.setBounds (statusArea);
+}
+
+bool OscillatorExtras::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey && onClose)
+    {
+        onClose();
+        return true;
+    }
+
+    return false;
 }
 
 void OscillatorExtras::paint (juce::Graphics& g)
@@ -591,7 +646,7 @@ void OscillatorExtras::paint (juce::Graphics& g)
 
     if (statusIsWarning)
     {
-        g.setColour (p.accent);
+        g.setColour (p.accentInk);
         g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ area.getX() + 4.0f, area.getCentreY() }));
         area.removeFromLeft (14.0f);
     }
@@ -617,6 +672,7 @@ NoiseCard::NoiseCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
     addAndMakeVisible (level);
     applyColours();
     colourWatcher.sendInitialUpdate();
+    setFocusOrder ({ &colour, &level });
 }
 
 void NoiseCard::applyColours()
@@ -627,6 +683,16 @@ void NoiseCard::applyColours()
 void NoiseCard::lookAndFeelChanged()
 {
     applyColours();
+}
+
+std::unique_ptr<juce::AccessibilityHandler> NoiseCard::createAccessibilityHandler()
+{
+    return std::make_unique<a11y::DescribedHandler> (*this, juce::AccessibilityRole::group,
+                                                     [this]
+                                                     {
+                                                         return juce::String (colourIndex == 0 ? "White noise: every frequency equally loud, a bright hiss."
+                                                                                               : "Pink noise: less treble, more body, like steady rain.");
+                                                     });
 }
 
 void NoiseCard::resized()
@@ -679,6 +745,7 @@ FilterCard::FilterCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
         addAndMakeVisible (c);
 
     applyColours();
+    setFocusOrder ({ &mode, &cutoff, &resonance, &keyTrack, &drive, &curve });
 }
 
 void FilterCard::applyColours()
@@ -745,6 +812,7 @@ EnvelopeCard::EnvelopeCard (plugin::ScratchpadProcessor& p, ModulationModel& mod
         addAndMakeVisible (k);
 
     applyColours();
+    setFocusOrder ({ &attack, &decay, &sustain, &release, &extra, &display });
 }
 
 void EnvelopeCard::applyColours()
@@ -798,6 +866,18 @@ AmpCard::AmpCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
     setExplainKey ("amp");
     addAndMakeVisible (level);
     addAndMakeVisible (pan);
+    setFocusOrder ({ &level, &pan });
+}
+
+std::unique_ptr<juce::AccessibilityHandler> AmpCard::createAccessibilityHandler()
+{
+    return std::make_unique<a11y::DescribedHandler> (*this, juce::AccessibilityRole::group,
+                                                     [this]
+                                                     {
+                                                         return juce::String (processor.isModulePresent (plugin::Module::ampEnv)
+                                                                                  ? "The amp envelope sets how each note starts and ends."
+                                                                                  : "A fixed 2 ms fade on every note start and stop.");
+                                                     });
 }
 
 void AmpCard::resized()
@@ -855,6 +935,8 @@ VoicingCard::VoicingCard (plugin::ScratchpadProcessor& p)
 
     applyColours();
     modeWatcher.sendInitialUpdate();
+    voices.setDisabledNote ("Not in use: mono and legato play one voice.");
+    setFocusOrder ({ &mode, &voices, &glide, &bendRange });
 }
 
 void VoicingCard::applyColours()
@@ -906,6 +988,7 @@ OutputCard::OutputCard (plugin::ScratchpadProcessor& p)
     setExplainKey ("output");
     addAndMakeVisible (volume);
     volume.setFamilyColour (paletteOf (*this).perfInk);
+    setFocusOrder ({ &volume });
 }
 
 void OutputCard::lookAndFeelChanged()

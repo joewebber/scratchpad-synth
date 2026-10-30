@@ -41,11 +41,42 @@ jobs:
           Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip -DestinationPath pluginval
 
-      - name: pluginval (strictness 5)
+      - name: pluginval (strictness 10)
         shell: pwsh
         run: |
-          ./pluginval/pluginval.exe --strictness-level 5 --validate-in-process --skip-gui-tests `
+          ./pluginval/pluginval.exe --strictness-level 10 --validate-in-process --skip-gui-tests `
             "build/ScratchpadSynth_artefacts/Release/VST3/Scratchpad Synth.vst3"
+
+      # Steinberg's own validator, built from the MIT-licensed VST3 SDK (3.8 and later) at a pinned tag. Only the
+      # `validator` target is built, and the finished .exe is what gets cached.
+      - name: Cache VST3 validator
+        id: vst3validator-cache
+        uses: actions/cache@v4
+        with:
+          path: vst3validator
+          key: vst3validator-v3.8.0_build_66-${{ runner.os }}
+
+      - name: Build VST3 validator
+        if: steps.vst3validator-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git clone --depth 1 --branch v3.8.0_build_66 --recurse-submodules --shallow-submodules \
+            https://github.com/steinbergmedia/vst3sdk.git vst3sdk
+          cmake -S vst3sdk -B vst3sdk/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF \
+            -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_CREATE_PLUGIN_LINK=OFF
+          cmake --build vst3sdk/build --target validator
+          mkdir vst3validator
+          cp "$(find vst3sdk/build -name validator.exe -print -quit)" vst3validator/validator.exe
+
+      - name: VST3 validator
+        shell: bash
+        run: ./vst3validator/validator.exe "build/ScratchpadSynth_artefacts/Release/VST3/Scratchpad Synth.vst3"
+
+      # Numbers from a GitHub runner (a mid-range server CPU) for the record. A shared runner is too noisy to fail on.
+      - name: CPU benchmark (informational)
+        continue-on-error: true
+        run: ./build/ScratchpadBenchmark.exe 3 800
 
       - name: Upload standalone
         uses: actions/upload-artifact@v4

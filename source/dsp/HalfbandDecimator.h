@@ -71,15 +71,17 @@ public:
 private:
     static constexpr int centre = delaySamples;
     static constexpr int pairs = centre / 2; // taps at +-1, +-3 ... +-15
-    static constexpr size_t size = 64;       // power of two, at least 2 * centre + 1
+    static constexpr size_t size = 32;       // power of two, at least 2 * centre: the longest read goes back 2 * centre - 1
+    static_assert (size >= 2 * (size_t) centre);
 
     void push (float x) noexcept
     {
         pos = (pos + 1) & (size - 1);
         history[pos] = x;
+        history[pos + size] = x;
     }
 
-    float at (int back) const noexcept { return history[(pos - (size_t) back) & (size - 1)]; }
+    float at (int back) const noexcept { return history[pos + size - (size_t) back]; }
 
     static double bessel0 (double x) noexcept
     {
@@ -93,7 +95,7 @@ private:
         return sum;
     }
 
-    std::array<float, size> history {};
+    std::array<float, 2 * size> history {}; // every sample is stored twice, `size` apart, so a window never wraps
     std::array<float, pairs> tap {};
     float centreTap = 0.0f;
     size_t pos = 0;

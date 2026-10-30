@@ -88,8 +88,7 @@ block by the processor from cached parameter pointers.
   `removeModule` reset the module's parameters and flip its `enabled` flag in one named
   undo step ("Added Filter"). `newPatch` resets every parameter.
 
-Measured: eight voices with every module on cost about 2% of one core at 48 kHz in
-256-sample blocks (the brief's target is under 15%).
+Measured cost: see "Performance and validation (M6)".
 
 ## Gate
 
@@ -306,5 +305,254 @@ modulation and the mix stay in the voice.
 
 ## Not yet (M6)
 
-Patch save and open, resizing, the light theme switch, the reduced-motion setting and the Steinberg validator in CI.
 Aftertouch has no on-screen control; it arrives from MIDI channel pressure.
+
+## Patch files and state migration (M6)
+
+- **Format.** A patch file is exactly what `getStateInformation` hands the host, as text XML instead of the binary wrapper:
+  the `ScratchpadSynth` root, one `PARAM id= value=` child per parameter, the non-parameter `effectOrder` property and the
+  non-parameter `patchName` property, stamped `schemaVersion="6"`. Files are named `<name>.scratchpad`
+  (`patch::fileExtension`) and live in `<userDocumentsDirectory>/Scratchpad Synth/Patches` (`getPatchesDirectory()`). The
+  Save dialog creates that folder the first time; `savePatch` also creates the parent of whatever file it is given.
+- **`savePatch (file)`** writes a copy of the state (with `patchName` set to the file's stem) to a temporary file beside the
+  target and swaps it in, so an interrupted or failed save never leaves half a patch or damages the old file. Only after
+  the write has worked does the live patch take the name. Taking the name is not an undo step: it says where the patch
+  lives, not what is in it. Returns false, changing nothing, if the folder or file cannot be written.
+- **`loadPatch (file)`** returns false, with the patch, its name and the undo history untouched, for a missing file or a
+  folder, empty or malformed XML, another root tag, or a schema newer than ours. Otherwise it migrates the XML, then in
+  **one** transaction named "Opened <name>" writes every parameter through the value tree (the file's value, or the
+  default for any parameter the file does not mention, plus oscillator 1 forced present), then the effect order (a
+  malformed one falls back to the default) and the name. Because every parameter and the two properties are in that
+  transaction, bypass, solo, module presence and modulation slots (all parameters) cannot go stale, and one Undo returns the
+  previous patch, name included; Redo reapplies the file. It does not go through `replaceState`: that would drop the undo
+  history, and loading from the UI should be undoable like New patch. The name is the file's stem, not the one written
+  inside, so a renamed file opens under its new name. Values outside a parameter's range are clamped by the parameter; ids
+  that are not parameters are ignored.
+- **Session recall is unchanged.** `setStateInformation` keeps `replaceState` semantics (no undo step, parameters reset
+  first, oscillator 1 forced present). `patchName` rides along, so a recalled session shows its patch name; a session
+  without one (schema 5 and older) is "Untitled patch" because `replaceState` removes properties the new state lacks.
+- **Patch name.** `getPatchName()` is the `patchName` property or `patch::untitledName`. New patch removes it, as part of its
+  undo step. `getPatchNameBroadcaster()` fires for any change (save, open, new patch, undo, recalled session), and the top
+  bar's patch pill repaints from it.
+- **Schema 6** only adds the optional `patchName` property, so `migrate` has no step for it beyond the restamp (the comment
+  there says why); versions 0 to 5 stay loadable and open untitled.
+- **UI.** Save and Open sit after New patch in the top bar. Each opens an asynchronous `juce::FileChooser` that starts in the
+  patches folder, kept alive in `TopBar` until it finishes. Save appends `.scratchpad` when missing. Ctrl/Cmd+S and Ctrl/Cmd+O
+  reach `TopBar::handleKeyPressed` through the editor's `keyPressed`. A failed save or open shows a message box saying what
+  failed and that the patch was not saved or is unchanged.
+- **Tests.** `tests/PatchFileTests.cpp` covers the rich-patch round trip, the file's XML, undo and redo of an open, every
+  refusal leaving the patch untouched, defaults for what a file omits, the name's lifecycle and migration of schemas 0 to 5.
+- **Reading the state never costs Redo.** The APVTS has an undo manager, so its flush of parameter values into the tree
+  (on a 10-50 Hz timer, and inside `copyState()`, which `getStateInformation` calls) is recorded as an undoable action
+  whenever the tree and the parameter disagree. Undo writes an old value back into the tree; the APVTS turns it into a
+  normalised parameter value and back, and if that did not return the same float the flush rewrote the tree: a new action,
+  which cleared Redo. A host reads the state at any time, so Redo could vanish at random. The cause was `logRange`
+  (`Parameters.cpp`): its float `pow`/`log` did not invert each other (about 5e-7 relative off), which hit every
+  logarithmic parameter (envelope times, filter cutoff, LFO and chorus rates, delay time, reverb decay). It now computes in
+  double, which makes the round trip exact. `tests/UndoFlushTests.cpp` checks every parameter over many values
+  (nothing may be rewritten after an undo-style write and a flush), plus undo, state read, redo across skewed, stepped and
+  choice parameters. A new logarithmic range must keep that property.
+
+## Window, theme and view settings (M6)
+
+- **View preferences are not the patch.** `ui::ViewSettings` keeps four keys in a properties file (XML) of its own, apart from
+  the patch, the host session, the undo history and the standalone app's own `.settings` file: `theme` (`dark` or `light`,
+  default dark), `reducedMotion` (`true` or `false`, default false), `explainCollapsed` (`true` or `false`; **absent** means
+  "follow the window size") and `editorScale` (0.75 to 2.0, default 1.0). The file is `Scratchpad Synth.view` in the same
+  folder JUCE uses for the application's settings: `~/.Scratchpad Synth/` on Linux, `~/Library/Application Support/` on macOS,
+  `%APPDATA%\Scratchpad Synth\` on Windows. It is read when an editor opens and written straight away on every change (after
+  re-reading the file, so two editors in one process do not lose each other's changes). A missing, unreadable or half-written
+  file reads as the defaults and is written over by the next change; a scale that is out of range is pulled into range, and one
+  that is not a number reads as 1.0. `ViewSettings (File)` takes an explicit file; `setDefaultFileOverride` points the
+  default constructor at one, which `tests/ViewTestSetup.cpp` does for the whole test run so no test reads or writes real
+  preferences.
+- **A fixed stage under a transform.** `ScratchpadEditor` lays everything out on a `Stage` child that is always 1500 x 900 and
+  puts a scale-and-translate transform on it, so no control layout knows the window's size. The transform is on the child, not
+  the editor, because `AudioProcessorEditor` keeps the host's own scale in the editor's transform. The window is resizable from
+  1125 x 675 (75%) to 3000 x 1800 (200%) at a fixed 5:3 shape by a `ComponentBoundsConstrainer`: the standalone app's frame
+  honours it through JUCE's decorator constrainer, a plugin gets a corner grip (`drawCornerResizer`, in palette colours) and
+  the host can resize it too. A host that sets some other size gets the stage fitted (`min (w / 1500, h / 900)`) and centred
+  with the background round it; nothing is clipped. The scale is written 400 ms after the last resize and again when the
+  editor closes, and read back at the next start.
+- **Under the transform.** Mouse events arrive in stage units, so drags are 1 px = 1 stage px at any scale. The modulation code
+  that goes through screen coordinates (`localPointToGlobal`, `getLocalPoint (nullptr, ...)`, `e.getScreenPosition()`) is
+  correct under a transform. Menus take their scale from `PopupMenu::Options::withTargetComponent`, so the two right-click
+  menus that had no target (`ModOverlay::showRingMenu`, the connection row's) now name one and are placed at the pointer.
+  `findChildWithID` does not look deeper than a window's direct children, so a module's `?` button now finds the panel with
+  `ExplainPanel::pinFrom`. A scaled paint is not free: a full repaint of a full patch into an image took about 25 ms at 100%,
+  27 ms at 75% and 160 ms at 200% (software renderer, this machine). Live updates repaint small regions (the scope is about
+  250 x 262 stage px), so the cost follows the region, not the window.
+- **The Explain panel's rail.** `ExplainPanel::setCollapsed` folds the panel to 56 px: the unfold button (`control.explainToggle`)
+  and the name "EXPLAIN" running down the rail. Its scope is hidden, so its timer stops. The editor decides: below 99.5% scale
+  the panel is folded unless the user has chosen; once the user folds or unfolds it (the fold button, the rail's button, a
+  module's `?` which unfolds, or the View menu) that choice is stored and wins at every scale. The 224 px it frees go to the
+  signal chain: its panel is that much wider, the row of stages stays centred, and the connections panel's two columns of
+  rows now stretch with the panel instead of staying 320 px wide.
+- **View menu.** A circle-half-filled button at the right of the top bar (`ViewMenuButton`, "View options",
+  `control.viewMenu`) opens `buildViewMenu`: Theme > Dark / Light, Reduced motion, Explain panel, each ticked for what is on. The
+  editor applies a choice (`applyViewChoice`) and stores it.
+- **Themes.** `setTheme` points the editor's `ScratchpadLookAndFeel` at the other `Palette` and calls `sendLookAndFeelChange`.
+  Anything that copies a palette colour into a component (knob arcs, `Scope`'s selected segments, the top bar's no-device
+  chip) re-derives it in `lookAndFeelChanged`; everything else reads `paletteOf (*this)` at paint time. A test switches
+  theme with every module present and fails if a knob keeps the other theme's colour. Two tokens were added to `Palette`:
+  `accentInk` (the accent as a line or text on a pale surface: the suggested slot, AA-off outline, drop ring and markers) and
+  `keyBlackInk` (the label on a black key, which was a literal). The light theme's family inks (`srcInk`, `fltInk`, `ampInk`,
+  `fxInk`) were darkened a little (about 5 to 14%) to reach 4.5:1; the dark theme needed no change.
+  `drawSelectedEdge` outlines a selected segment, "on" chip or solo button only when its fill is closer than 3:1 to what it sits
+  on (the pale family fills on the light theme).
+- **Contrast.** `ui/Contrast.h` has the WCAG relative-luminance and contrast-ratio functions. `tests/ContrastTests.cpp` checks
+  the text pairs the UI draws (4.5:1) and the arcs, rings and markers (3:1) in both palettes. Decorative lines are not in it:
+  the empty part of a knob's ring (`track`), the dashed outline of an empty slot (`dash`), shadows, and disabled controls (WCAG
+  exempts disabled ones); each has a label or a value beside it, so none carries meaning alone. No text is below 11 px.
+- **Reduced motion.** `ui/Motion.h` is the one place the policy lives. `motion::isReduced()` is a process-wide flag the editor
+  sets from the preference (every plugin instance shares one preference, so one flag is right). Live pictures do not choose
+  their own rate: the scope and `ModulationModel` (which feeds every knob arc, envelope playhead and LFO dot) are
+  `motion::LiveTimer`s, which run at their normal rate or at 2 Hz and change rate by themselves when the preference changes;
+  the level meter and the limiter's light ride the vertical blank, so they go through `motion::Throttle`. When reduced, a
+  value is taken as it is: `motion::follow` and `motion::fall` replace easing and falling decay (the scope's zoom and spectrum
+  bars, the meter), and the limiter's quarter-second hold goes (`LimiterHold`), so the light shows the latest reading. The modulation status
+  line's six seconds are now wall-clock time, not timer ticks, so they last six seconds at either rate. Pictures that change only
+  when a parameter does (filter curve, effect pictures, envelope shape) keep redrawing when it changes. There is nothing
+  animated to switch off: panels, drawers and the theme change at once. The operating system's own reduced-motion
+  hint is not read.
+- **Tests.** `ViewSettingsTests` (defaults, round trip, the keys, corrupt files, silly values, two writers), `MotionTests` (the
+  throttle, the meter and limiter steps, timer rate changes, the scope and model following the preference, without waiting on
+  a clock), `ContrastTests`, and `EditorViewTests` (limits and shape, panel rules and persistence, layout, hit-testing at 75%,
+  100%, 133% and 200%, host sizes, theme reaching every knob, a snapshot's corner pixels in each theme and size, the menu).
+- **Limits.** Below the 1125 x 675 minimum a host's window still shows everything, fitted. The scope, envelopes and meters at
+  200% are drawn by scaling 1500 x 900 up, so on a high-resolution display the text is rendered at the larger size but images
+  (the soft shadows) are scaled bitmaps. The drag sensitivity of knobs is in stage pixels, so a knob needs twice the pointer
+  travel at 200%.
+
+## Performance and validation (M6)
+
+**Target (the brief).** Eight voices with every module on and unison at 1 under 15% of one core at 48 kHz with 256-sample blocks;
+unison 7 on all three oscillators under 50%.
+
+**Benchmark.** `tools/Benchmark.cpp` (target `ScratchpadBenchmark`) with the scenario in `tools/BenchmarkRig.h`, which the
+`[.perf]` tests share. It drives `ScratchpadProcessor::processBlock`, not the engine alone, so reading the parameters each block
+is in the cost:
+
+- Poly, 8 voices, eight held notes (G2 to D5) with velocity 0.8, every module added (oscillators 2 and 3, noise, LP 24 filter with
+  drive, both envelopes, both LFOs, all four effects), oscillator 1 saw, 2 pulse, 3 triangle, unison detune 25 cents and spread 80%.
+- Eight modulation connections, including per-voice destinations (filter envelope to pulse width 2, velocity to level 2, key to
+  pan, amp envelope to level 3) and a retriggering LFO 1 (a phase per voice). Distortion at 18 dB, ping-pong delay.
+- Rows: unison 1 with FM (35%, both oscillators), hard sync on 2 and 3 and ring modulation (the worst case for "every module on"),
+  the same with those three off, unison 7 on all three with them off, and unison 7 with them on.
+- 200 warm-up blocks, then N blocks timed one by one (`steady_clock`) and the thread's CPU time over the whole run. "% of a core" is
+  processing time over audio time. Each row is repeated and the minimum and median of the per-run means are printed. The
+  audio is checked for silence and non-finite samples, and a fingerprint (FNV-1a of the first 200 blocks) is printed per row:
+  an optimisation that does not change the sound leaves it unchanged.
+- Run it: `cmake --build build-release --target ScratchpadBenchmark && ./build-release/ScratchpadBenchmark [runs=7] [blocks=1500] [row 1-4]`
+  (Release; an idle machine). The exit code is 1 if a row's median misses its target. `ScratchpadTests "[perf]"` asserts the two
+  targets; it is hidden from the normal run. `ScratchpadTests "[perf-scenario]"` (in the normal run) checks that the scenario
+  is audible, repeatable, and that unison, FM, sync and ring each change the sound, so the numbers describe what they say.
+
+**Machine and noise.** Intel Core i7-13620H (laptop, 16 threads), Ubuntu 22.04 under WSL2, GCC 11.4 `-O3`, Release. The box was shared
+with other builds and test runs while this was measured, and wall time varies 2x with the load (the same binary gave 10.5% and 20% on
+one row), so the figures below are the minimum of many runs, taken when the load average was low; the medians sit within 5%
+of them. Load only ever adds time, which is why the minimum is the estimate. CPU time and wall time agree to the second decimal,
+because a single thread that is never descheduled spends all its wall time on the CPU; the load shows as slower code (shared cores,
+caches), not as waiting.
+
+| Row (8 voices, 256-sample blocks, 48 kHz) | Before | After | Target |
+| --- | --- | --- | --- |
+| Unison 1, FM + sync + ring on | 10.5% | 8.7% | < 15% |
+| Unison 1, FM + sync + ring off | 7.2% | 5.7% | < 15% |
+| Unison 7 on all three, FM + sync + ring off | 16.7% | 14.1% | < 50% |
+| Unison 7 on all three, FM + sync + ring on | 31.0% | 28.3% | < 50% |
+
+The targets are met with 1.7x headroom on this CPU. A mid-range desktop CPU was not available; a part with 30-40% less single-thread
+speed would still be under 15% on the first row (about 12-14%) and under 50% on the last (about 40-45%). That is an extrapolation, not a
+measurement. CI runs the benchmark on a GitHub runner for the record (it does not fail the build on it).
+
+**Profile** (`perf record`, a `-g` build, symbols resolved by hand because the WSL `perf` could not read them): before optimising,
+about 22% of the first row was `tanh` (`tanhf`, which spends its time in `expm1f`; two per voice per sample in the filter, eight
+per sample in the distortion's 4x stage), about 4% was `std::floor` calls from the phase wrap, and the rest was spread evenly across the
+per-sample oscillator code (`Oscillator::run` and the BLEP ring, `OscSection::tickBank`, the half-band decimators of the 2x FM
+section), the voice's filter and ramps, the reverb and the JUCE oversampler. No single hot spot is left; what remains is the cost of
+running 24 band-limited oscillators at 2x, one sample at a time.
+
+**What changed, and why the sound did not.**
+
+- `dsp::fastTanh` replaces `std::tanh` in the ladder's feedback, the filter's drive stage and the distortion. A rational function
+  (no library call, no table, no branch), within 4e-7 of the true value (-128 dB at full scale; `FastMathTests` pins 5e-7, relative
+  accuracy for small arguments, oddness and the limits). This is the one change that alters the samples, at that level, so the fingerprints
+  moved; the other DSP and engine tests, with their original tolerances, pass. It no longer depends on each platform's libm.
+  It is most of the saving.
+- The distortion computed `exp` and `pow` for its gain on every sample; it now does so only while the drive is moving.
+- `dsp::fastFloor` replaces `std::floor` in the per-sample phase wrap (oscillator, chorus, reverb's modulation). Same value
+  for any phase (`FastMathTests` checks it against `std::floor` over random and edge values), without a libm call.
+- The half-band decimator keeps each sample twice in its history so a read never wraps (no index masks, 32 floats instead of 64
+  each); `place` in the BLEP code adds its 32 taps as two straight runs; `readCubic` reads four consecutive slots unless it is
+  near the start of the buffer. All three are bit-exact (fingerprints equal before and after, tested in `FastMathTests`).
+
+**Real-time audit.** `tests/RealTimeTests.cpp` counts heap allocations on the audio thread (`malloc`/`calloc`/`realloc` with glibc,
+`operator new` elsewhere; a self-test shows the counter sees a SysEx message's storage) while the heaviest patch plays through
+notes, controllers, pitch bend, aftertouch, UI events, block sizes from 1 to 2048 samples and SysEx. It found one allocation: a
+host's SysEx message was copied into a `MidiMessage` (heap storage above 8 bytes) before being ignored. `processBlock` now
+skips anything longer than three bytes. The test is not run under AddressSanitizer (the `malloc` hook is off then).
+
+**Validation.**
+
+- pluginval 1.0.4 at strictness 10, `--validate-in-process --skip-gui-tests`: passes (run twice with different random seeds on the
+  Linux build). It also passes with the GUI tests on (`DISPLAY=:0`, the Editor and Editor Automation tests). pluginval's own
+  "vst3 validator" step is skipped unless given `--vst3validator`; on Linux it passes the module inside the bundle rather than
+  the bundle, which the Steinberg validator rejects, so the validator is run directly instead.
+- Steinberg `validator` from the VST3 SDK v3.8.0_build_66 (MIT), built from source (`validator` target only): 47 tests, 0 failed.
+  It found one real problem: the single program had an empty name ("Programlist 000->Program 000: has no name"). The
+  program is now called "Current patch".
+- Run both locally (Linux, from the repository root; Windows is the same with `.exe`):
+
+  ```
+  curl -L -o /tmp/pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Linux.zip
+  unzip /tmp/pluginval.zip -d /tmp/pv
+  /tmp/pv/pluginval --strictness-level 10 --validate-in-process --skip-gui-tests \
+      "build-release/ScratchpadSynth_artefacts/Release/VST3/Scratchpad Synth.vst3"
+
+  git clone --depth 1 --branch v3.8.0_build_66 --recurse-submodules --shallow-submodules https://github.com/steinbergmedia/vst3sdk.git /tmp/vst3sdk
+  cmake -S /tmp/vst3sdk -B /tmp/vst3sdk/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
+      -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_CREATE_PLUGIN_LINK=OFF
+  cmake --build /tmp/vst3sdk/build --target validator
+  /tmp/vst3sdk/build/bin/Release/validator "build-release/ScratchpadSynth_artefacts/Release/VST3/Scratchpad Synth.vst3"
+  ```
+
+- CI (`windows-latest`) runs pluginval at strictness 10, the Steinberg validator (built once from the pinned SDK tag and cached
+  as `vst3validator/validator.exe`) and the benchmark (informational). The Windows job could not be run from here; the same
+  commands pass on Linux.
+- **Tail length.** `getTailLengthSeconds()` is `tailLengthSeconds (readParams())`: an upper bound, from the cached parameter
+  atomics only (the same read the audio thread does, so any host thread may call it), on how long sound continues after the
+  last note-off for the current patch. It is the amp envelope's release when the envelope is present and not bypassed (else
+  nothing but the gate), plus, for each effect that is present and not bypassed, the reverb's decay time (the RT60) and its
+  longest line (0.13 s), the delay's first echo and the repeats until the feedback has fallen 60 dB (`time x (1 + ceil
+  (log 0.001 / log feedback))`, so 1 s at 50% is about 11 s), and 30 ms for the chorus; plus 20 ms of slack. Effects run in
+  series, so their tails add. No single part (release, delay repeats, reverb decay) is reported above 20 s, so the bound stays
+  finite at 95% feedback (it is then a cap, not a bound). `TailTests` pins each of these, and plays a patch to check that the
+  reported tail is at least as long as what is heard (above -60 dB).
+
+## Accessibility (M6)
+
+The editor's accessibility tree follows the same signal-chain order as the visual layout. `ScratchpadEditor` keeps
+the stage as a focus container, and `PatchView`, module cards, effects, modulation strip and performance bar name their
+children explicitly. Decorative drawings use ignored or image regions with current text alternatives; they are never
+keyboard stops. Every button, selector, knob, wheel and connection row has a meaningful title, an `explainId`, and a
+visible focus ring. The light/dark palettes keep control text and focus rings at WCAG AA contrast, including the
+reduced-motion palette path.
+
+`KeyboardSlider` is the common value interface for parameter knobs and performance controls. It exposes the parameter
+range and spoken value text, and supports arrows (Shift for fine steps), Page Up/Down, Home/End, Delete/Backspace to
+reset and Enter to type a value. `ChoiceSegments` exposes a combo-box value and supports arrows, Home and End.
+Toggle chips and header buttons expose their selected state through JUCE's toggle-button role.
+
+Modulation handles are buttons: Enter or Space opens the destination chooser, Escape cancels, and a valid destination
+can be activated from the keyboard. Occupied connection rows are amount sliders with a -100%..+100% range; arrows,
+Page Up/Down, Home/Enter, Delete/Backspace and Shift+F10 adjust, reset, remove and expose the same actions as the
+mouse. Empty rows remain descriptive static text so they do not create dead tab stops. Effect grips use the same
+pattern for Left/Right (or Up/Down) reordering.
+
+The computer-key keyboard has a separate interaction path. It only handles mapped keys when the editor or keyboard
+has focus, and releases held notes when focus leaves the window, so arrows, typing and Delete remain available to the
+focused control. `A11yTests` exercises handlers, ranges, values, selectors, keyboard-slider edits and modulation
+connection edits; `ContrastTests`, `MotionTests` and `EditorViewTests` cover contrast, reduced motion and focus/layout
+state. JUCE's accessibility tree is tested here; validation with a native screen reader is platform-specific and is
+not part of the Linux test environment.

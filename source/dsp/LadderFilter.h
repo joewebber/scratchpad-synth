@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/FastTanh.h"
 #include "dsp/FloatCompare.h"
 
 #include <algorithm>
@@ -59,7 +60,7 @@ public:
         // feed back only its tanh. Small signals see the exact linear loop;
         // loud ones are held in check by the saturating feedback.
         const float uLinear = (x - k * stateSum) * solveDenominator;
-        const float u = x - k * std::tanh (G4 * uLinear + stateSum);
+        const float u = x - k * fastTanh (G4 * uLinear + stateSum);
 
         float in = u;
         for (float& state : s)

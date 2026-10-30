@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/FastTanh.h"
 #include "dsp/LadderFilter.h"
 #include "dsp/SvfFilter.h"
 
@@ -86,7 +87,7 @@ public:
     {
         if (driveMix > 0.0f)
         {
-            const float driven = std::tanh (drive * x) * driveMakeup;
+            const float driven = fastTanh (drive * x) * driveMakeup;
             x += (driven - x) * driveMix;
         }
 

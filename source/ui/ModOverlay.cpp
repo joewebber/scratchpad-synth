@@ -103,7 +103,7 @@ void ModOverlay::paint (juce::Graphics& g)
                 continue;
 
             const auto centre = getLocalPoint (&c, t->getRingCentre());
-            g.setColour (p.accent);
+            g.setColour (p.accentInk);
             g.drawEllipse (juce::Rectangle<float> (1.0f, 1.0f).withCentre (centre).expanded (t->getDiscRadius() + 6.0f), 3.0f);
         }
     }
@@ -126,7 +126,7 @@ void ModOverlay::paint (juce::Graphics& g)
         juce::Path dashed;
         const float dashes[] = { 7.0f, 4.0f };
         juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded).createDashedStroke (dashed, cable, dashes, 2);
-        g.setColour (colour);
+        g.setColour (sourceInk (p, source)); // the line is a graphic that must show on the light theme too; the tag keeps the fill
         g.fillPath (dashed);
         g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (end));
 
@@ -192,7 +192,8 @@ void ModOverlay::showRingMenu (const ModArc& arc)
 
     const int slot = arc.slot;
     juce::Component::SafePointer<ModOverlay> safe (this);
-    menu.showMenuAsync ({}, [safe, slot] (int result)
+    // Targeted at this component so the menu is scaled with the window, and placed at the pointer.
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, slot] (int result)
                         {
                             if (safe != nullptr && result == 1)
                                 safe->model.getProcessor().disconnectMod (slot);

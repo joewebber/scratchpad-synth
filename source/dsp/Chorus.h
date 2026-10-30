@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/FastFloor.h"
 #include "dsp/FractionalRead.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -69,7 +70,7 @@ public:
         for (int i = 0; i < numSamples; ++i)
         {
             phase += (double) rateHz.getNextValue() / sampleRate;
-            phase -= std::floor (phase);
+            phase -= fastFloor (phase);
 
             const float sweep = depth.getNextValue() * maxSweepMs;
             const float m = mix.getNextValue();

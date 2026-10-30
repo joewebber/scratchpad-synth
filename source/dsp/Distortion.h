@@ -1,5 +1,8 @@
 #pragma once
 
+#include "dsp/FastTanh.h"
+#include "dsp/FloatCompare.h"
+
 #include <juce_dsp/juce_dsp.h>
 
 #include <algorithm>
@@ -127,14 +130,23 @@ private:
 
         for (int i = 0; i < n; ++i)
         {
-            const float gain = std::exp (driveDb.getNextValue() * 0.11512925f);
-            const float makeup = std::pow (gain, -0.25f);
+            const float drive = driveDb.getNextValue();
+
+            if (! same (drive, shapedDriveDb))
+            {
+                shapedDriveDb = drive;
+                shapeGain = std::exp (drive * 0.11512925f);
+                shapeMakeup = std::pow (shapeGain, -0.25f);
+            }
+
+            const float gain = shapeGain;
+            const float makeup = shapeMakeup;
 
             for (int j = 0; j < 4; ++j)
             {
                 const size_t k = (size_t) (4 * i + j);
-                upLeft[k] = std::tanh (upLeft[k] * gain) * makeup;
-                upRight[k] = std::tanh (upRight[k] * gain) * makeup;
+                upLeft[k] = fastTanh (upLeft[k] * gain) * makeup;
+                upRight[k] = fastTanh (upRight[k] * gain) * makeup;
             }
         }
 
@@ -169,6 +181,9 @@ private:
     juce::SmoothedValue<float> driveDb { 12.0f }, tone { 0.5f }, mix { 1.0f };
     std::array<std::array<float, 2>, 2> toneState {};
     float toneCoefficient = 0.5f;
+
+    // The drive's gain and make-up, recomputed only while the drive moves (they need an exp and a pow).
+    float shapedDriveDb = 1.0e9f, shapeGain = 1.0f, shapeMakeup = 1.0f;
 };
 
 } // namespace scratchpad::dsp

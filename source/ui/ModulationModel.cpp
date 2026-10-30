@@ -1,5 +1,9 @@
 #include "ui/ModulationModel.h"
 
+#include "plugin/ModulationInfo.h"
+#include "plugin/Parameters.h"
+#include "ui/Accessibility.h"
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -63,6 +67,29 @@ float modulatedValue (ModDest d, float base, float sum)
     return base;
 }
 
+juce::String destinationLongName (ModDest d)
+{
+    const auto names = params::modDestNames();
+    return juce::isPositiveAndBelow ((int) d, names.size()) ? names[(int) d] : juce::String();
+}
+
+juce::String describeArcs (const std::vector<ModArc>& arcs)
+{
+    juce::StringArray movers;
+
+    for (const auto& arc : arcs)
+    {
+        const bool bipolar = sourceRange (arc.source).low < 0.0f;
+        const auto size = juce::String (std::abs (juce::roundToInt (arc.amount * 100.0f))) + " percent";
+        const auto name = plugin::modulation::sourceName (arc.source);
+
+        movers.add (bipolar ? name + ", plus or minus " + size
+                            : name + ", " + (arc.amount < 0.0f ? "down to minus " : "up to plus ") + size);
+    }
+
+    return movers.isEmpty() ? juce::String() : "Modulated by " + movers.joinIntoString ("; ") + ".";
+}
+
 //==============================================================================
 ModulationModel::ModulationModel (plugin::ScratchpadProcessor& p)
     : processor (p)
@@ -75,7 +102,7 @@ ModulationModel::~ModulationModel()
 {
     *aliveFlag = false;
     processor.getModulationBroadcaster().removeChangeListener (this);
-    stopTimer();
+    stopLive();
 }
 
 int ModulationModel::countConnections() const noexcept
@@ -90,18 +117,42 @@ void ModulationModel::setActive (bool shouldRun)
     if (shouldRun)
     {
         refresh();
-        startTimerHz (30);
+        startLive (30);
     }
     else
     {
-        stopTimer();
+        stopLive();
         cancelConnecting();
     }
 }
 
 void ModulationModel::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // One connection made or taken away, by any route, is worth saying. Several at once (a patch opened) are not:
+    // the patch has its own announcement.
+    const auto before = connections;
     refresh();
+
+    int changed = -1, numChanged = 0;
+
+    for (size_t i = 0; i < connections.size(); ++i)
+        if (before[i].source != connections[i].source || before[i].dest != connections[i].dest)
+        {
+            changed = (int) i;
+            ++numChanged;
+        }
+
+    if (numChanged != 1)
+        return;
+
+    const auto& was = before[(size_t) changed];
+    const auto& now = connections[(size_t) changed];
+
+    if (now.active() && ! was.active())
+        a11y::announce ("Connected " + plugin::modulation::sourceName (now.source) + " to " + destinationLongName (now.dest)
+                        + " at " + a11y::spokenAmount (now.amount));
+    else if (was.active() && ! now.active())
+        a11y::announce ("Removed connection from " + plugin::modulation::sourceName (was.source) + " to " + destinationLongName (was.dest));
 }
 
 void ModulationModel::refresh()
@@ -110,7 +161,7 @@ void ModulationModel::refresh()
     listeners.call (&Listener::modulationChanged);
 }
 
-void ModulationModel::timerCallback()
+void ModulationModel::liveTick()
 {
     const auto& source = processor.getLiveModulation();
 
@@ -125,8 +176,9 @@ void ModulationModel::timerCallback()
 
     listeners.call (&Listener::liveUpdated);
 
-    if (statusTicks > 0 && --statusTicks == 0)
+    if (statusExpiresMs > 0.0 && juce::Time::getMillisecondCounterHiRes() >= statusExpiresMs)
     {
+        statusExpiresMs = 0.0;
         status = {};
         listeners.call (&Listener::statusChanged);
     }
@@ -240,6 +292,51 @@ bool ModulationModel::isValidTarget (const ModTarget& target, ModSource source) 
     return std::any_of (dests.begin(), dests.end(), [&] (ModDest d) { return canDrive (source, d); });
 }
 
+std::vector<ModDest> ModulationModel::validDestinations (ModSource source) const
+{
+    std::vector<ModDest> result;
+
+    // With only oscillator 1 in the patch, "this oscillator" and "all of them" are the same thing: offer the one.
+    const bool onlyOsc1 = ! processor.isModulePresent (plugin::Module::osc2) && ! processor.isModulePresent (plugin::Module::osc3);
+
+    for (int i = 1; i < engine::numModDests; ++i)
+    {
+        const auto d = (ModDest) i;
+
+        if (canDrive (source, d) && ! (onlyOsc1 && d == ModDest::pitch1))
+            result.push_back (d);
+    }
+
+    return result;
+}
+
+void ModulationModel::chooseDestination (ModSource source, juce::Component& menuTarget)
+{
+    const auto choices = validDestinations (source);
+    const auto name = plugin::modulation::sourceName (source);
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (choices.empty() ? name + ": nothing to move yet" : name + " moves");
+
+    for (size_t i = 0; i < choices.size(); ++i)
+    {
+        bool already = false;
+
+        for (const auto& c : connections)
+            already = already || (c.source == source && c.dest == choices[i]);
+
+        menu.addItem ((int) i + 1, destinationLongName (choices[i]), true, already);
+    }
+
+    auto alive = aliveFlag;
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuTarget),
+                        [this, alive, source, choices] (int result)
+                        {
+                            if (*alive && result >= 1 && result <= (int) choices.size())
+                                connect (source, choices[(size_t) result - 1]);
+                        });
+}
+
 void ModulationModel::dropOn (ModTarget& target, juce::Component* menuParent)
 {
     const auto source = connectingSource;
@@ -297,7 +394,7 @@ void ModulationModel::connect (ModSource source, ModDest dest)
     switch (processor.connectMod (source, dest))
     {
         case Result::created:
-            showStatus (from + " now moves " + to.toLowerCase() + ". Drag its arc, or the row below, to change how far.");
+            showStatus (from + " now moves " + to.toLowerCase() + ". Drag its arc, or the row below, to change how far.", false); // the new connection announces itself
             break;
         case Result::alreadyConnected:
             showStatus (from + " already moves " + to.toLowerCase() + ".");
@@ -311,11 +408,14 @@ void ModulationModel::connect (ModSource source, ModDest dest)
     }
 }
 
-void ModulationModel::showStatus (const juce::String& text)
+void ModulationModel::showStatus (const juce::String& text, bool announceIt)
 {
     status = text;
-    statusTicks = 30 * 6;
+    statusExpiresMs = juce::Time::getMillisecondCounterHiRes() + 6000.0;
     listeners.call (&Listener::statusChanged);
+
+    if (announceIt)
+        a11y::announce (text.upToFirstOccurrenceOf (". ", false, false));
 }
 
 } // namespace scratchpad::ui

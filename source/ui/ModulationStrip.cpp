@@ -53,7 +53,7 @@ namespace
 SourceHandle::SourceHandle (ModulationModel& m, ModSource s)
     : model (m), source (s)
 {
-    setTitle (info::sourceName (s) + " handle: drag onto a knob to modulate it, or click then click a knob");
+    setTitle (info::sourceName (s) + " modulation handle");
     getProperties().set ("explainId", "control.handle");
     setWantsKeyboardFocus (true);
     setPaintingIsUnclipped (true);
@@ -156,6 +156,33 @@ void SourceHandle::mouseUp (const juce::MouseEvent& e)
     }
 }
 
+void SourceHandle::activate()
+{
+    if (isConnectingFromHere())
+        model.cancelConnecting();
+    else
+        model.chooseDestination (source, *this);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> SourceHandle::createAccessibilityHandler()
+{
+    return std::make_unique<a11y::DescribedHandler> (
+        *this, juce::AccessibilityRole::button,
+        [this]
+        {
+            const auto name = info::sourceName (source);
+
+            if (! isEnabled())
+                return "Not available: " + name + " is not in the patch yet.";
+
+            if (model.getMode() == ModulationModel::Mode::armed && isConnectingFromHere())
+                return "Picked up. Click a knob to connect " + name + " to it, or press Enter to put it down.";
+
+            return "Press Enter to choose what " + name + " moves. Or drag this handle onto a knob. Connections start at plus 50 percent.";
+        },
+        juce::AccessibilityActions().addAction (juce::AccessibilityActionType::press, [this] { if (isEnabled()) activate(); }));
+}
+
 bool SourceHandle::keyPressed (const juce::KeyPress& key)
 {
     if (! isEnabled())
@@ -163,11 +190,7 @@ bool SourceHandle::keyPressed (const juce::KeyPress& key)
 
     if (key == juce::KeyPress::returnKey || key == juce::KeyPress::spaceKey)
     {
-        if (isConnectingFromHere())
-            model.cancelConnecting();
-        else
-            model.arm (source, centreOnScreen());
-
+        activate();
         return true;
     }
 
@@ -206,8 +229,23 @@ LfoCard::LfoCard (plugin::ScratchpadProcessor& p, ModulationModel& m, int lfoInd
     shape.setGlyphs (shapeGlyphs());
     rate.setModulation (model, { engine::lfoRateDest ((size_t) index) });
 
-    for (auto* c : std::initializer_list<juce::Component*> { &handle, &shape, &retrigger, &sync, &rate, &division, &fade })
+    for (auto* c : std::initializer_list<juce::Component*> { &handle, &shape, &retrigger, &sync, &rate, &division, &fade, &vizRegion })
         addAndMakeVisible (c);
+
+    vizRegion.setTitle (name + " waveform");
+    vizRegion.setDescriber ([this]
+                            {
+                                auto& apvts = model.getProcessor().apvts;
+                                const auto shapeName = params::lfoShapeNames()[juce::jlimit (0, dsp::numLfoShapes - 1, shapeIndex)];
+                                const auto hz = a11y::spokenValue (apvts.getParameter (params::lfo[(size_t) index].rate)->getCurrentValueAsText());
+                                const auto noteLength = apvts.getParameter (params::lfo[(size_t) index].division)->getCurrentValueAsText();
+
+                                return shapeName + " wave, " + (synced ? "one cycle every " + noteLength + " note, following the tempo"
+                                                                       : "repeating at " + hz) + ".";
+                            });
+    rate.setDisabledNote ("Not in use: tempo sync is on, so the note length sets the speed.");
+    division.setDisabledNote ("Not in use: tempo sync is off, so the rate knob sets the speed.");
+    setFocusOrder ({ &handle, &sync, &shape, &vizRegion, &retrigger, &rate, &division, &fade });
 
     model.addListener (this);
     applyColours();
@@ -264,6 +302,7 @@ void LfoCard::resized()
     sync.setBounds (88, top + 3, 62, 20);
 
     vizWell = { left, 34, leftWidth, 30 };
+    vizRegion.setBounds (vizWell);
     shape.setBounds (left, 68, leftWidth, 22);
     retrigger.setBounds (left, 94, leftWidth, 18);
 
@@ -431,8 +470,8 @@ void SourcesPanel::paint (juce::Graphics& g)
 ConnectionRow::ConnectionRow (ModulationModel& m, int slotIndex)
     : model (m), slot (slotIndex)
 {
-    setWantsKeyboardFocus (true);
     setPaintingIsUnclipped (true);
+    setExplicitFocusOrder (slotIndex + 1); // Tab visits slot 1 to 8, not the two columns row by row
     getProperties().set ("explainId", "mod" + juce::String (slotIndex + 1) + ".amount");
     refresh();
 }
@@ -442,10 +481,70 @@ void ConnectionRow::refresh()
     const auto& c = model.getConnections()[(size_t) slot];
     amountPercent = c.amount * 100.0f;
 
-    setTitle (c.active() ? info::sourceName (c.source) + " to " + info::destinationName (c.dest) + ", " + info::amountText (c.amount)
-                         : "Free connection slot " + juce::String (slot + 1));
+    setTitle ("Modulation slot " + juce::String (slot + 1) + (c.active() ? ": " + info::sourceName (c.source) + " to " + destinationLongName (c.dest)
+                                                                       : juce::String (": free")));
     setMouseCursor (c.active() ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+
+    // Only an occupied row is somewhere to go with the keyboard; an empty one is text. Becoming one or the other
+    // changes what a screen reader is looking at, so it gets a new handler.
+    setWantsKeyboardFocus (c.active());
+
+    if (c.active() != wasActive)
+    {
+        wasActive = c.active();
+        invalidateAccessibilityHandler();
+    }
+    else if (auto* handler = getAccessibilityHandler())
+    {
+        handler->notifyAccessibilityEvent (juce::AccessibilityEvent::titleChanged);
+        handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+    }
+
     repaint();
+}
+
+std::unique_ptr<juce::AccessibilityHandler> ConnectionRow::createAccessibilityHandler()
+{
+    if (! model.getConnections()[(size_t) slot].active())
+        return std::make_unique<a11y::DescribedHandler> (*this, juce::AccessibilityRole::staticText,
+                                                         [] { return juce::String ("Empty. Choose a source handle and then what it should move, to fill it."); });
+
+    struct Amount final : juce::AccessibilityValueInterface
+    {
+        explicit Amount (ConnectionRow& r) : row (r) {}
+
+        bool isReadOnly() const override { return false; }
+        double getCurrentValue() const override { return row.model.getProcessor().getModConnections()[(size_t) row.slot].amount * 100.0; }
+
+        void setValue (double percent) override
+        {
+            auto& processor = row.model.getProcessor();
+            processor.beginModAmountEdit (row.slot);
+            processor.setModAmount (row.slot, (float) juce::jlimit (-100.0, 100.0, percent));
+            processor.endModAmountEdit (row.slot);
+        }
+
+        juce::String getCurrentValueAsString() const override
+        {
+            return a11y::spokenValue (info::amountText (row.model.getProcessor().getModConnections()[(size_t) row.slot].amount));
+        }
+
+        void setValueAsString (const juce::String& text) override { setValue (text.getDoubleValue()); }
+        AccessibleValueRange getRange() const override { return { { -100.0, 100.0 }, 1.0 }; }
+
+        ConnectionRow& row;
+    };
+
+    return std::make_unique<a11y::DescribedHandler> (
+        *this, juce::AccessibilityRole::slider,
+        [this]
+        {
+            const auto& c = model.getConnections()[(size_t) slot];
+            return "How far " + info::sourceName (c.source) + " moves " + destinationLongName (c.dest)
+                   + ". Left and right arrows change it, Shift for bigger steps. Delete removes the connection.";
+        },
+        juce::AccessibilityActions {},
+        juce::AccessibilityHandler::Interfaces { std::make_unique<Amount> (*this) });
 }
 
 void ConnectionRow::paint (juce::Graphics& g)
@@ -498,8 +597,9 @@ void ConnectionRow::paint (juce::Graphics& g)
     g.setColour (p.ink2);
     g.drawText (info::destinationName (c.dest), row.withTrimmedLeft (5.0f), juce::Justification::centredLeft, true);
 
+    // Inside the row's own edges, so the next row (which paints after this one) does not cover the ring.
     if (hasKeyboardFocus (false))
-        ScratchpadLookAndFeel::drawFocusRing (g, bounds, 8.0f, p.ink);
+        ScratchpadLookAndFeel::drawFocusRing (g, bounds.reduced (3.5f), 5.5f, p.ink);
 }
 
 void ConnectionRow::mouseMove (const juce::MouseEvent& e)
@@ -531,22 +631,15 @@ void ConnectionRow::mouseDown (const juce::MouseEvent& e)
 
     grabKeyboardFocus();
 
-    if (removeArea().contains (e.getPosition()) || e.mods.isPopupMenu())
+    if (removeArea().contains (e.getPosition()))
     {
-        if (removeArea().contains (e.getPosition()))
-        {
-            model.getProcessor().disconnectMod (slot);
-            return;
-        }
+        model.getProcessor().disconnectMod (slot);
+        return;
+    }
 
-        juce::PopupMenu menu;
-        menu.addItem (1, "Remove " + info::connectionText (model.getConnections()[(size_t) slot]));
-        juce::Component::SafePointer<ConnectionRow> safe (this);
-        menu.showMenuAsync ({}, [safe] (int result)
-                            {
-                                if (safe != nullptr && result == 1)
-                                    safe->model.getProcessor().disconnectMod (safe->slot);
-                            });
+    if (e.mods.isPopupMenu())
+    {
+        showRemoveMenu();
         return;
     }
 
@@ -587,36 +680,84 @@ void ConnectionRow::mouseDoubleClick (const juce::MouseEvent& e)
     processor.endModAmountEdit (slot);
 }
 
+void ConnectionRow::showRemoveMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Remove " + info::connectionText (model.getProcessor().getModConnections()[(size_t) slot]));
+    juce::Component::SafePointer<ConnectionRow> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe] (int result)
+                        {
+                            if (safe != nullptr && result == 1)
+                                safe->remove();
+                        });
+}
+
+void ConnectionRow::remove()
+{
+    // The row stops being somewhere to go with the keyboard, so move on first.
+    if (hasKeyboardFocus (false))
+        moveKeyboardFocusToSibling (true);
+
+    model.getProcessor().disconnectMod (slot);
+}
+
 void ConnectionRow::nudge (float percent)
 {
     auto& processor = model.getProcessor();
     processor.beginModAmountEdit (slot);
-    processor.setModAmount (slot, model.getConnections()[(size_t) slot].amount * 100.0f + percent);
+    processor.setModAmount (slot, processor.getModConnections()[(size_t) slot].amount * 100.0f + percent);
     processor.endModAmountEdit (slot);
 }
 
 bool ConnectionRow::keyPressed (const juce::KeyPress& key)
 {
-    if (! model.getConnections()[(size_t) slot].active())
+    if (! model.getProcessor().getModConnections()[(size_t) slot].active())
         return false;
 
-    const float step = key.getModifiers().isShiftDown() ? 10.0f : 1.0f;
+    const auto mods = key.getModifiers();
 
-    if (key.isKeyCode (juce::KeyPress::leftKey) || key.isKeyCode (juce::KeyPress::downKey))
+    if (mods.isCommandDown() || mods.isAltDown() || mods.isCtrlDown())
+        return false;
+
+    const int code = key.getKeyCode();
+    const float step = mods.isShiftDown() ? 10.0f : 1.0f;
+
+    if (code == juce::KeyPress::leftKey || code == juce::KeyPress::downKey)
     {
         nudge (-step);
         return true;
     }
 
-    if (key.isKeyCode (juce::KeyPress::rightKey) || key.isKeyCode (juce::KeyPress::upKey))
+    if (code == juce::KeyPress::rightKey || code == juce::KeyPress::upKey)
     {
         nudge (step);
         return true;
     }
 
-    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    if (code == juce::KeyPress::pageDownKey || code == juce::KeyPress::pageUpKey)
     {
-        model.getProcessor().disconnectMod (slot);
+        nudge (code == juce::KeyPress::pageUpKey ? 10.0f : -10.0f);
+        return true;
+    }
+
+    if (code == juce::KeyPress::homeKey || code == juce::KeyPress::returnKey)
+    {
+        auto& processor = model.getProcessor();
+        processor.beginModAmountEdit (slot);
+        processor.setModAmount (slot, params::modAmountDefault);
+        processor.endModAmountEdit (slot);
+        return true;
+    }
+
+    if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey)
+    {
+        remove();
+        return true;
+    }
+
+    if (code == juce::KeyPress::F10Key && mods.isShiftDown())
+    {
+        showRemoveMenu();
         return true;
     }
 
@@ -655,9 +796,9 @@ void ConnectionsPanel::modulationChanged()
 void ConnectionsPanel::resized()
 {
     constexpr int top = 24, gap = 4;
-    const int rowWidth = (width - 2 * pad - gap) / 2;
+    const int rowWidth = (getWidth() - 2 * pad - gap) / 2;
 
-    captionRow = { pad, 6, width - 2 * pad, 14 };
+    captionRow = { pad, 6, getWidth() - 2 * pad, 14 };
 
     for (size_t i = 0; i < rows.size(); ++i)
     {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "content/Content.h"
+#include "ui/Accessibility.h"
 #include "ui/LookAndFeel.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -17,16 +19,20 @@ namespace scratchpad::ui
     the chosen one is filled with the module's family colour. Segments show
     either the choice text or a stroked glyph (18 x 10 px viewBox).
 
-    Mouse and the left / right arrow keys pick. A pick is one undo step named
+    Mouse and the keyboard pick: Left and Right (or Up and Down) move one segment, Home and End go to the first
+    and last. A pick is one undo step named
     "<Caption> <old> -> <new>", unless `onPick` is set, which then does the
-    picking instead (oscillator 1's wave goes through the processor). */
+    picking instead (oscillator 1's wave goes through the processor).
+
+    A screen reader hears one control, named for the parameter ("Oscillator 1 wave"), whose value is the chosen
+    segment's text ("Saw"); it can set it by that text. */
 class ChoiceSegments final : public juce::Component
 {
 public:
     ChoiceSegments (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
                     const juce::String& captionText, juce::UndoManager& undoToUse,
                     juce::Colour Palette::* familyColour)
-        : caption (captionText), undo (undoToUse), family (familyColour),
+        : caption (captionText), paramId (paramID), undo (undoToUse), family (familyColour),
           param (state.getParameter (paramID))
     {
         jassert (param != nullptr);
@@ -74,6 +80,7 @@ public:
             {
                 g.setColour (p.*family);
                 g.fillRoundedRectangle (seg, 7.0f);
+                ScratchpadLookAndFeel::drawSelectedEdge (g, seg, 7.0f, p, p.*family, p.well);
             }
             else if (i == hovered)
             {
@@ -114,15 +121,31 @@ public:
 
     bool keyPressed (const juce::KeyPress& key) override
     {
-        if (key == juce::KeyPress::leftKey && selected > 0)
+        if (key.getModifiers().isAnyModifierKeyDown())
+            return false;
+
+        const int code = key.getKeyCode();
+        const int last = labels.size() - 1;
+
+        if ((code == juce::KeyPress::leftKey || code == juce::KeyPress::upKey) && selected > 0)
             pick (selected - 1);
-        else if (key == juce::KeyPress::rightKey && selected < labels.size() - 1)
+        else if ((code == juce::KeyPress::rightKey || code == juce::KeyPress::downKey) && selected < last)
             pick (selected + 1);
+        else if (code == juce::KeyPress::homeKey && selected > 0)
+            pick (0);
+        else if (code == juce::KeyPress::endKey && selected < last)
+            pick (last);
+        else if (code == juce::KeyPress::leftKey || code == juce::KeyPress::upKey || code == juce::KeyPress::rightKey
+                 || code == juce::KeyPress::downKey || code == juce::KeyPress::homeKey || code == juce::KeyPress::endKey)
+            return true; // at the end of the row: nothing to do, and no one else should get the arrow
         else
             return false;
 
         return true;
     }
+
+    void focusGained (FocusChangeType) override { repaint(); }
+    void focusLost (FocusChangeType) override { repaint(); }
 
 private:
     juce::Rectangle<float> segmentBounds (int i) const
@@ -151,10 +174,32 @@ private:
         }
     }
 
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return a11y::makeSelectorHandler (
+            *this, [this] { return labels[juce::jlimit (0, labels.size() - 1, selected)]; },
+            [this] (const juce::String& text)
+            {
+                const int found = labels.indexOf (text.trim(), true);
+                if (found >= 0)
+                    pick (found);
+            },
+            [this]
+            {
+                const auto* entry = content::Content::get().param (paramId);
+                return entry != nullptr ? entry->what : juce::String();
+            });
+    }
+
     void setSelected (int i)
     {
+        const int before = selected;
         selected = juce::jlimit (0, juce::jmax (0, labels.size() - 1), i);
         repaint();
+
+        if (selected != before)
+            if (auto* handler = getAccessibilityHandler())
+                handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
     }
 
     void pick (int i)
@@ -173,7 +218,7 @@ private:
         undo.setCurrentTransactionName (caption + " " + old + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 ")) + labels[i]);
     }
 
-    juce::String caption;
+    juce::String caption, paramId;
     juce::UndoManager& undo;
     juce::Colour Palette::* family;
     juce::RangedAudioParameter* param;

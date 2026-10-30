@@ -1,5 +1,6 @@
 #pragma once
 
+#include "content/Content.h"
 #include "ui/LookAndFeel.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -24,6 +25,10 @@ public:
         jassert (param != nullptr);
 
         setTitle (accessibleName);
+
+        if (const auto* entry = content::Content::get().param (paramID))
+            setDescription (entry->what);
+
         getProperties().set ("explainId", paramID);
         setClickingTogglesState (true);
         attachment = std::make_unique<juce::ButtonParameterAttachment> (*param, *this, &undo);
@@ -73,6 +78,9 @@ public:
         : juce::Button (accessibleName), caption (captionText), hint (hintText), style (styleToUse)
     {
         setTitle (accessibleName);
+        baseDescription = hintText.isNotEmpty() ? "Adds " + captionText + " to the patch: " + hintText.substring (0, 1).toLowerCase() + hintText.substring (1)
+                                                 : "Adds " + captionText + " to the patch";
+        setDescription (baseDescription);
         setPaintingIsUnclipped (true);
     }
 
@@ -85,7 +93,7 @@ public:
 
         suggested = shouldSuggest;
         setTooltip (shouldSuggest ? reason : juce::String());
-        setDescription (shouldSuggest ? "Suggested next. " + reason : juce::String());
+        setDescription (shouldSuggest ? "Suggested next. " + reason + " " + baseDescription : baseDescription);
         repaint();
     }
 
@@ -108,10 +116,10 @@ public:
         juce::Path dashed;
         const float dashes[] = { 4.0f, 3.0f };
         juce::PathStrokeType (1.5f).createDashedStroke (dashed, outline, dashes, 2);
-        g.setColour (suggested ? p.accent : p.dash);
+        g.setColour (suggested ? p.accentInk : p.dash);
         g.fillPath (dashed);
 
-        const auto labelColour = suggested ? p.accent : p.mute;
+        const auto labelColour = suggested ? p.accentInk : p.mute;
         if (style == Style::chip)
         {
             g.setColour (labelColour);
@@ -142,7 +150,7 @@ public:
     }
 
 private:
-    juce::String caption, hint;
+    juce::String caption, hint, baseDescription;
     Style style;
     bool suggested = false;
 };
