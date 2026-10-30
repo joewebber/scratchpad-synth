@@ -27,6 +27,7 @@ struct OscParams
     float fineCents = 0.0f;   // -100 .. +100
     float pulseWidth = 0.5f;  // 0.05 .. 0.95
     float levelDb = -6.0f;
+    float subLevelDb = -60.0f;
     bool phaseReset = true;   // restart the cycle on every note
 
     // M5: unison copies share the voice's filter and envelopes.

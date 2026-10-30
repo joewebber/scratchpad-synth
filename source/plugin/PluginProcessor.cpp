@@ -129,7 +129,7 @@ ScratchpadProcessor::ScratchpadProcessor()
         oscPointers[i] = { findParam (ids.enabled), findParam (ids.wave), findParam (ids.octave), findParam (ids.semitone),
                            findParam (ids.fine), findParam (ids.pulseWidth), findParam (ids.level), findParam (ids.phaseReset),
                            findParam (ids.unison), findParam (ids.unisonDetune), findParam (ids.unisonSpread), findParam (ids.antiAlias),
-                           ids.sync != nullptr ? findParam (ids.sync) : nullptr };
+                           findParam (ids.subLevel), ids.sync != nullptr ? findParam (ids.sync) : nullptr };
     }
 
     ampPointers = { findParam (params::ampEnv.enabled), findParam (params::ampEnv.attack), findParam (params::ampEnv.decay),
@@ -291,6 +291,7 @@ engine::EngineParams ScratchpadProcessor::readParams() const noexcept
         o.fineCents = load (s.fine);
         o.pulseWidth = fraction (s.pulseWidth);
         o.levelDb = load (s.level);
+        o.subLevelDb = load (s.subLevel);
         o.phaseReset = on (s.phaseReset);
         o.unison = juce::jlimit (1, params::maxUnison, juce::roundToInt (load (s.unison)));
         o.unisonDetuneCents = load (s.unisonDetune);

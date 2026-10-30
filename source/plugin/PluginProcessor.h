@@ -174,9 +174,8 @@ private:
     struct OscPointers
     {
         std::atomic<float> *enabled, *wave, *octave, *semitone, *fine, *pulseWidth, *level, *phaseReset;
-        std::atomic<float> *unison, *unisonDetune, *unisonSpread, *antiAlias, *sync; // sync: null for oscillator 1
+        std::atomic<float> *unison, *unisonDetune, *unisonSpread, *antiAlias, *subLevel, *sync; // sync: null for oscillator 1
     };
-
     struct EnvPointers
     {
         std::atomic<float> *enabled, *attack, *decay, *sustain, *release;

@@ -181,13 +181,12 @@ private:
 
     plugin::ScratchpadProcessor& processor;
     const int index;
-    Knob unison, detune, spread;
+    Knob unison, detune, spread, subLevel;
     ToggleChip antiAlias;
     std::unique_ptr<ToggleChip> sync;            // Oscillators 2 and 3
     std::unique_ptr<Knob> ring, fm;              // Oscillator 1
     std::unique_ptr<ChoiceSegments> fmTarget;    // Oscillator 1
     std::vector<std::unique_ptr<juce::ParameterAttachment>> watchers;
-
     a11y::Region statusRegion;
     juce::String status;
     bool statusIsWarning = false;

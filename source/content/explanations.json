@@ -1570,6 +1570,33 @@
         "decibel"
       ]
     },
+    "osc1.subLevel": {
+      "title": "Sub-oscillator",
+      "module": "osc1",
+      "what": "Adds a sine wave one octave below the oscillator, from silent to full level.",
+      "listenFor": "A deeper fundamental under the selected oscillator.",
+      "tryThis": "Raise it on a saw bass patch.",
+      "glossaryTerms": [
+        "octave",
+        "fundamental"
+      ]
+    },
+    "osc2.subLevel": {
+      "title": "Sub-oscillator",
+      "module": "osc2",
+      "what": "Adds a sine wave one octave below Oscillator 2.",
+      "listenFor": "A deeper fundamental under Oscillator 2.",
+      "tryThis": "Raise it on a bass patch.",
+      "glossaryTerms": [ "octave", "fundamental" ]
+    },
+    "osc3.subLevel": {
+      "title": "Sub-oscillator",
+      "module": "osc3",
+      "what": "Adds a sine wave one octave below Oscillator 3.",
+      "listenFor": "A deeper fundamental under Oscillator 3.",
+      "tryThis": "Raise it on a bass patch.",
+      "glossaryTerms": [ "octave", "fundamental" ]
+    },
     "osc1.unison": {
       "title": "Unison",
       "module": "osc1",

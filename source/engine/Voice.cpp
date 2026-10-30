@@ -361,6 +361,7 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
         s.wave = op.wave;
         s.increment = incrementFor (op, pitchEnd, bend + pitchMod);
         s.pulseWidth = std::clamp (op.pulseWidth + modPulseWidth * modEnd[index (pulseWidthDest (k))], 0.05f, 0.95f);
+        s.subLevel = op.subLevelDb <= -59.9f ? 0.0f : std::pow (10.0f, op.subLevelDb / 20.0f);
         s.unison = op.unison;
         const auto detuneDest = k == 0 ? ModDest::unisonDetune1 : k == 1 ? ModDest::unisonDetune2 : ModDest::unisonDetune3;
         s.detuneCents = std::clamp (op.unisonDetuneCents + modUnisonDetuneCents * modEnd[index (detuneDest)], 0.0f, 100.0f);

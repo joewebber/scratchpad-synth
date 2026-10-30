@@ -22,17 +22,17 @@ inline constexpr int numOscillators = 3;
 struct OscIds
 {
     const char *enabled, *wave, *octave, *semitone, *fine, *pulseWidth, *level, *phaseReset;
-    const char *unison, *unisonDetune, *unisonSpread, *antiAlias;
+    const char *unison, *unisonDetune, *unisonSpread, *antiAlias, *subLevel;
     const char* sync; // nullptr for oscillator 1: it is the sync master
 };
 
 inline constexpr std::array<OscIds, numOscillators> osc {{
     { "osc1.enabled", "osc1.wave", "osc1.octave", "osc1.semitone", "osc1.fine", "osc1.pulseWidth", "osc1.level", "osc1.phaseReset",
-      "osc1.unison", "osc1.unisonDetune", "osc1.unisonSpread", "osc1.antiAlias", nullptr },
+      "osc1.unison", "osc1.unisonDetune", "osc1.unisonSpread", "osc1.antiAlias", "osc1.subLevel", nullptr },
     { "osc2.enabled", "osc2.wave", "osc2.octave", "osc2.semitone", "osc2.fine", "osc2.pulseWidth", "osc2.level", "osc2.phaseReset",
-      "osc2.unison", "osc2.unisonDetune", "osc2.unisonSpread", "osc2.antiAlias", "osc2.sync" },
+      "osc2.unison", "osc2.unisonDetune", "osc2.unisonSpread", "osc2.antiAlias", "osc2.subLevel", "osc2.sync" },
     { "osc3.enabled", "osc3.wave", "osc3.octave", "osc3.semitone", "osc3.fine", "osc3.pulseWidth", "osc3.level", "osc3.phaseReset",
-      "osc3.unison", "osc3.unisonDetune", "osc3.unisonSpread", "osc3.antiAlias", "osc3.sync" }
+      "osc3.unison", "osc3.unisonDetune", "osc3.unisonSpread", "osc3.antiAlias", "osc3.subLevel", "osc3.sync" }
 }};
 
 // Oscillator 1 acts on the others. Ring modulation and FM are single patch-wide controls.

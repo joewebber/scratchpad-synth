@@ -142,9 +142,9 @@ void OscSection::beginBank (size_t index, const BankSettings& s, int numSamples)
         b.fadeRemaining = 0;
         b.increment = s.increment;
         b.pulseWidth = s.pulseWidth;
+        b.subLevel = s.subLevel;
         b.bandLimit = s.antiAlias ? 1.0f : 0.0f;
         b.running = true;
-
         for (auto& cp : b.copies)
             cp.active = false;
     }
@@ -156,6 +156,7 @@ void OscSection::beginBank (size_t index, const BankSettings& s, int numSamples)
     }
 
     b.count = n;
+    b.subLevel = s.subLevel;
     b.bandLimitTarget = s.antiAlias ? 1.0f : 0.0f;
     b.incrementStep = (s.increment - b.increment) / ticks;
     b.widthStep = (s.pulseWidth - b.pulseWidth) * (1.0f / (float) ticks);
@@ -181,7 +182,10 @@ void OscSection::beginBank (size_t index, const BankSettings& s, int numSamples)
         if (! cp.active)
         {
             if (starting)
+            {
                 cp.osc.reset (s.phaseReset ? (c == 0 ? 0.0 : random()) : cp.osc.getPhase());
+                cp.subOsc.reset (s.phaseReset ? (c == 0 ? 0.0 : random()) : cp.subOsc.getPhase());
+            }
             else
                 cp.osc.jumpTo (random());
 
@@ -251,8 +255,10 @@ StereoSample OscSection::tickBank (Bank& b, const Bank* master, double phaseOffs
 
         cp.ratio += cp.ratioStep;
         cp.osc.setIncrement (b.increment * cp.ratio * rateScale);
+        cp.subOsc.setIncrement (b.increment * cp.ratio * rateScale * 0.5);
         cp.osc.setPulseWidth ((double) b.pulseWidth);
         cp.osc.setBandLimit (b.bandLimit);
+        cp.subOsc.setBandLimit (b.bandLimit);
         cp.osc.setPhaseOffset (phaseOffset);
 
         if (master != nullptr)
@@ -268,9 +274,10 @@ StereoSample OscSection::tickBank (Bank& b, const Bank* master, double phaseOffs
         }
 
         const float s = fading ? cp.osc.process (b.waveFrom, b.wave, fadeMix) : cp.osc.process (b.wave);
+        const float sub = b.subLevel * cp.subOsc.process (dsp::Wave::sine);
 
-        out.l += s * cp.gainL;
-        out.r += s * cp.gainR;
+        out.l += (s + sub) * cp.gainL;
+        out.r += (s + sub) * cp.gainR;
 
         if (cp.gainL != cp.targetL)
             cp.gainL = settle (cp.gainL, cp.targetL, gainCoef);

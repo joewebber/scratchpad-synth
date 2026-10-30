@@ -20,6 +20,7 @@ struct BankSettings
     dsp::Wave wave = dsp::Wave::sine;
     double increment = 0.0;         // cycles per sample at the end of the block, before unison detune
     float pulseWidth = 0.5f;        // at the end of the block
+    float subLevel = 0.0f;          // linear level of a one-octave-down sine
     int unison = 1;                 // 1 .. maxUnison copies
     float detuneCents = 0.0f;       // the outer copies sit this far either side
     float spread = 0.0f;            // 0 .. 1 stereo spread of the copies
@@ -101,8 +102,9 @@ private:
     struct Copy
     {
         dsp::Oscillator osc;
-        double ratio = 1.0;       // frequency ratio from detune
-        double ratioStep = 0.0;   // per tick
+        dsp::Oscillator subOsc;
+        double ratio = 1.0;
+        double ratioStep = 0.0;
         float gainL = 0.0f, gainR = 0.0f;
         float targetL = 0.0f, targetR = 0.0f;
         int masterCopy = 0;
@@ -116,11 +118,12 @@ private:
         dsp::Wave waveFrom = dsp::Wave::sine;
         int fadeRemaining = 0;
         double increment = 0.0;
-        double incrementStep = 0.0; // per tick
+        double incrementStep = 0.0;
         float pulseWidth = 0.5f;
-        float widthStep = 0.0f;     // per tick
+        float widthStep = 0.0f;
         float bandLimit = 1.0f;
         float bandLimitTarget = 1.0f;
+        float subLevel = 0.0f;
         int count = 1;
         bool sync = false;
         bool running = false;

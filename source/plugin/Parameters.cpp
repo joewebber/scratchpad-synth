@@ -224,6 +224,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                   unisonDetuneDefaultCents, "cents", [] (float v) { return juce::String (juce::roundToInt (v)) + " c"; });
         addPercent (layout, ids.unisonSpread, name + " unison spread", 0.0f, 100.0f, unisonSpreadDefaultPercent, versionHintM5);
         addToggle (layout, ids.antiAlias, name + " anti-aliasing", true, true);
+        addLevel (layout, ids.subLevel, name + " sub-oscillator", oscLevelMinDb, oscLevelMaxDb, oscLevelMinDb, versionHintM5);
 
         if (ids.sync != nullptr)
             addToggle (layout, ids.sync, name + " sync to oscillator 1", false, true);

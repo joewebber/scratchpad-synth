@@ -479,13 +479,14 @@ OscillatorExtras::OscillatorExtras (plugin::ScratchpadProcessor& p, int oscillat
       unison (p.apvts, params::osc[(size_t) oscillatorIndex].unison, "Unison", p.undoManager, oscName (oscillatorIndex) + " unison voices"),
       detune (p.apvts, params::osc[(size_t) oscillatorIndex].unisonDetune, "Detune", p.undoManager, oscName (oscillatorIndex) + " unison detune"),
       spread (p.apvts, params::osc[(size_t) oscillatorIndex].unisonSpread, "Spread", p.undoManager, oscName (oscillatorIndex) + " unison spread"),
+      subLevel (p.apvts, params::osc[(size_t) oscillatorIndex].subLevel, "Sub", p.undoManager, oscName (oscillatorIndex) + " sub-oscillator level"),
       antiAlias (p.apvts, params::osc[(size_t) oscillatorIndex].antiAlias, "Anti-aliasing",
                  oscName (oscillatorIndex) + " anti-aliasing", p.undoManager, &Palette::srcInk)
 {
     setTitle (oscName (index) + " extras");
     setExplainKey ("osc" + juce::String (index + 1));
 
-    for (auto* c : std::initializer_list<juce::Component*> { &unison, &detune, &spread, &antiAlias })
+    for (auto* c : std::initializer_list<juce::Component*> { &unison, &detune, &spread, &subLevel, &antiAlias })
         addAndMakeVisible (c);
 
     addAndMakeVisible (statusRegion);
@@ -499,7 +500,7 @@ OscillatorExtras::OscillatorExtras (plugin::ScratchpadProcessor& p, int oscillat
         sync = std::make_unique<ToggleChip> (p.apvts, ids.sync, "Sync to Osc 1", oscName (index) + " hard sync", p.undoManager, &Palette::srcInk);
         addAndMakeVisible (*sync);
         watch (ids.sync);
-        setFocusOrder ({ &unison, &detune, &spread, &antiAlias, sync.get(), &statusRegion });
+        setFocusOrder ({ &unison, &detune, &spread, &subLevel, &antiAlias, sync.get(), &statusRegion });
     }
     else
     {
@@ -513,7 +514,7 @@ OscillatorExtras::OscillatorExtras (plugin::ScratchpadProcessor& p, int oscillat
 
         ring->setDisabledNote ("Not in use: it needs Oscillator 2 in the patch.");
         fm->setDisabledNote ("Not in use: its target oscillator is not in the patch.");
-        setFocusOrder ({ &unison, &detune, &spread, ring.get(), fm.get(), fmTarget.get(), &antiAlias, &statusRegion });
+        setFocusOrder ({ &unison, &detune, &spread, &subLevel, ring.get(), fm.get(), fmTarget.get(), &antiAlias, &statusRegion });
 
         watch (params::ringLevel);
         watch (params::fmAmount);
@@ -600,7 +601,7 @@ void OscillatorExtras::resized()
     constexpr int top = 6;
 
     int x = pad;
-    for (auto* k : { &unison, &detune, &spread })
+    for (auto* k : { &unison, &detune, &spread, &subLevel })
     {
         k->setBounds (x, top, Knob::knobWidth, Knob::knobHeight);
         x += knobPitch;
