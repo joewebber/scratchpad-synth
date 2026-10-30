@@ -5,13 +5,15 @@ It ships as a standalone app and a VST3 plugin from one codebase, and it has no
 presets: every patch starts with a single oscillator and grows
 only as the user adds modules.
 
-This repository is at **M4 (Learning layer)**: everything from M1 to M3 (three
+This repository is at **M5 (Oscillator extras, effects and output)**: everything from M1 to M4 (three
 oscillators, noise, multimode filter, envelopes, poly, mono and legato voicing with glide, two LFOs
-and eight modulation connections), plus the Explain panel with a glossary, a signal scope with
-tap points, live pictures on the oscillators, filter, envelopes and LFOs, bypass and solo on every
-module, a plain-English description of the patch, and a suggested next module in the Add menu.
+and eight modulation connections, the Explain panel with a glossary, a signal scope with tap points,
+live module pictures, bypass and solo, a plain-English patch description and a suggested next module),
+plus hard sync, ring modulation, two-operator FM, unison and an anti-aliasing switch on the
+oscillators, four reorderable effects (distortion, chorus, delay, reverb), a safety limiter with a
+light in the top bar, and host tempo sync for the LFOs and the delay.
 Each module is added from the signal-chain view (a dashed slot, or "+ Add module") and removed
-again with its x. Later milestones (oscillator extras, effects, saving) are described in the design
+again with its x. Later milestones (saving, resizing, light theme) are described in the design
 and technical brief.
 
 ## Build
@@ -94,10 +96,11 @@ audio device is open, the top bar says so.
 ```
 /CMakeLists.txt
 /source/plugin    PluginProcessor, PluginEditor, PluginEntry, parameters, state and migration, PatchDescription, Suggestion
-/source/engine    SynthEngine, VoiceAllocator, Voice, EngineParams, BlockLevels, Modulation
+/source/engine    SynthEngine, VoiceAllocator, Voice, OscSection, EffectsChain, EngineParams, BlockLevels, Modulation
 /source/content   explanations.json and glossary.json (the copy), loaded through BinaryData
-/source/dsp       Oscillator, BlepTable, Gate, Noise, Envelope, Lfo, SvfFilter, LadderFilter, MultimodeFilter
-/source/ui        LookAndFeel, Theme, Typography, Neumorph (shadows), Knob, ModDial, Meter, TopBar, WavePicker, PatchView,
+/source/dsp       Oscillator, BlepTable, Gate, Noise, Envelope, Lfo, SvfFilter, LadderFilter, MultimodeFilter,
+                  Distortion, Chorus, Delay, Reverb, HalfbandDecimator, Limiter
+/source/ui        LookAndFeel, Theme, Typography, Neumorph (shadows), Knob, ModDial, Meter, TopBar, PatchView,
                   ModuleCards, ModulationStrip (LFO cards, handles, slots), ModulationModel, ModArcs, ModOverlay, PerformanceBar,
                   ExplainPanel, Scope, Visualisers (filter curve, envelope display)
 /assets/fonts     Jost (Light, Book, Medium), SIL OFL 1.1, embedded in the binary
