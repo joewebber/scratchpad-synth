@@ -75,13 +75,27 @@ using namespace scratchpad;
 TEST_CASE ("The counter sees allocations, so a zero below means something", "[realtime]")
 {
     AllocationCounter counter;
+
+   #if defined(__GLIBC__) && ! defined(__SANITIZE_ADDRESS__)
     const std::array<juce::uint8, 20> data {};
 
     counter.arm();
-    juce::MidiMessage sysex (juce::MidiMessage::createSysExMessage (data.data(), 20)); // more than 8 bytes: on the heap
+    juce::MidiMessage sysex (juce::MidiMessage::createSysExMessage (data.data(), 20)); // more than 8 bytes: on the heap, via malloc
     counter.disarm();
 
     REQUIRE (sysex.getRawDataSize() > 8);
+   #else
+    // Only `operator new` is replaced here, and JUCE's own storage uses malloc, so allocate with `new` directly. The
+    // volatile store keeps the compiler from dropping the new/delete pair.
+    static char* volatile sink = nullptr;
+
+    counter.arm();
+    char* p = new char[64];
+    sink = p;
+    counter.disarm();
+    delete[] p;
+   #endif
+
     REQUIRE (counter.count() >= 1);
 }
 
