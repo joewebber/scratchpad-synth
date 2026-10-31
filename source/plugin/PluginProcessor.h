@@ -139,6 +139,10 @@ public:
 
     UiEventQueue& getUiEvents() noexcept { return uiEvents; }
 
+    /** Where the pitch and mod wheels were at the end of the last block, whether moved by MIDI or the editor. Message thread reads. */
+    float getPitchBend() const noexcept { return pitchBendMirror.load (std::memory_order_relaxed); }
+    float getModWheel() const noexcept { return modWheelMirror.load (std::memory_order_relaxed); }
+
     juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
 
@@ -254,6 +258,8 @@ private:
     std::atomic<double> currentBpm { params::defaultBpm };
 
     std::atomic<float> outputPeak { 0.0f };
+    std::atomic<float> pitchBendMirror { 0.0f };
+    std::atomic<float> modWheelMirror { 0.0f };
 
     // Effect order. The tree property `effectOrder` is the saved truth; the audio thread only sees this packed copy
     // (two bits per position, position 0 in the lowest bits), refreshed by `valueTreePropertyChanged` and `valueTreeRedirected`.

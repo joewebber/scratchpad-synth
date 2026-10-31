@@ -49,6 +49,7 @@ public:
     void handleMidi (const juce::MidiMessage& message) noexcept;
     void setPitchBend (float normalised) noexcept; // -1 .. +1
     void setModWheel (float normalised) noexcept;  // 0 .. 1
+    float getPitchBend() const noexcept { return pitchBend; }
     void allNotesOff() noexcept;
 
     /** Overwrites `left` and `right` with `numSamples` of output. */

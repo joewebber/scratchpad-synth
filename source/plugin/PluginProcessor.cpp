@@ -506,6 +506,8 @@ void ScratchpadProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     }
 
     renderRange (buffer, position, numSamples - position);
+    pitchBendMirror.store (synthEngine.getPitchBend(), std::memory_order_relaxed);
+    modWheelMirror.store (synthEngine.getModWheel(), std::memory_order_relaxed);
 
     midi.clear();
 

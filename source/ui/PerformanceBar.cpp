@@ -125,11 +125,34 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     keyboard.setExplicitFocusOrder (6);
 
     setOctave (octave, false);
+    lastBend = processor.getPitchBend();
+    lastMod = processor.getModWheel();
+    bendWheel.setValue ((double) lastBend, juce::dontSendNotification);
+    modWheel.setValue ((double) lastMod, juce::dontSendNotification);
+    startTimerHz (30);
 }
 
 juce::String PerformanceBar::summaryText() const
 {
     return "Octave " + juce::String (octave - 1) + ", velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + " percent";
+}
+
+void PerformanceBar::timerCallback()
+{
+    // Hardware wheels reach the engine as MIDI; follow them on screen. A wheel being held by the user is left alone.
+    const auto follow = [] (juce::Slider& wheel, float now, float& last)
+    {
+        if (now == last)
+            return;
+
+        last = now;
+
+        if (! wheel.isMouseButtonDown() && ! wheel.hasKeyboardFocus (false))
+            wheel.setValue ((double) now, juce::dontSendNotification);
+    };
+
+    follow (bendWheel, processor.getPitchBend(), lastBend);
+    follow (modWheel, processor.getModWheel(), lastMod);
 }
 
 PerformanceBar::~PerformanceBar()

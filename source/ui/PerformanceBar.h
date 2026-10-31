@@ -72,7 +72,8 @@ protected:
     velocity are one line of text, and the keyboard is described with how to play it. Octave and velocity changes
     are announced. */
 class PerformanceBar final : public juce::Component,
-                             private juce::MidiKeyboardState::Listener
+                             private juce::MidiKeyboardState::Listener,
+                             private juce::Timer
 {
 public:
     explicit PerformanceBar (plugin::ScratchpadProcessor&);
@@ -98,6 +99,7 @@ private:
 
     void setOctave (int newOctave, bool announceIt = true);
     void setVelocity (float newVelocity);
+    void timerCallback() override;
     void sendBend (float value);
     void sendModWheel (float value);
     juce::String summaryText() const;
@@ -117,6 +119,7 @@ private:
 
     int octave = 4; // JUCE octave numbering: the A key plays note 12 * octave
     float velocity = 0.8f;
+    float lastBend = 0.0f, lastMod = 0.0f; // what the processor last reported, so only a change moves a wheel
 };
 
 } // namespace scratchpad::ui
