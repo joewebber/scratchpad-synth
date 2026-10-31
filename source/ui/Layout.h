@@ -75,6 +75,66 @@ inline constexpr int headingTextInset = 4;                      // the heading r
 inline constexpr int headingGap = 14;                           // between the heading and its hint
 
 //==============================================================================
+// A taller window.
+
+/** The stage is never scaled up: a window taller than the design gives the extra height to the cards, and the gaps
+    stay as they are. `forExtra` splits the extra height between the four bands that stack down the left column;
+    `grown` gives a design box its size in the taller stage. Within the per-voice zone the Filter and the Amp (and the
+    zone and the arrows between the columns) take their share, and the envelopes under them theirs. A card is handed
+    its grown box and is expected to lay out from its own height: its one flexible part (a visualisation, the table
+    rows, a meter) absorbs the difference and everything else keeps its size.
+
+    Fractions of the extra: the zone half, the effects a tenth, the modulation row a fifth, the keyboard a fifth. */
+struct Grow
+{
+    int zone = 0, effects = 0, modulation = 0, keyboard = 0;
+    int zoneTop = 0; ///< of `zone`, what the Filter and Amp take (the envelopes under them take the rest)
+
+    static constexpr Grow forExtra (int extraHeight) noexcept
+    {
+        Grow g;
+        const int e = extraHeight > 0 ? extraHeight : 0;
+        g.zone = e * 5 / 10;
+        g.effects = e / 10;
+        g.modulation = e / 5;
+        g.keyboard = e / 5;
+        g.zoneTop = g.zone * 6 / 10;
+        return g;
+    }
+
+    constexpr int total() const noexcept { return zone + effects + modulation + keyboard; }
+};
+
+constexpr bool operator== (const Box& a, const Box& b) noexcept { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; }
+
+/** `box` (one of the design's regions above) in a stage taller by `g`. */
+constexpr Box grown (const Box& box, const Grow& g) noexcept
+{
+    // The per-voice zone: the Sources card, the columns' arrows, the zone itself and its caption take all of `zone`.
+    if (box == sources || box == sourcesArrow || box == filterAmpArrow || box == perVoiceZone || box == perVoiceCaption)
+        return { box.x, box.y, box.w, box.h + g.zone };
+
+    if (box == filter || box == amp)
+        return { box.x, box.y, box.w, box.h + g.zoneTop };
+
+    if (box == filterEnv || box == ampEnv)
+        return { box.x, box.y + g.zoneTop, box.w, box.h + g.zone - g.zoneTop };
+
+    // Effects: the heading and the row of cards, then the modulation, each a band further down.
+    if (box.y >= effectsHeading.y && box.y < modulationHeading.y)
+        return box.h > effectsHeading.h ? Box { box.x, box.y + g.zone, box.w, box.h + g.effects } : Box { box.x, box.y + g.zone, box.w, box.h };
+
+    if (box.y >= modulationHeading.y && box.y < voicingKeyboard.y)
+        return box.h > modulationHeading.h ? Box { box.x, box.y + g.zone + g.effects, box.w, box.h + g.modulation }
+                                           : Box { box.x, box.y + g.zone + g.effects, box.w, box.h };
+
+    if (box.y >= voicingKeyboard.y)
+        return { box.x, box.y + g.zone + g.effects + g.modulation, box.w, box.h + g.keyboard };
+
+    return box;
+}
+
+//==============================================================================
 // Inside the cards (all numbers are pixels at 100%).
 
 /** Header row of every card: handle (20 px dot, or the 22 px drag handle of a source), name, "?" 15 px, and right

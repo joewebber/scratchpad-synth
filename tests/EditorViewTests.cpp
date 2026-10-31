@@ -370,14 +370,21 @@ TEST_CASE ("A window of any shape gets a stage that fills it", "[view][editor]")
         CHECK (panel.getRight() == e.getWidth() - 12);
     }
 
-    SECTION ("taller: the gaps between the sections and the panel take the height")
+    SECTION ("taller: the cards take the height and the gaps stay")
     {
         e.setSize (ScratchpadEditor::baseWidth, ScratchpadEditor::baseHeight + 300);
+        const auto grow = ui::layout::Grow::forExtra (300);
         CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
         CHECK (panel.getHeight() == ui::layout::explain.h + 300);
-        CHECK (keys.getY() == ui::layout::voicingKeyboard.y + 300);
-        CHECK (keys.getHeight() == ui::layout::voicingKeyboard.h);
-        CHECK (keys.getBottom() <= e.getHeight() - 12);
+
+        // The keyboard card is lower by what the bands above it took, taller by its own share, and ends at the bottom margin.
+        CHECK (keys.getY() == ui::layout::voicingKeyboard.y + grow.zone + grow.effects + grow.modulation);
+        CHECK (keys.getHeight() == ui::layout::voicingKeyboard.h + grow.keyboard);
+        CHECK (keys.getBottom() == e.getHeight() - 12);
+
+        // The gap between the modulation row and the keyboard card is the design's.
+        auto& view = only<ui::PatchView> (e);
+        CHECK (keys.getY() - view.getBottom() == ui::layout::voicingKeyboard.y - ui::layout::patchView.y - ui::layout::patchView.h);
     }
 
     SECTION ("smaller than the design: everything is scaled down to fit")

@@ -160,14 +160,17 @@ void EnvelopeCard::resized()
     handle.setBounds (juce::Rectangle<int> (layout::header::handle, layout::header::handle).withCentre (
         { headerRow.getX() + layout::header::handle / 2, headerRow.getCentreY() }));
 
+    // The display well takes the extra height; the knobs keep their distance from the bottom edge.
     const int bodyY = headerRow.getBottom() + bodyGap;
-    display.setBounds (margin, bodyY, wellWidth, wellHeight);
+    const int growth = juce::jmax (0, getHeight() - layout::filterEnv.h);
+    const int knobsY = bodyY + growth;
+    display.setBounds (margin, bodyY, wellWidth, wellHeight + growth);
 
     int x = margin + wellWidth + knobGap;
 
     for (auto* k : { &attack, &decay, &sustain, &release, &extra })
     {
-        k->setBoundsAt (x, bodyY);
+        k->setBoundsAt (x, knobsY);
         x += k->getSize().cell + knobGap;
     }
 }
@@ -345,10 +348,11 @@ void OutputCard::resized()
 {
     constexpr int marginX = 9, marginY = 7, limiterWidth = 44, meterWidth = 16, meterHeight = 40, knobGap = 10;
     const int bodyY = marginY + headerHeight + 5;
+    const int extra = juce::jmax (0, getHeight() - layout::out.h);
 
     limiter.setBounds (getWidth() - marginX - limiterWidth, marginY, limiterWidth, headerHeight);
     volume.setBoundsAt (marginX, bodyY);
-    meter.setBounds (marginX + layout::knobs::out.cell + knobGap, bodyY, meterWidth, meterHeight);
+    meter.setBounds (marginX + layout::knobs::out.cell + knobGap, bodyY, meterWidth, meterHeight + extra);
 }
 
 void OutputCard::paint (juce::Graphics& g)

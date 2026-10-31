@@ -59,10 +59,10 @@ public:
     void resized() override;
     void visibilityChanged() override;
 
-    /** How much room a taller window adds above the Effects heading's section and again above the Modulation's
-        (`PatchView` is that much taller than `layout::patchView`; the keyboard card, which is not part of it,
-        moves down by three times as much). The cards keep their sizes; only the gaps between the sections grow. */
-    void setExtraGap (int pixels);
+    /** How a taller window's extra height is shared out (`layout::Grow`). The cards are handed their grown boxes and lay
+        out from their own height; the gaps between them stay as they are. The view is as much taller as the zone,
+        the effects and the modulation row take together (the keyboard card is not part of it). */
+    void setGrow (const layout::Grow&);
 
     /** Puts down a handle that is being held, if one is. True if there was one. */
     bool cancelConnecting();
@@ -145,10 +145,10 @@ private:
 
     EffectDrag effectDrag;
 
-    /** `box` (in stage pixels) as this view's own coordinates, moved down by the extra gap for each section above it. */
+    /** `box` (a design region, in stage pixels) as this view's own coordinates, grown by the extra height. */
     juce::Rectangle<int> local (const layout::Box& box) const noexcept;
 
-    int extraGap = 0;
+    layout::Grow grow;
 };
 
 } // namespace scratchpad::ui

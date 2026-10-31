@@ -413,8 +413,10 @@ Aftertouch has no on-screen control; it arrives from MIDI channel pressure.
   control layout knows the window's size. The design is 1200 x 760 (992 x 760 with the Explain panel folded). The stage is only ever
   scaled down: below the design size the whole stage shrinks to fit, to a minimum of 75%; at or above it the scale stays 1.0 and the
   stage is the window's size, so a bigger window is more room, not bigger controls. The Explain panel takes extra width (folded, the
-  column and rail sit in the middle) and extra height goes into the gaps between the sections (`PatchView::setExtraGap`; the keyboard
-  card moves down by three gaps) and the panel. The transform is on the child, not the editor, because `AudioProcessorEditor` keeps the
+  column and rail sit in the middle) and extra height goes into the cards, not the gaps (`layout::Grow` splits it between the zone,
+  effects, modulation and keyboard bands and `layout::grown` gives each box its taller size; every card lays out from its own
+  height with one flexible part: a visualisation well, the table rows, a meter, more rows in the connections list, taller keys)
+  and the panel. The transform is on the child, not the editor, because `AudioProcessorEditor` keeps the
   host's own scale in the editor's transform. The window is resizable at any shape from 900 x 570 (744 x 570 folded) by a
   `ComponentBoundsConstrainer`: the standalone app's frame honours it through JUCE's decorator constrainer, a plugin gets a corner grip
   (`drawCornerResizer`, in palette colours) and the host can resize it too. The scale (at most 1.0) is written 400 ms after the last

@@ -372,15 +372,16 @@ void LfoCard::resized()
     sync.setBounds (headerRow.getRight() - buttonsWidth - SyncPill::width, headerRow.getCentreY() - SyncPill::height / 2,
                     SyncPill::width, SyncPill::height);
 
+    const int extra = juce::jmax (0, getHeight() - layout::lfo1.h);
     const int bodyY = headerRow.getBottom() + rowGap;
     const int knobsWidth = 2 * layout::knobs::lfo.cell + bodyGap;
-    wellBounds = { headerRow.getX(), bodyY, headerRow.getWidth() - knobsWidth - bodyGap, wellHeight };
+    wellBounds = { headerRow.getX(), bodyY, headerRow.getWidth() - knobsWidth - bodyGap, wellHeight + extra };
     well->setBounds (wellBounds);
 
     const int knobX = wellBounds.getRight() + bodyGap;
-    rate.setBoundsAt (knobX, bodyY);
-    division.setBoundsAt (knobX, bodyY);
-    fade.setBoundsAt (knobX + layout::knobs::lfo.cell + bodyGap, bodyY);
+    rate.setBoundsAt (knobX, bodyY + extra);
+    division.setBoundsAt (knobX, bodyY + extra);
+    fade.setBoundsAt (knobX + layout::knobs::lfo.cell + bodyGap, bodyY + extra);
 }
 
 void LfoCard::liveUpdated()
@@ -473,6 +474,7 @@ void PlayingCard::resized()
     namespace pad = layout::padding;
     constexpr int captionHeight = 14, gridGap = 6, labelGap = 5;
 
+    const int extra = juce::jmax (0, getHeight() - layout::playing.h);
     const int inner = getWidth() - 2 * pad::playing - 2;
     const int columnWidth = (inner - gridGap) / 2;
     const int top = pad::playing + captionHeight + gridGap;
@@ -482,7 +484,7 @@ void PlayingCard::resized()
     for (size_t i = 0; i < chips.size(); ++i)
     {
         const int x = captionRow.getX() + ((int) i % 2) * (columnWidth + gridGap);
-        const int y = top + ((int) i / 2) * (SourceHandle::diameter + gridGap);
+        const int y = top + ((int) i / 2) * (SourceHandle::diameter + gridGap + extra);
         chips[i].handle->setBounds (x, y, SourceHandle::diameter, SourceHandle::diameter);
         chips[i].labelArea = { x + SourceHandle::diameter + labelGap, y, columnWidth - SourceHandle::diameter - labelGap, SourceHandle::diameter };
     }
@@ -946,6 +948,8 @@ void ConnectionsPanel::resized()
 
     const int inner = getWidth() - 2 * (pad::playing + 2);
     captionRow = { pad::playing + 2, pad::playing - 1, inner, captionHeight };
+    const int bodyHeight = ConnectionRow::height + (ConnectionsPanel::designRows - 1) * rowPitch + juce::jmax (0, getHeight() - layout::connections.h);
+    visibleRows = juce::jmax (ConnectionsPanel::designRows, (bodyHeight + rowPitch - ConnectionRow::height) / rowPitch);
     listArea = { captionRow.getX(), captionRow.getBottom() + captionGap + 2, inner, (visibleRows - 1) * rowPitch + ConnectionRow::height };
     list->setBounds (listArea);
     layoutRows();
