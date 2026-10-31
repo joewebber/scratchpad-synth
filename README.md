@@ -19,7 +19,8 @@ and technical brief.
 ## Build
 
 Requirements: CMake 3.25 or newer, a C++20 compiler and Ninja. On Windows use MSVC 2022
-from a "x64 Native Tools" prompt. JUCE 8.0.15 and Catch2 are fetched by CMake.
+from a "x64 Native Tools" prompt; on macOS, Xcode's command line tools (`brew install ninja`), which build a
+universal (arm64 + x86_64) app, macOS 11 or newer; on Linux, GCC or Clang. JUCE 8.0.15 and Catch2 are fetched by CMake.
 
 ```
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -33,11 +34,14 @@ Outputs, under `build/ScratchpadSynth_artefacts/Release/`:
 | Standalone app | `Standalone/Scratchpad Synth(.exe)` |
 | VST3 plugin | `VST3/Scratchpad Synth.vst3` |
 
-Copy the `.vst3` bundle to `C:\Program Files\Common Files\VST3` to use it in a host.
+Copy the `.vst3` bundle to `C:\Program Files\Common Files\VST3` on Windows, `~/Library/Audio/Plug-Ins/VST3`
+on macOS or `~/.vst3` on Linux to use it in a host.
 
-On Linux the code builds and the tests run, but only Windows is a supported target
-for v1. JUCE needs `libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev
-libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev` there.
+On Linux JUCE needs `libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev
+libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev`. CI builds and runs the tests on Windows,
+Linux and macOS; plugin validation (pluginval, the VST3 validator) runs on Windows only. Accessibility
+announcements reach screen readers on Windows and macOS, not Linux. The macOS build is unsigned, so
+Gatekeeper will ask you to allow it on first run.
 
 ### Sound under WSL
 

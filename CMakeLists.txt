@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
 
+# macOS: universal binary, and a deployment target JUCE 8 supports. Set before project(); override on the command line.
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+
 project(ScratchpadSynth VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)

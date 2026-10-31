@@ -89,3 +89,57 @@ jobs:
         with:
           name: ScratchpadSynth-VST3-Windows
           path: build/ScratchpadSynth_artefacts/Release/VST3/
+
+  # Linux and macOS: build, unit tests and the parameter list check. Plugin validation and the benchmark run on
+  # Windows only.
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Standalone, VST3, tests)
+        run: cmake --build build
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Parameter list is up to date
+        run: |
+          ./build/ScratchpadParameterList > parameters.generated.md
+          diff -u <(tail -n +4 docs/parameters.md) parameters.generated.md
+
+      - name: Upload standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScratchpadSynth-Standalone-${{ runner.os }}
+          path: build/ScratchpadSynth_artefacts/Release/Standalone/
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScratchpadSynth-VST3-${{ runner.os }}
+          path: build/ScratchpadSynth_artefacts/Release/VST3/
