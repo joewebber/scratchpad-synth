@@ -77,6 +77,9 @@ public:
 
         if (code == juce::KeyPress::returnKey && isTextBoxEditable() && getTextBoxPosition() != NoTextBox)
         {
+            if (beforeTyping != nullptr)
+                beforeTyping();
+
             showTextBox();
             return true;
         }
@@ -84,21 +87,37 @@ public:
         return false;
     }
 
-    void focusGained (FocusChangeType) override { repaint(); }
-    void focusLost (FocusChangeType) override { repaint(); }
+    /** A knob's value box shows only some of the time: it is told when the face may need to change (focus, the look
+        being rebuilt, the box opening or closing) and, before Enter opens the box for typing, so it can show it first. */
+    std::function<void()> onFaceChange, beforeTyping;
+
+    void focusGained (FocusChangeType) override { repaint(); if (onFaceChange != nullptr) onFaceChange(); }
+    void focusLost (FocusChangeType) override { repaint(); if (onFaceChange != nullptr) onFaceChange(); }
+
+    juce::Label* findValueLabel() const
+    {
+        for (auto* child : getChildren())
+            if (auto* label = dynamic_cast<juce::Label*> (child))
+                return label;
+
+        return nullptr;
+    }
 
     // The slider makes its value box again whenever its look changes or it is enabled or disabled, and each time it
     // asks for the box to take the keyboard focus. Tab should visit the knob, not its number.
     void lookAndFeelChanged() override
     {
         juce::Slider::lookAndFeelChanged();
+        resized(); // the layout comes from the look and feel, which a knob built before it had one never asked
         tidyValueLabel();
+        if (onFaceChange != nullptr) onFaceChange();
     }
 
     void enablementChanged() override
     {
         juce::Slider::enablementChanged();
         tidyValueLabel();
+        if (onFaceChange != nullptr) onFaceChange();
     }
 
     /** Call after the text box is set up (it is rebuilt when the look changes, and this is called again then). */
@@ -146,21 +165,21 @@ protected:
     }
 
 private:
-    juce::Label* findValueLabel() const
-    {
-        for (auto* child : getChildren())
-            if (auto* label = dynamic_cast<juce::Label*> (child))
-                return label;
-
-        return nullptr;
-    }
-
     // Enter or Escape in the value box puts the focus back on the knob. Losing focus some other way (Tab, a click
     // elsewhere) leaves it where the user sent it.
     void labelTextChanged (juce::Label*) override {}
 
+    void editorShown (juce::Label*, juce::TextEditor&) override
+    {
+        if (onFaceChange != nullptr)
+            onFaceChange();
+    }
+
     void editorHidden (juce::Label*, juce::TextEditor& editor) override
     {
+        if (onFaceChange != nullptr)
+            onFaceChange();
+
         if (editor.hasKeyboardFocus (true))
             juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<KeyboardSlider> (this)]
                                              {

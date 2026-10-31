@@ -4,6 +4,7 @@
 #include "plugin/PluginProcessor.h"
 #include "ui/Accessibility.h"
 #include "ui/IconButton.h"
+#include "ui/Layout.h"
 #include "ui/LookAndFeel.h"
 #include "ui/Scope.h"
 
@@ -81,7 +82,7 @@ public:
     /** Everything a screen reader is given for what is shown: title, text and the words it links to. */
     juce::String getReadableText() const;
 
-    static constexpr int width = 280;
+    static constexpr int width = layout::explain.w;
     static constexpr int railWidth = 56;
 
 private:

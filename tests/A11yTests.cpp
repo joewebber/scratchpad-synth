@@ -69,8 +69,8 @@ TEST_CASE ("Keyboard sliders expose a range and operate without a mouse", "[a11y
 {
     plugin::ScratchpadProcessor processor;
     ui::Knob knob (processor.apvts, params::filterCutoff, "Cutoff", processor.undoManager, "Filter cutoff");
-    knob.setBounds (0, 0, ui::Knob::knobWidth, ui::Knob::knobHeight);
-    DesktopHost host (knob, ui::Knob::knobWidth, ui::Knob::knobHeight);
+    knob.setBoundsAt (0, 0);
+    DesktopHost host (knob, knob.getWidth(), knob.getHeight());
 
     auto& slider = knob.getSlider();
     const auto before = slider.getValue();
@@ -124,8 +124,8 @@ TEST_CASE ("Connection rows adjust and remove a modulation from the keyboard", "
 
     ui::ModulationModel model (processor);
     ui::ConnectionsPanel panel (model);
-    panel.setBounds (0, 0, ui::ConnectionsPanel::width, ui::ConnectionsPanel::height);
-    DesktopHost host (panel, ui::ConnectionsPanel::width, ui::ConnectionsPanel::height);
+    panel.setBounds (ui::layout::connections.rect().withZeroOrigin());
+    DesktopHost host (panel, ui::layout::connections.w, ui::layout::connections.h);
 
     auto* row = findFirst<ui::ConnectionRow> (panel);
     REQUIRE (row != nullptr);

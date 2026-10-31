@@ -30,7 +30,7 @@ private:
     void timerCallback() override;
 
     plugin::ScratchpadProcessor& processor;
-    float lastCutoff = -1.0f, lastResonance = -1.0f, lastMode = -1.0f;
+    float lastCutoff = -1.0f, lastResonance = -1.0f, lastMode = -1.0f, lastShaper = -1.0f;
 };
 
 /** An ADSR drawn from its four knobs, with a dot riding the curve for the newest note. */

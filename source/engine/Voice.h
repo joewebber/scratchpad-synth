@@ -104,6 +104,7 @@ public:
 
     /** The envelopes' stages, as `dsp::Envelope::Stage` values, for the editor's playheads. */
     int getAmpEnvStage() const noexcept { return (int) ampEnv.getStage(); }
+    float getAmpEnvLevel() const noexcept { return ampEnv.getLevel(); }
     int getFilterEnvStage() const noexcept { return (int) filterEnv.getStage(); }
 
     /** Phase of this voice's own LFO; it only moves while that LFO retriggers. */

@@ -49,16 +49,20 @@ private:
     int framesLeft = 0;
 };
 
-/** Horizontal output level meter, -60 dBFS to 0, repainted on the display's
-    vertical blank (twice a second under reduced motion). `readPeak` returns the peak since its last call.
+/** Output level meter, -60 dBFS to 0, repainted on the display's
+    vertical blank (twice a second under reduced motion). `readPeak` returns the peak since its last call. The top
+    bar's is horizontal (a pill); the Out card's is a tall well filling from the bottom.
 
     For a screen reader it is a read-only level, in decibels, that is read when asked for: it never announces
     itself as it moves. */
 class Meter final : public juce::Component
 {
 public:
-    explicit Meter (std::function<float()> readPeakFn)
+    enum class Orientation { horizontal, vertical };
+
+    explicit Meter (std::function<float()> readPeakFn, Orientation orientationToUse = Orientation::horizontal)
         : readPeak (std::move (readPeakFn)),
+          orientation (orientationToUse),
           vblank (this, [this] { tick(); })
     {
         setTitle ("Output level");
@@ -78,17 +82,28 @@ public:
     {
         const auto& p = paletteOf (*this);
         auto bounds = getLocalBounds().toFloat();
-        const float radius = bounds.getHeight() * 0.5f;
+        const bool vertical = orientation == Orientation::vertical;
+        const float radius = vertical ? 5.0f : bounds.getHeight() * 0.5f;
 
         drawInset (g, bounds, radius, p, p.well);
 
         const float fraction = juce::jlimit (0.0f, 1.0f, (shownDb + 60.0f) / 60.0f);
         if (fraction > 0.0f)
         {
-            const auto track = bounds.reduced (2.0f);
-            const auto fill = track.withWidth (juce::jmax (track.getHeight(), track.getWidth() * fraction));
             g.setColour (shownDb > -3.0f ? p.fxInk : p.ampInk);
-            g.fillRoundedRectangle (fill, track.getHeight() * 0.5f);
+
+            if (vertical)
+            {
+                auto track = bounds.reduced (3.0f, 2.0f);
+                const float height = juce::jmax (2.0f, track.getHeight() * fraction);
+                g.fillRoundedRectangle (track.removeFromBottom (height), 1.0f);
+            }
+            else
+            {
+                const auto track = bounds.reduced (2.0f);
+                const auto fill = track.withWidth (juce::jmax (track.getHeight(), track.getWidth() * fraction));
+                g.fillRoundedRectangle (fill, track.getHeight() * 0.5f);
+            }
         }
     }
 
@@ -119,6 +134,7 @@ private:
     }
 
     std::function<float()> readPeak;
+    Orientation orientation;
     float shownDb = -100.0f;
     motion::Throttle throttle;
     juce::VBlankAttachment vblank;

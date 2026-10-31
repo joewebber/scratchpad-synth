@@ -11,6 +11,10 @@ enum class Weight { light, regular, medium };
     design prototype's `font-size` carry over unchanged. */
 juce::Font uiFont (float size, Weight = Weight::regular);
 
+/** JUCE applies a font's extra kerning to the font's full line height, not its em, so CSS `letter-spacing` in em needs
+    scaling to look the same: `cssTracking (0.24f)` is the design's `.24em`. */
+constexpr float cssTracking (float em) noexcept { return em * 0.74f; }
+
 /** Small-caps style caption used throughout: 11 px, tracked out, upper case. */
 void drawCaption (juce::Graphics&, const juce::String& text, juce::Rectangle<float> area,
                   juce::Colour, juce::Justification = juce::Justification::centredLeft,

@@ -29,6 +29,7 @@ struct LiveModulation
     std::array<std::atomic<float>, numModSources> source {}; // indexed by ModSource, as `Voice::getModSources`
     std::array<std::atomic<float>, 2> lfoPhase {};           // 0 .. 1
     std::array<std::atomic<int>, 2> envStage {};             // amp, filter: `dsp::Envelope::Stage` of the newest note
+    std::array<std::atomic<float>, VoiceAllocator::maxVoices> voiceLevel {}; // each voice's amp level, 0 for one that is not sounding
 };
 
 /** The whole sound engine: MIDI in, stereo audio out.

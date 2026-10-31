@@ -1,16 +1,15 @@
 #pragma once
 
 #include "ui/Accessibility.h"
-#include "ui/ChoiceSegments.h"
 #include "ui/Knob.h"
 #include "ui/ModArcs.h"
-#include "ui/ModuleCards.h"
+#include "ui/ModuleCard.h"
 #include "ui/ModulationModel.h"
-#include "ui/ToggleChip.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <functional>
 #include <memory>
 
 namespace scratchpad::ui
@@ -39,7 +38,7 @@ public:
 
     engine::ModSource getSource() const noexcept { return source; }
 
-    static constexpr int diameter = 26;
+    static constexpr int diameter = 22;
 
 private:
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
@@ -54,9 +53,27 @@ private:
     bool ignoreClick = false;
 };
 
-/** An LFO: handle, shape, rate, note length, fade-in, retrigger, tempo sync, and a picture of the wave with a
-    dot that follows its phase. With Sync on the rate follows the tempo (the note length picks how many beats a
-    cycle takes), so the Rate knob dims and the picture shows the rate that results. */
+/** The pill in an LFO's header that switches tempo sync: the family colour while on, an outline while off. A switch to
+    a screen reader, bound to a bool parameter (one undo step per click, as `ToggleChip`). */
+class SyncPill final : public juce::Button
+{
+public:
+    SyncPill (juce::AudioProcessorValueTreeState&, const juce::String& paramID, const juce::String& accessibleName,
+              juce::UndoManager&);
+
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+    static constexpr int width = 38, height = 20;
+
+private:
+    juce::UndoManager& undo;
+    std::unique_ptr<juce::ButtonParameterAttachment> attachment;
+};
+
+/** An LFO (`layout::lfo1`/`lfo2`, 214 x 88): in the header its handle ("L1"), name, "?", the Sync pill, B and More;
+    below it a well that draws the wave (with a dot that follows its phase) and names the shape, and two knobs: Rate
+    (Beat while Sync is on: one knob, whose place and caption the note length takes over) and Fade. The shape and
+    retrigger are behind More; clicking the well opens it. */
 class LfoCard final : public ModuleCard,
                       private ModulationModel::Listener
 {
@@ -70,66 +87,61 @@ public:
 
     SourceHandle& getHandle() noexcept { return handle; }
 
-    static constexpr int width = 288, height = 116;
-
 private:
+    class ShapeWell;
+
     void liveUpdated() override;
     void applyColours();
     void refreshSync();
+    void paintWell (juce::Graphics&, juce::Rectangle<float> bounds) const;
+    void describeWell();
 
     ModulationModel& model;
     const int index;
     SourceHandle handle;
-    ChoiceSegments shape;
-    ToggleChip retrigger, sync;
+    SyncPill sync;
     Knob rate, division, fade;
-    juce::ParameterAttachment shapeWatcher, syncWatcher, divisionWatcher;
+    std::unique_ptr<ShapeWell> well;
+    juce::ParameterAttachment shapeWatcher, syncWatcher;
     int shapeIndex = 0;
     float shownPhase = -1.0f;
     bool secondCycle = false;
     bool synced = false;
-    int divisionIndex = 0;
-    float shownHz = -1.0f;
 
-    juce::Rectangle<int> headerRow, vizWell;
-    a11y::Region vizRegion { a11y::Region::Kind::image };
+    juce::Rectangle<int> headerRow, wellBounds;
 };
 
-/** Handles for the sources that are not LFOs: the two envelopes, velocity, mod wheel,
-    aftertouch and key. */
-class SourcesPanel final : public ModuleCard
+/** The sources that are not LFOs or envelopes (`layout::playing`, 190 x 88): "PLAYING" and a 2 x 2 grid of handles,
+    each with its name: Velocity, Mod wheel, Aftertouch and Key. They are always in the patch. (The envelopes' handles
+    sit on their envelope cards.) */
+class PlayingCard final : public ModuleCard
 {
 public:
-    SourcesPanel (plugin::ScratchpadProcessor&, ModulationModel&);
+    PlayingCard (plugin::ScratchpadProcessor&, ModulationModel&);
 
     void paint (juce::Graphics&) override;
     void resized() override;
-
-    /** Envelope handles only work while their module is in the patch. */
-    void refreshPresence();
-
-    static constexpr int width = 232, height = 116;
 
 private:
     struct Chip
     {
         std::unique_ptr<SourceHandle> handle;
         juce::String name;
-        juce::Rectangle<int> area;
+        juce::Rectangle<int> labelArea;
     };
 
-    plugin::ScratchpadProcessor& processor;
-    std::array<Chip, 6> chips;
+    std::array<Chip, 4> chips;
     juce::Rectangle<int> captionRow;
 };
 
-/** One of the eight connection slots: source, destination and amount. Drag sideways to change
-    the amount, double-click to put it back to +50%, click the cross (or press Delete) to remove it.
+/** One connection in the list: source chip, destination, a bar for the amount, the amount and a cross. Drag
+    sideways to change the amount, double-click to put it back to +50%, click the cross (or press Delete) to remove it.
+    It stands for one of the model's eight slots and is only shown while that slot holds a connection.
 
-    From the keyboard an occupied row takes the focus: Left and Down lower the amount by 1, Right and Up raise it by
+    From the keyboard a row takes the focus: Left and Down lower the amount by 1, Right and Up raise it by
     1 (Shift or Page Up and Down: 10); Home or Enter puts it back to +50%; Delete or Backspace removes the connection
-    and moves the focus on; Shift+F10 opens the same remove menu as a right-click. To a screen reader an occupied
-    row is a slider whose value is the amount, so it can be set directly. An empty row is only text. */
+    and moves the focus on; Shift+F10 opens the same remove menu as a right-click. To a screen reader a row is a
+    slider whose value is the amount, so it can be set directly. */
 class ConnectionRow final : public juce::Component
 {
 public:
@@ -143,19 +155,24 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     bool keyPressed (const juce::KeyPress&) override;
-    void focusGained (FocusChangeType) override { repaint(); }
+    void focusGained (FocusChangeType) override;
     void focusLost (FocusChangeType) override { repaint(); }
 
     /** Called when the slot's connection changes, to refresh text and accessibility. */
     void refresh();
 
-    static constexpr int height = 24;
+    bool isFilled() const;
+
+    /** Called when the row takes the keyboard focus, so the list can scroll it into view. */
+    std::function<void (ConnectionRow&)> onFocused;
+
+    static constexpr int height = 17, removeWidth = 16;
 
 private:
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
     void showRemoveMenu();
     void remove();
-    juce::Rectangle<int> removeArea() const { return getLocalBounds().removeFromRight (22); }
+    juce::Rectangle<int> removeArea() const { return getLocalBounds().removeFromRight (removeWidth); }
     void nudge (float percent);
 
     ModulationModel& model;
@@ -167,7 +184,9 @@ private:
     int lastDragX = 0;
 };
 
-/** All eight slots at a glance, two columns of four. */
+/** The patch's connections (`layout::connections`, 262 x 88): "CONNECTIONS" and "3 of 8" (of the model's eight
+    slots), then the filled ones as a list of rows, three in view at a time. The mouse wheel scrolls past that, and
+    so does Tab (a row that takes the focus is brought into view). With none, a line says how to make one. */
 class ConnectionsPanel final : public ModuleCard,
                                private ModulationModel::Listener
 {
@@ -177,15 +196,25 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
-    static constexpr int width = 320, height = 116;
+    static constexpr int visibleRows = 3;
 
 private:
+    class List;
+
     void modulationChanged() override;
+    void layoutRows();
+    void scrollTo (int firstRow);
+    void reveal (ConnectionRow&);
+    int filledCount() const;
 
     ModulationModel& model;
     std::array<std::unique_ptr<ConnectionRow>, engine::numModSlots> rows;
-    juce::Rectangle<int> captionRow;
+    std::unique_ptr<List> list;
+    int firstRow = 0;
+    float wheelRemainder = 0.0f;
+    juce::Rectangle<int> captionRow, listArea;
 };
 
 } // namespace scratchpad::ui

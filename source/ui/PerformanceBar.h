@@ -4,6 +4,7 @@
 #include "ui/Accessibility.h"
 #include "ui/Keyboard.h"
 #include "ui/KeyboardSlider.h"
+#include "ui/VoicingCard.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -58,9 +59,9 @@ protected:
     bool keyChangeIsGesture() const override { return false; }
 };
 
-/** Two-octave on-screen keyboard, pitch bend and mod wheels, octave shift and the
-    computer-keyboard mapping (A to K white keys, W E T Y U black keys, Z/X
-    octave down/up, C/V velocity down/up).
+/** The card along the bottom (`layout::voicingKeyboard`, 904 x 100): the voicing controls, then the pitch bend and
+    mod wheels, the octave shift with the velocity, and a two-octave on-screen keyboard (14 white keys, 27 px each).
+    The computer-keyboard mapping is A to K white keys, W E T Y U black keys, Z/X octave down/up, C/V velocity down/up.
 
     Everything leaves through the processor's lock-free UI queue. The editor
     forwards its key events to `handleKeyPressed` and `handleKeyStateChanged`
@@ -114,8 +115,9 @@ private:
     PitchWheel bendWheel;
     KeyboardSlider modWheel;
     a11y::Region summary;
+    VoicingCard voicing { processor };
 
-    juce::Rectangle<int> octaveLabelArea, velocityLabelArea, hintArea, bendCaptionArea, modCaptionArea;
+    juce::Rectangle<int> octaveLabelArea, velocityLabelArea, bendCaptionArea, modCaptionArea, divider;
 
     int octave = 4; // JUCE octave numbering: the A key plays note 12 * octave
     float velocity = 0.8f;

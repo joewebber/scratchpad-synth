@@ -5,8 +5,8 @@
 #include "plugin/PluginProcessor.h"
 #include "ui/Accessibility.h"
 #include "ui/Knob.h"
-#include "ui/ModuleCards.h"
-#include "ui/ToggleChip.h"
+#include "ui/ModuleCard.h"
+#include "ui/MorePopover.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -24,8 +24,9 @@ inline plugin::Module effectModule (engine::EffectKind kind) noexcept
     return (plugin::Module) ((int) plugin::Module::distortion + (int) kind);
 }
 
-/** A small live picture of one effect, computed from its settings (like `FilterCurve`), not measured:
-    distortion's transfer curve, the chorus's swaying delay, the delay's echoes, the reverb's fading tail. */
+/** A small live picture of one effect (the card's 56 x 40 well), computed from its settings (like `FilterCurve`),
+    not measured: distortion's transfer curve, the chorus's swaying delay, the delay's echoes, the reverb's fading
+    tail. Distortion and delay add a one-word tag at the bottom right (the mode; the time or note length). */
 class EffectDisplay final : public juce::Component,
                             private juce::Timer
 {
@@ -74,8 +75,11 @@ public:
     std::function<void (int)> onNudge;
 };
 
-/** One effect: grip, name, "?", bypass and remove in the header, a picture of what it does, and its knobs.
-    Effects are global, after the voices are summed, so there is no solo and no modulation. */
+/** One effect (`layout::fx[i]`, 184 x 80): in the header the grip, the effect's place in the chain, its name, "?", B
+    and More; below it a 56 x 40 picture of what it does and three knobs. What does not fit (distortion mode and bias,
+    the delay's sync and ping-pong, the reverb's damping) is behind More. While the delay is synced its Time knob is
+    replaced, in the same place, by the note length. Effects are global, after the voices are summed, so there is no
+    solo and no modulation. */
 class EffectCard final : public ModuleCard
 {
 public:
@@ -88,14 +92,13 @@ public:
     engine::EffectKind getKind() const noexcept { return kind; }
     EffectGrip& getGrip() noexcept { return grip; }
 
-    /** Where this effect is among the effects in the patch (1 is first), for the grip's description. */
+    /** Where this effect is among the effects in the patch (1 is first): the number in the header and the grip's description. */
     void setPosition (int position, int count);
-
-    static constexpr int width = 280, height = 130;
 
 private:
     Knob* addKnob (const char* id, const char* caption, const juce::String& accessibleSuffix, bool inRow = true);
     void showDelayMode (bool synced);
+    void fillMore (MorePopover&) const;
     void applyColours();
 
     plugin::ScratchpadProcessor& processor;
@@ -103,14 +106,12 @@ private:
     juce::String name;
     EffectGrip grip;
     EffectDisplay display;
+    int position = 0;
 
     std::vector<std::unique_ptr<Knob>> ownedKnobs;
     std::vector<Knob*> row;                     // left to right
     Knob* alternateKnob = nullptr;              // the delay's note length, in the time knob's place while synced
-    std::unique_ptr<ToggleChip> syncChip, pingPongChip;
     std::unique_ptr<juce::ParameterAttachment> syncWatcher;
-    std::unique_ptr<ChoiceSegments> distortionMode;
-    Knob* distortionBias = nullptr;
 
     juce::Rectangle<int> headerRow;
 };

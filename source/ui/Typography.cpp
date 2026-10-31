@@ -35,7 +35,7 @@ void drawCaption (juce::Graphics& g, const juce::String& text, juce::Rectangle<f
                   juce::Colour colour, juce::Justification justification, float tracking)
 {
     auto font = uiFont (11.0f);
-    font.setExtraKerningFactor (tracking);
+    font.setExtraKerningFactor (cssTracking (tracking));
     g.setFont (font);
     g.setColour (colour);
     g.drawText (text.toUpperCase(), area, justification, false);

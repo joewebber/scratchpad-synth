@@ -6,9 +6,7 @@ namespace scratchpad::ui
 {
 
 TopBar::TopBar (plugin::ScratchpadProcessor& p)
-    : processor (p),
-      limiter ([&p] { return p.getLimiterReductionDb(); }),
-      meter ([&p] { return p.takeOutputPeak(); })
+    : processor (p)
 {
     setTitle ("Top bar");
     setFocusContainerType (FocusContainerType::focusContainer);
@@ -40,7 +38,6 @@ TopBar::TopBar (plugin::ScratchpadProcessor& p)
     redoButton.getProperties().set ("explainId", "control.redo");
     settingsButton.getProperties().set ("explainId", "control.settings");
     noDeviceButton.getProperties().set ("explainId", "control.settings");
-    meter.getProperties().set ("explainId", "control.meter");
     viewButton.getProperties().set ("explainId", "control.viewMenu");
 
     for (auto* b : std::initializer_list<juce::Component*> { &newPatchButton, &savePatchButton, &openPatchButton,
@@ -54,15 +51,13 @@ TopBar::TopBar (plugin::ScratchpadProcessor& p)
     redoButton.setVisible (true);
     settingsButton.setVisible (processor.openAudioSettings != nullptr);
 
-    addAndMakeVisible (limiter);
     addAndMakeVisible (viewButton);
-    addAndMakeVisible (meter);
     addAndMakeVisible (patchRegion);
 
     // Tab, and the screen reader's order, left to right: the patch, its buttons, then the readouts and the buttons on the right.
     int order = 1;
     for (auto* c : std::initializer_list<juce::Component*> { &patchRegion, &newPatchButton, &savePatchButton, &openPatchButton,
-                                                              &undoButton, &redoButton, &limiter, &meter, &noDeviceButton,
+                                                              &undoButton, &redoButton, &noDeviceButton,
                                                               &settingsButton, &viewButton })
         c->setExplicitFocusOrder (order++);
 
@@ -147,7 +142,7 @@ void TopBar::paint (juce::Graphics& g)
     const auto& p = paletteOf (*this);
     auto bounds = getLocalBounds().toFloat();
 
-    drawRaised (g, bounds, 16.0f, p, Elevation::raised, p.surface);
+    drawRaised (g, bounds, 14.0f, p, Elevation::small, p.surface);
 
     // Logo: a circle with a small wave in it.
     const auto logo = juce::Rectangle<float> (32.0f, 32.0f).withCentre ({ 26.0f, bounds.getCentreY() });
@@ -159,15 +154,9 @@ void TopBar::paint (juce::Graphics& g)
     g.strokePath (wave, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     auto title = uiFont (14.0f, Weight::medium);
-    title.setExtraKerningFactor (0.26f);
+    title.setExtraKerningFactor (cssTracking (0.26f));
     g.setFont (title);
-    g.drawText ("SCRATCHPAD", juce::Rectangle<float> (50.0f, bounds.getCentreY() - 15.0f, titleRight - 50.0f, 17.0f),
-                juce::Justification::centredLeft, false);
-
-    g.setColour (p.mute);
-    g.setFont (uiFont (11.0f));
-    g.drawText (juce::String ("v") + SCRATCHPAD_VERSION,
-                juce::Rectangle<float> (50.0f, bounds.getCentreY() + 3.0f, titleRight - 50.0f, 12.0f),
+    g.drawText ("SCRATCHPAD", juce::Rectangle<float> (50.0f, bounds.getCentreY() - 9.0f, titleRight - 50.0f, 18.0f),
                 juce::Justification::centredLeft, false);
 
     if (! patchPill.isEmpty())
@@ -189,7 +178,7 @@ void TopBar::paint (juce::Graphics& g)
 void TopBar::resized()
 {
     auto title = uiFont (14.0f, Weight::medium);
-    title.setExtraKerningFactor (0.26f);
+    title.setExtraKerningFactor (cssTracking (0.26f));
     titleRight = 50.0f + textWidth (title, "SCRATCHPAD");
 
     const int centreY = getHeight() / 2;
@@ -227,9 +216,6 @@ void TopBar::resized()
         noDeviceButton.setBounds (row (right - w, w, 32));
         right -= w + 12;
     }
-
-    meter.setBounds (row (right - 140, 140, 10));
-    limiter.setBounds (row (meter.getX() - 10 - 52, 52, 16));
 }
 
 void TopBar::savePatch()

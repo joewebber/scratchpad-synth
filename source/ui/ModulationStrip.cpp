@@ -2,6 +2,7 @@
 
 #include "plugin/Parameters.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace scratchpad::ui
@@ -12,15 +13,11 @@ namespace info = plugin::modulation;
 
 namespace
 {
-    // 18 x 10 glyphs for the shape selector, in `dsp::LfoShape` order.
-    std::vector<const char*> shapeGlyphs()
+    /** What the shape well names (and More's segments say): the parameter's words, "S&H" for sample and hold. */
+    const juce::StringArray& shapeWords()
     {
-        return { "M1 5c2-5.5 5-5.5 8 0s6 5.5 8 0",     // sine
-                 "M1 5l4-4 8 8 4-4",                   // triangle
-                 "M1 9L9 1V9l8-8",                     // saw up
-                 "M1 1l8 8V1l8 8",                     // saw down
-                 "M1 9V1h8v8h8V1",                     // square
-                 "M1 7h3V3h3v5h3V2h3v6h3V4" };         // sample and hold
+        static const juce::StringArray words { "Sine", "Triangle", "Saw up", "Saw down", "Square", "S&H" };
+        return words;
     }
 
     /** What the picture of an LFO shows at `x` (0 to 1 across two cycles). Sample and hold is four steps. */
@@ -36,16 +33,6 @@ namespace
         lfo.setShape (shape);
         lfo.reset (std::fmod (x * 2.0, 1.0));
         return lfo.value();
-    }
-
-    juce::String sourceCaption (ModSource source)
-    {
-        if (source == ModSource::ampEnv)
-            return "Amp env";
-        if (source == ModSource::filterEnv)
-            return "Filter env";
-
-        return info::sourceName (source);
     }
 }
 
@@ -86,9 +73,15 @@ void SourceHandle::paint (juce::Graphics& g)
 
     drawRaised (g, disc, disc.getWidth() * 0.5f, p, isConnectingFromHere() ? Elevation::lifted : Elevation::small, sourceFill (p, source));
 
+    // "KEY" is as wide as the disc allows.
+    const auto label = info::sourceLabel (source);
+    auto font = uiFont (11.0f, Weight::medium);
+    if (textWidth (font, label) > disc.getWidth() - 3.0f)
+        font = uiFont (10.0f, Weight::medium);
+
     g.setColour (p.onAccent);
-    g.setFont (uiFont (11.0f, Weight::medium));
-    g.drawText (info::sourceLabel (source), disc, juce::Justification::centred, false);
+    g.setFont (font);
+    g.drawText (label, disc, juce::Justification::centred, false);
 
     if (! isEnabled())
         g.endTransparencyLayer();
@@ -204,48 +197,117 @@ bool SourceHandle::keyPressed (const juce::KeyPress& key)
 }
 
 //==============================================================================
+SyncPill::SyncPill (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
+                    const juce::String& accessibleName, juce::UndoManager& undoToUse)
+    : juce::Button ("Sync"), undo (undoToUse)
+{
+    auto* param = state.getParameter (paramID);
+    jassert (param != nullptr);
+
+    setTitle (accessibleName);
+
+    if (const auto* entry = content::Content::get().param (paramID))
+        setDescription (entry->what);
+
+    getProperties().set ("explainId", paramID);
+    setPaintingIsUnclipped (true);
+    setClickingTogglesState (true);
+    attachment = std::make_unique<juce::ButtonParameterAttachment> (*param, *this, &undo);
+
+    // Runs after the attachment has written the value.
+    onClick = [this] { undo.setCurrentTransactionName (getTitle() + (getToggleState() ? " on" : " off")); };
+}
+
+void SyncPill::paintButton (juce::Graphics& g, bool highlighted, bool)
+{
+    const auto& p = paletteOf (*this);
+    const auto bounds = getLocalBounds().toFloat();
+    const bool on = getToggleState();
+
+    if (on)
+    {
+        g.setColour (p.mod);
+        g.fillRoundedRectangle (bounds, bounds.getHeight() * 0.5f);
+    }
+    else
+    {
+        g.setColour (p.track);
+        g.drawRoundedRectangle (bounds.reduced (0.5f), bounds.getHeight() * 0.5f - 0.5f, 1.0f);
+    }
+
+    g.setColour (on ? p.onAccent : highlighted ? p.ink : p.mute);
+    g.setFont (uiFont (11.0f));
+    g.drawText ("Sync", bounds, juce::Justification::centred, false);
+
+    if (hasKeyboardFocus (false))
+        ScratchpadLookAndFeel::drawFocusRing (g, bounds, bounds.getHeight() * 0.5f - 2.5f, p.ink);
+}
+
+//==============================================================================
+/** The shape well: a button (it opens More, where the shape is chosen) that the card paints. */
+class LfoCard::ShapeWell final : public juce::Button
+{
+public:
+    explicit ShapeWell (LfoCard& card, const juce::String& explainId)
+        : juce::Button ("Shape"), owner (card)
+    {
+        getProperties().set ("explainId", explainId);
+        setClickingTogglesState (false);
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    }
+
+    void paintButton (juce::Graphics& g, bool, bool) override
+    {
+        owner.paintWell (g, getLocalBounds().toFloat());
+
+        if (hasKeyboardFocus (false))
+            ScratchpadLookAndFeel::drawFocusRing (g, getLocalBounds().toFloat().reduced (1.0f), 8.0f, paletteOf (*this).ink);
+    }
+
+private:
+    LfoCard& owner;
+};
+
 LfoCard::LfoCard (plugin::ScratchpadProcessor& p, ModulationModel& m, int lfoIndex)
     : model (m),
       index (lfoIndex),
       handle (m, engine::lfoSource ((size_t) lfoIndex)),
-      shape (p.apvts, params::lfo[(size_t) lfoIndex].shape, "LFO " + juce::String (lfoIndex + 1) + " shape", p.undoManager, &Palette::mod),
-      retrigger (p.apvts, params::lfo[(size_t) lfoIndex].retrigger, "Retrigger",
-                 "LFO " + juce::String (lfoIndex + 1) + " retrigger on note", p.undoManager, &Palette::modInk),
-      sync (p.apvts, params::lfo[(size_t) lfoIndex].sync, "Sync",
-            "LFO " + juce::String (lfoIndex + 1) + " tempo sync", p.undoManager, &Palette::modInk),
-      rate (p.apvts, params::lfo[(size_t) lfoIndex].rate, "Rate", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " rate"),
-      division (p.apvts, params::lfo[(size_t) lfoIndex].division, "Beat", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " note length"),
-      fade (p.apvts, params::lfo[(size_t) lfoIndex].fade, "Fade-in", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " fade-in"),
+      sync (p.apvts, params::lfo[(size_t) lfoIndex].sync, "LFO " + juce::String (lfoIndex + 1) + " tempo sync", p.undoManager),
+      rate (p.apvts, params::lfo[(size_t) lfoIndex].rate, "Rate", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " rate", layout::knobs::lfo),
+      division (p.apvts, params::lfo[(size_t) lfoIndex].division, "Beat", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " note length", layout::knobs::lfo),
+      fade (p.apvts, params::lfo[(size_t) lfoIndex].fade, "Fade", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " fade-in", layout::knobs::lfo),
       shapeWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].shape),
-                    [this] (float v) { shapeIndex = juce::jlimit (0, dsp::numLfoShapes - 1, (int) std::lround (v)); repaint (vizWell); }),
-      syncWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].sync), [this] (float) { refreshSync(); }),
-      divisionWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].division), [this] (float) { refreshSync(); })
+                    [this] (float v)
+                    {
+                        shapeIndex = juce::jlimit (0, dsp::numLfoShapes - 1, (int) std::lround (v));
+                        describeWell();
+                    }),
+      syncWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].sync), [this] (float) { refreshSync(); })
 {
     const auto name = "LFO " + juce::String (index + 1);
+    const auto& ids = params::lfo[(size_t) index];
     setTitle (name);
     makeControllable (p, "lfo" + juce::String (index + 1), false);
-    makeRemovable ("Remove " + name, [&p, index = index] { p.removeModule (index == 0 ? plugin::Module::lfo1 : plugin::Module::lfo2); });
+    makeMore (name, &Palette::mod,
+              [this, name] (MorePopover& popover)
+              {
+                  auto& processor = model.getProcessor();
+                  const auto& lfo = params::lfo[(size_t) index];
+                  popover.addSegments (processor, lfo.shape, "Shape", name + " shape", 3, shapeWords());
+                  popover.addSwitch (processor, lfo.retrigger, "Retrigger on each note", name + " retrigger on note");
+              },
+              "Remove " + name, "Remove " + name,
+              [&p, index = index] { p.removeModule (index == 0 ? plugin::Module::lfo1 : plugin::Module::lfo2); });
 
-    shape.setGlyphs (shapeGlyphs());
     rate.setModulation (model, { engine::lfoRateDest ((size_t) index) });
 
-    for (auto* c : std::initializer_list<juce::Component*> { &handle, &shape, &retrigger, &sync, &rate, &division, &fade, &vizRegion })
+    well = std::make_unique<ShapeWell> (*this, ids.shape);
+    well->onClick = [this] { toggleMore(); };
+
+    for (auto* c : std::initializer_list<juce::Component*> { &handle, &sync, well.get(), &rate, &division, &fade })
         addAndMakeVisible (c);
 
-    vizRegion.setTitle (name + " waveform");
-    vizRegion.setDescriber ([this]
-                            {
-                                auto& apvts = model.getProcessor().apvts;
-                                const auto shapeName = params::lfoShapeNames()[juce::jlimit (0, dsp::numLfoShapes - 1, shapeIndex)];
-                                const auto hz = a11y::spokenValue (apvts.getParameter (params::lfo[(size_t) index].rate)->getCurrentValueAsText());
-                                const auto noteLength = apvts.getParameter (params::lfo[(size_t) index].division)->getCurrentValueAsText();
-
-                                return shapeName + " wave, " + (synced ? "one cycle every " + noteLength + " note, following the tempo"
-                                                                       : "repeating at " + hz) + ".";
-                            });
-    rate.setDisabledNote ("Not in use: tempo sync is on, so the note length sets the speed.");
-    division.setDisabledNote ("Not in use: tempo sync is off, so the rate knob sets the speed.");
-    setFocusOrder ({ &handle, &sync, &shape, &vizRegion, &retrigger, &rate, &division, &fade });
+    setFocusOrder ({ &handle, &sync, well.get(), &rate, &division, &fade });
 
     model.addListener (this);
     applyColours();
@@ -271,62 +333,60 @@ void LfoCard::lookAndFeelChanged()
     applyColours();
 }
 
-// With Sync on, the note length sets the speed and the Rate knob steps back (it stays where it was, dimmed).
+// With Sync on, the note length takes the Rate knob's place and caption: one knob for one idea.
 void LfoCard::refreshSync()
 {
     // The parameters' own values: a listener runs before the cached atomics are updated.
+    synced = model.getProcessor().apvts.getParameter (params::lfo[(size_t) index].sync)->getValue() > 0.5f;
+    rate.setVisible (! synced);
+    division.setVisible (synced);
+    describeWell();
+}
+
+void LfoCard::describeWell()
+{
+    if (well == nullptr)
+        return;
+
     auto& apvts = model.getProcessor().apvts;
-    const auto read = [&apvts] (const char* id)
-    {
-        auto* param = apvts.getParameter (id);
-        return param->convertFrom0to1 (param->getValue());
-    };
+    const auto shapeName = shapeWords()[shapeIndex];
+    const auto hz = a11y::spokenValue (apvts.getParameter (params::lfo[(size_t) index].rate)->getCurrentValueAsText());
+    const auto noteLength = apvts.getParameter (params::lfo[(size_t) index].division)->getCurrentValueAsText();
 
-    const auto& ids = params::lfo[(size_t) index];
-    synced = read (ids.sync) > 0.5f;
-    divisionIndex = (int) std::lround (read (ids.division));
-
-    rate.setEnabled (! synced);
-    division.setEnabled (synced);
-    shownHz = -1.0f;
-    repaint (vizWell.expanded (4));
+    well->setTitle (getTitle() + " shape, " + shapeName + ". Choose a shape");
+    well->setDescription (params::lfoShapeNames()[shapeIndex] + " wave, "
+                          + (synced ? "one cycle every " + noteLength + " note, following the tempo" : "repeating at " + hz) + ".");
+    well->repaint();
 }
 
 void LfoCard::resized()
 {
-    constexpr int left = 8, leftWidth = 116, top = 4;
+    namespace pad = layout::padding;
+    constexpr int wellHeight = 40, rowGap = 6, bodyGap = 6;
 
-    headerRow = { left, top, width - 2 * left, SourceHandle::diameter };
-    handle.setBounds (left, top, SourceHandle::diameter, SourceHandle::diameter);
-    placeRemoveButton (headerRow);
-    sync.setBounds (88, top + 3, 62, 20);
+    headerRow = { pad::lfo + 1, pad::lfo, getWidth() - 2 * (pad::lfo + 1), layout::header::lfoHeight };
+    handle.setBounds (headerRow.withWidth (SourceHandle::diameter));
+    placeHeader (headerRow, layout::header::handle);
 
-    vizWell = { left, 34, leftWidth, 30 };
-    vizRegion.setBounds (vizWell);
-    shape.setBounds (left, 68, leftWidth, 22);
-    retrigger.setBounds (left, 94, leftWidth, 18);
+    const int buttonsWidth = 2 * (layout::header::buttonWidth + layout::header::buttonGap);
+    sync.setBounds (headerRow.getRight() - buttonsWidth - SyncPill::width, headerRow.getCentreY() - SyncPill::height / 2,
+                    SyncPill::width, SyncPill::height);
 
-    rate.setBounds (130, 34, Knob::knobWidth, Knob::knobHeight);
-    division.setBounds (182, 34, Knob::knobWidth, Knob::knobHeight);
-    fade.setBounds (234, 34, Knob::knobWidth, Knob::knobHeight);
+    const int bodyY = headerRow.getBottom() + rowGap;
+    const int knobsWidth = 2 * layout::knobs::lfo.cell + bodyGap;
+    wellBounds = { headerRow.getX(), bodyY, headerRow.getWidth() - knobsWidth - bodyGap, wellHeight };
+    well->setBounds (wellBounds);
+
+    const int knobX = wellBounds.getRight() + bodyGap;
+    rate.setBoundsAt (knobX, bodyY);
+    division.setBoundsAt (knobX, bodyY);
+    fade.setBoundsAt (knobX + layout::knobs::lfo.cell + bodyGap, bodyY);
 }
 
 void LfoCard::liveUpdated()
 {
     if (! isVisible())
         return;
-
-    // A synced LFO's speed follows the host tempo, which can move while it plays.
-    if (synced)
-    {
-        const float hz = params::lfoSyncRateHz (model.getProcessor().getBpm(), divisionIndex);
-
-        if (std::abs (hz - shownHz) > 0.001f)
-        {
-            shownHz = hz;
-            repaint (vizWell.expanded (4));
-        }
-    }
 
     const float phase = (float) model.liveLfoPhase (index);
 
@@ -336,26 +396,18 @@ void LfoCard::liveUpdated()
             secondCycle = ! secondCycle; // wrapped: the picture shows two cycles, so the dot moves on to the other one
 
         shownPhase = phase;
-        repaint (vizWell.expanded (4));
+        well->repaint();
     }
 }
 
-void LfoCard::paint (juce::Graphics& g)
+// Two cycles of the shape, with a dot that follows the phase. The dot sweeps both cycles, so it needs to know which
+// of the two it is on: count the wraps.
+void LfoCard::paintWell (juce::Graphics& g, juce::Rectangle<float> bounds) const
 {
-    ModuleCard::paint (g);
-
     const auto& p = paletteOf (*this);
+    drawInset (g, bounds, 9.0f, p, p.well);
 
-    g.setColour (p.ink);
-    g.setFont (uiFont (13.0f, Weight::medium));
-    g.drawText ("LFO " + juce::String (index + 1),
-                headerRow.withTrimmedLeft (SourceHandle::diameter + 8).withTrimmedRight (76), juce::Justification::centredLeft, false);
-
-    drawInset (g, vizWell.toFloat(), 8.0f, p, p.well);
-
-    // Two cycles of the shape, with a dot that follows the phase. The dot sweeps both cycles, so it
-    // needs to know which of the two it is on: count the wraps.
-    const auto area = vizWell.toFloat().reduced (8.0f, 5.0f);
+    const auto area = bounds.reduced (4.0f, 8.0f);
     const auto shapeValue = (dsp::LfoShape) shapeIndex;
 
     juce::Path wave;
@@ -376,7 +428,7 @@ void LfoCard::paint (juce::Graphics& g)
     }
 
     g.setColour (p.modInk);
-    g.strokePath (wave, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.strokePath (wave, juce::PathStrokeType (1.6f, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
 
     if (shownPhase >= 0.0f)
     {
@@ -387,83 +439,67 @@ void LfoCard::paint (juce::Graphics& g)
         g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ dotX, dotY }));
     }
 
-    // The speed the tempo gives this LFO, while it is synced.
-    if (synced)
-    {
-        const float hz = params::lfoSyncRateHz (model.getProcessor().getBpm(), divisionIndex);
-        const auto label = juce::String (hz, hz < 10.0f ? 2 : 1) + " Hz";
-        const auto font = uiFont (11.0f);
-        const auto tag = juce::Rectangle<float> (textWidth (font, label) + 8.0f, 13.0f)
-                             .withRightX (vizWell.toFloat().getRight() - 3.0f).withY ((float) vizWell.getY() + 2.0f);
-        g.setColour (p.well.withAlpha (0.85f));
-        g.fillRoundedRectangle (tag, 4.0f);
-        g.setColour (p.ink2);
-        g.setFont (font);
-        g.drawText (label, tag, juce::Justification::centred, false);
-    }
+    g.setColour (p.ink2);
+    g.setFont (uiFont (11.0f));
+    g.drawText (shapeWords()[shapeIndex], bounds.withTrimmedLeft (6.0f).withTrimmedTop (3.0f).withHeight (15.0f),
+                juce::Justification::centredLeft, false);
+}
+
+void LfoCard::paint (juce::Graphics& g)
+{
+    ModuleCard::paint (g);
+    drawHeader (g, paletteOf (*this), headerRow.toFloat(), paletteOf (*this).mod, nullptr, getTitle(), layout::header::handle);
 }
 
 //==============================================================================
-SourcesPanel::SourcesPanel (plugin::ScratchpadProcessor& p, ModulationModel& m)
-    : processor (p)
+PlayingCard::PlayingCard (plugin::ScratchpadProcessor&, ModulationModel& m)
 {
-    setTitle ("Other modulation sources");
+    setTitle ("Playing sources");
     setExplainKey ("sources");
 
-    const ModSource order[] = { ModSource::ampEnv, ModSource::filterEnv, ModSource::velocity,
-                                ModSource::modWheel, ModSource::aftertouch, ModSource::key };
+    const ModSource order[] = { ModSource::velocity, ModSource::modWheel, ModSource::aftertouch, ModSource::key };
+    const char* const names[] = { "Velocity", "Mod wheel", "Aftertouch", "Key" };
 
     for (size_t i = 0; i < chips.size(); ++i)
     {
         chips[i].handle = std::make_unique<SourceHandle> (m, order[i]);
-        chips[i].name = sourceCaption (order[i]);
+        chips[i].name = names[i];
         addAndMakeVisible (*chips[i].handle);
     }
-
-    refreshPresence();
 }
 
-void SourcesPanel::refreshPresence()
+void PlayingCard::resized()
 {
-    for (auto& c : chips)
-    {
-        const auto source = c.handle->getSource();
-        c.handle->setEnabled (processor.isModSourcePresent (source));
-    }
+    namespace pad = layout::padding;
+    constexpr int captionHeight = 14, gridGap = 6, labelGap = 5;
 
-    repaint();
-}
+    const int inner = getWidth() - 2 * pad::playing - 2;
+    const int columnWidth = (inner - gridGap) / 2;
+    const int top = pad::playing + captionHeight + gridGap;
 
-void SourcesPanel::resized()
-{
-    constexpr int pitchX = 108, pitchY = 30, top = 24;
-
-    captionRow = { pad, 6, width - 2 * pad, 14 };
+    captionRow = { pad::playing + 2, pad::playing, inner, captionHeight };
 
     for (size_t i = 0; i < chips.size(); ++i)
     {
-        const int col = (int) i % 2, row = (int) i / 2;
-        auto& c = chips[i];
-        c.area = { pad + col * pitchX, top + row * pitchY, pitchX - 4, SourceHandle::diameter };
-        c.handle->setBounds (c.area.withWidth (SourceHandle::diameter + 6).withTrimmedLeft (0));
+        const int x = captionRow.getX() + ((int) i % 2) * (columnWidth + gridGap);
+        const int y = top + ((int) i / 2) * (SourceHandle::diameter + gridGap);
+        chips[i].handle->setBounds (x, y, SourceHandle::diameter, SourceHandle::diameter);
+        chips[i].labelArea = { x + SourceHandle::diameter + labelGap, y, columnWidth - SourceHandle::diameter - labelGap, SourceHandle::diameter };
     }
 }
 
-void SourcesPanel::paint (juce::Graphics& g)
+void PlayingCard::paint (juce::Graphics& g)
 {
     ModuleCard::paint (g);
 
     const auto& p = paletteOf (*this);
-    drawCaption (g, "Other sources", captionRow.toFloat(), p.ink2);
+    drawCaption (g, "Playing", captionRow.toFloat(), p.ink2);
 
-    g.setFont (uiFont (12.0f));
+    g.setColour (p.ink2);
+    g.setFont (uiFont (11.0f));
 
     for (const auto& c : chips)
-    {
-        const bool present = c.handle->isEnabled();
-        g.setColour (present ? p.ink : p.mute.withMultipliedAlpha (0.6f));
-        g.drawText (c.name, c.area.withTrimmedLeft (SourceHandle::diameter + 10), juce::Justification::centredLeft, true);
-    }
+        g.drawText (c.name, c.labelArea, juce::Justification::centredLeft, false);
 }
 
 //==============================================================================
@@ -471,9 +507,22 @@ ConnectionRow::ConnectionRow (ModulationModel& m, int slotIndex)
     : model (m), slot (slotIndex)
 {
     setPaintingIsUnclipped (true);
-    setExplicitFocusOrder (slotIndex + 1); // Tab visits slot 1 to 8, not the two columns row by row
+    setExplicitFocusOrder (slotIndex + 1); // Tab visits slot 1 to 8
     getProperties().set ("explainId", "mod" + juce::String (slotIndex + 1) + ".amount");
     refresh();
+}
+
+bool ConnectionRow::isFilled() const
+{
+    return model.getConnections()[(size_t) slot].active();
+}
+
+void ConnectionRow::focusGained (FocusChangeType)
+{
+    repaint();
+
+    if (onFocused)
+        onFocused (*this);
 }
 
 void ConnectionRow::refresh()
@@ -550,56 +599,61 @@ std::unique_ptr<juce::AccessibilityHandler> ConnectionRow::createAccessibilityHa
 void ConnectionRow::paint (juce::Graphics& g)
 {
     const auto& p = paletteOf (*this);
-    const auto bounds = getLocalBounds().toFloat().reduced (0.0f, 1.0f);
+    const auto bounds = getLocalBounds().toFloat();
     const auto& c = model.getConnections()[(size_t) slot];
 
     if (! c.active())
-    {
-        juce::Path outline;
-        outline.addRoundedRectangle (bounds.reduced (1.0f), 8.0f);
-        juce::Path dashed;
-        const float dashes[] = { 3.0f, 3.0f };
-        juce::PathStrokeType (1.0f).createDashedStroke (dashed, outline, dashes, 2);
-        g.setColour (p.dash.withAlpha (0.55f));
-        g.fillPath (dashed);
         return;
+
+    constexpr float chipWidth = 22.0f, chipHeight = 16.0f, destWidth = 76.0f, amountWidth = 30.0f, gap = 7.0f, barHeight = 6.0f;
+
+    auto row = bounds;
+
+    const auto chip = row.removeFromLeft (chipWidth).withSizeKeepingCentre (chipWidth, chipHeight);
+    g.setColour (sourceFill (p, c.source));
+    g.fillRoundedRectangle (chip, chipHeight * 0.5f);
+    g.setColour (p.onAccent);
+    g.setFont (uiFont (11.0f));
+    g.drawText (info::sourceLabel (c.source), chip, juce::Justification::centred, false);
+
+    row.removeFromLeft (gap);
+    g.setColour (p.ink);
+    g.setFont (uiFont (12.0f));
+    g.drawText (info::destinationName (c.dest), row.removeFromLeft (destWidth), juce::Justification::centredLeft, true);
+    row.removeFromLeft (gap);
+
+    // The cross, then the amount, then (what is left) the bar, which grows from its middle in the source's colour.
+    const auto cross = removeArea().toFloat();
+    row.removeFromRight ((float) removeWidth + gap);
+
+    const auto amount = row.removeFromRight (amountWidth);
+    row.removeFromRight (gap);
+    g.setColour (p.ink2);
+    g.setFont (uiFont (11.0f));
+    g.drawText (info::amountText (c.amount), amount, juce::Justification::centredRight, false);
+
+    const auto bar = row.withSizeKeepingCentre (row.getWidth(), barHeight);
+    drawInset (g, bar, barHeight * 0.5f, p, p.well);
+
+    const float mid = bar.getCentreX();
+    const float end = mid + (float) c.amount * bar.getWidth() * 0.5f;
+
+    if (std::abs (end - mid) >= 1.0f)
+    {
+        g.setColour (sourceInk (p, c.source));
+        g.fillRoundedRectangle ({ std::min (mid, end), bar.getY(), std::abs (end - mid), barHeight }, barHeight * 0.5f);
     }
 
-    drawInset (g, bounds, 8.0f, p, p.well);
+    g.setColour (p.mute);
+    g.fillRect (juce::Rectangle<float> (1.0f, 10.0f).withCentre ({ mid, bar.getCentreY() }));
 
-    // The amount as a bar growing from the middle, in the source's colour.
-    const auto inside = bounds.reduced (3.0f, 3.0f);
-    const float mid = inside.getCentreX();
-    const float end = mid + (float) c.amount * inside.getWidth() * 0.5f;
-    g.setColour (sourceFill (p, c.source).withAlpha (0.28f));
-    g.fillRoundedRectangle ({ std::min (mid, end), inside.getY(), std::max (std::abs (end - mid), 2.0f), inside.getHeight() }, 5.0f);
-
-    // Source tag.
-    auto row = bounds.reduced (5.0f, 0.0f);
-    const auto tag = row.removeFromLeft (26.0f).reduced (0.0f, 3.0f);
-    g.setColour (sourceFill (p, c.source));
-    g.fillRoundedRectangle (tag, tag.getHeight() * 0.5f);
-    g.setColour (p.onAccent);
-    g.setFont (uiFont (11.0f, Weight::medium));
-    g.drawText (info::sourceLabel (c.source), tag, juce::Justification::centred, false);
-
-    // Cross, amount, destination.
-    const auto cross = removeArea().toFloat().withSizeKeepingCentre (14.0f, 14.0f);
-    row.removeFromRight (20.0f);
+    const auto mark = cross.withSizeKeepingCentre (8.0f, 8.0f);
     g.setColour (overRemove ? p.ink : p.mute);
-    g.drawLine (cross.getX() + 3.5f, cross.getY() + 3.5f, cross.getRight() - 3.5f, cross.getBottom() - 3.5f, 1.3f);
-    g.drawLine (cross.getRight() - 3.5f, cross.getY() + 3.5f, cross.getX() + 3.5f, cross.getBottom() - 3.5f, 1.3f);
+    g.drawLine (mark.getX(), mark.getY(), mark.getRight(), mark.getBottom(), 1.3f);
+    g.drawLine (mark.getRight(), mark.getY(), mark.getX(), mark.getBottom(), 1.3f);
 
-    g.setColour (p.ink);
-    g.setFont (uiFont (11.0f));
-    const auto amount = row.removeFromRight (34.0f);
-    g.drawText (info::amountText (c.amount), amount, juce::Justification::centredRight, false);
-    g.setColour (p.ink2);
-    g.drawText (info::destinationName (c.dest), row.withTrimmedLeft (5.0f), juce::Justification::centredLeft, true);
-
-    // Inside the row's own edges, so the next row (which paints after this one) does not cover the ring.
     if (hasKeyboardFocus (false))
-        ScratchpadLookAndFeel::drawFocusRing (g, bounds.reduced (3.5f), 5.5f, p.ink);
+        ScratchpadLookAndFeel::drawFocusRing (g, bounds.reduced (1.0f), 6.0f, p.ink);
 }
 
 void ConnectionRow::mouseMove (const juce::MouseEvent& e)
@@ -765,18 +819,40 @@ bool ConnectionRow::keyPressed (const juce::KeyPress& key)
 }
 
 //==============================================================================
+/** Clips the rows to the three that are in view. */
+class ConnectionsPanel::List final : public juce::Component
+{
+public:
+    List() { setInterceptsMouseClicks (false, true); }
+
+private:
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return a11y::makeIgnoredHandler (*this);
+    }
+};
+
+namespace
+{
+    constexpr int rowPitch = ConnectionRow::height + 2;
+}
+
 ConnectionsPanel::ConnectionsPanel (ModulationModel& m)
-    : model (m)
+    : model (m), list (std::make_unique<List>())
 {
     setTitle ("Modulation connections");
     setExplainKey ("connections");
 
+    addAndMakeVisible (*list);
+
     for (size_t i = 0; i < rows.size(); ++i)
     {
         rows[i] = std::make_unique<ConnectionRow> (m, (int) i);
-        addAndMakeVisible (*rows[i]);
+        rows[i]->onFocused = [this] (ConnectionRow& row) { reveal (row); };
+        list->addChildComponent (*rows[i]);
     }
 
+    layoutRows();
     model.addListener (this);
 }
 
@@ -785,26 +861,94 @@ ConnectionsPanel::~ConnectionsPanel()
     model.removeListener (this);
 }
 
+int ConnectionsPanel::filledCount() const
+{
+    return (int) std::count_if (rows.begin(), rows.end(), [] (const auto& r) { return r->isFilled(); });
+}
+
 void ConnectionsPanel::modulationChanged()
 {
     for (auto& r : rows)
         r->refresh();
 
-    repaint (captionRow);
+    layoutRows();
+    repaint();
+}
+
+// Only the filled slots are rows, in slot order; `firstRow` is the one at the top of the list.
+void ConnectionsPanel::layoutRows()
+{
+    firstRow = juce::jlimit (0, juce::jmax (0, filledCount() - visibleRows), firstRow);
+
+    int shown = 0;
+
+    for (auto& r : rows)
+    {
+        const bool filled = r->isFilled();
+        r->setVisible (filled);
+
+        if (filled)
+            r->setBounds (0, (shown - firstRow) * rowPitch, list->getWidth(), ConnectionRow::height);
+
+        shown += filled ? 1 : 0;
+    }
+}
+
+void ConnectionsPanel::scrollTo (int row)
+{
+    const int clamped = juce::jlimit (0, juce::jmax (0, filledCount() - visibleRows), row);
+
+    if (clamped != firstRow)
+    {
+        firstRow = clamped;
+        layoutRows();
+    }
+}
+
+void ConnectionsPanel::reveal (ConnectionRow& row)
+{
+    int position = 0;
+
+    for (auto& r : rows)
+    {
+        if (r.get() == &row)
+            break;
+
+        position += r->isFilled() ? 1 : 0;
+    }
+
+    if (position < firstRow)
+        scrollTo (position);
+    else if (position >= firstRow + visibleRows)
+        scrollTo (position - visibleRows + 1);
+}
+
+void ConnectionsPanel::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+{
+    if (filledCount() <= visibleRows)
+        return;
+
+    // A notch is about 0.1 of a row's worth of delta on most systems; smooth-scrolling pads send many small ones.
+    wheelRemainder += (wheel.isReversed ? -1.0f : 1.0f) * wheel.deltaY * 10.0f;
+    const int steps = (int) wheelRemainder;
+
+    if (steps != 0)
+    {
+        wheelRemainder -= (float) steps;
+        scrollTo (firstRow - steps);
+    }
 }
 
 void ConnectionsPanel::resized()
 {
-    constexpr int top = 24, gap = 4;
-    const int rowWidth = (getWidth() - 2 * pad - gap) / 2;
+    namespace pad = layout::padding;
+    constexpr int captionHeight = 14, captionGap = 1;
 
-    captionRow = { pad, 6, getWidth() - 2 * pad, 14 };
-
-    for (size_t i = 0; i < rows.size(); ++i)
-    {
-        const int col = (int) i / 4, row = (int) i % 4;
-        rows[i]->setBounds (pad + col * (rowWidth + gap), top + row * ConnectionRow::height, rowWidth, ConnectionRow::height);
-    }
+    const int inner = getWidth() - 2 * (pad::playing + 2);
+    captionRow = { pad::playing + 2, pad::playing - 1, inner, captionHeight };
+    listArea = { captionRow.getX(), captionRow.getBottom() + captionGap + 2, inner, (visibleRows - 1) * rowPitch + ConnectionRow::height };
+    list->setBounds (listArea);
+    layoutRows();
 }
 
 void ConnectionsPanel::paint (juce::Graphics& g)
@@ -817,6 +961,12 @@ void ConnectionsPanel::paint (juce::Graphics& g)
     g.setFont (uiFont (11.0f));
     g.drawText (juce::String (model.countConnections()) + " of " + juce::String (engine::numModSlots),
                 captionRow, juce::Justification::centredRight, false);
+
+    if (model.countConnections() == 0)
+    {
+        g.setFont (uiFont (12.0f));
+        g.drawText ("Drag a coloured handle onto any knob.", listArea.withHeight (ConnectionRow::height), juce::Justification::centredLeft, true);
+    }
 }
 
 } // namespace scratchpad::ui

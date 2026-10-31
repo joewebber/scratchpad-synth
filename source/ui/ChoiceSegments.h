@@ -51,6 +51,21 @@ public:
         attachment->sendInitialUpdate();
     }
 
+    /** A row of segments that is not bound to one parameter: the owner says which is selected (`setSelectedIndex`) and
+        gets `onPick`. `explainId` is the parameter or control the Explain panel and a screen reader describe it by. */
+    ChoiceSegments (const juce::StringArray& choiceLabels, const juce::String& explainId, const juce::String& captionText,
+                    juce::UndoManager& undoToUse, juce::Colour Palette::* familyColour)
+        : caption (captionText), paramId (explainId), undo (undoToUse), family (familyColour), param (nullptr), labels (choiceLabels)
+    {
+        setPaintingIsUnclipped (true);
+        setWantsKeyboardFocus (true);
+        setTitle (caption);
+        getProperties().set ("explainId", explainId);
+    }
+
+    /** Selects a segment without picking it (the owner follows a parameter). */
+    void setSelectedIndex (int i) { setSelected (i); }
+
     /** Draw these glyphs instead of the choice text. One path per choice. */
     void setGlyphs (const std::vector<const char*>& svgPaths)
     {
@@ -59,6 +74,26 @@ public:
             glyphs.push_back (juce::Drawable::parseSVGPath (d));
         repaint();
     }
+
+    /** Show these words on the segments instead of the parameter's own text (a screen reader still hears the
+        parameter's). One per choice. */
+    void setDisplayLabels (const juce::StringArray& words)
+    {
+        jassert (words.size() == labels.size());
+        display = words;
+        repaint();
+    }
+
+    /** Lay the segments out in rows of this many (a wrapped control, as in a pop-over). 0 is one row. */
+    void setColumns (int count)
+    {
+        columns = juce::jmax (0, count);
+        repaint();
+    }
+
+    /** Rows the segments take when laid out in `columns` per row. */
+    static int rowsFor (int segments, int columns) { return columns <= 0 ? 1 : (segments + columns - 1) / columns; }
+    int getNumSegments() const noexcept { return labels.size(); }
 
     /** Called with the picked index instead of writing the parameter. */
     std::function<void (int)> onPick;
@@ -98,10 +133,9 @@ public:
             }
             else
             {
-                auto font = uiFont (11.0f, Weight::medium);
-                font.setExtraKerningFactor (0.06f);
-                g.setFont (font);
-                g.drawText (labels[i].toUpperCase(), seg, juce::Justification::centred, false);
+                // Sentence case, no tracking: capitals and letter-spacing are what clipped "Notch" and "Hard clip".
+                g.setFont (uiFont (12.0f, on ? Weight::medium : Weight::regular));
+                g.drawText (display.isEmpty() ? labels[i] : display[i], seg, juce::Justification::centred, false);
             }
         }
 
@@ -152,8 +186,11 @@ private:
     {
         constexpr float inset = 2.0f, gap = 2.0f;
         const auto inner = getLocalBounds().toFloat().reduced (inset);
-        const float w = (inner.getWidth() - gap * (float) (labels.size() - 1)) / (float) labels.size();
-        return { inner.getX() + (float) i * (w + gap), inner.getY(), w, inner.getHeight() };
+        const int perRow = columns > 0 ? columns : labels.size();
+        const int rows = rowsFor (labels.size(), columns);
+        const float w = (inner.getWidth() - gap * (float) (perRow - 1)) / (float) perRow;
+        const float h = (inner.getHeight() - gap * (float) (rows - 1)) / (float) rows;
+        return { inner.getX() + (float) (i % perRow) * (w + gap), inner.getY() + (float) (i / perRow) * (h + gap), w, h };
     }
 
     int indexAt (juce::Point<float> position) const
@@ -213,6 +250,9 @@ private:
             return;
         }
 
+        if (attachment == nullptr)
+            return;
+
         const auto old = labels[selected];
         attachment->setValueAsCompleteGesture ((float) i);
         undo.setCurrentTransactionName (caption + " " + old + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 ")) + labels[i]);
@@ -222,7 +262,8 @@ private:
     juce::UndoManager& undo;
     juce::Colour Palette::* family;
     juce::RangedAudioParameter* param;
-    juce::StringArray labels;
+    juce::StringArray labels, display;
+    int columns = 0;
     std::vector<juce::Path> glyphs;
     std::unique_ptr<juce::ParameterAttachment> attachment;
     int selected = 0, hovered = -1;

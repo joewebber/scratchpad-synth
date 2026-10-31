@@ -4,6 +4,7 @@
 #include "plugin/ModulationInfo.h"
 #include "ui/Accessibility.h"
 #include "ui/KeyboardSlider.h"
+#include "ui/Layout.h"
 #include "ui/LookAndFeel.h"
 #include "ui/ModArcs.h"
 #include "ui/ModulationModel.h"
@@ -19,8 +20,19 @@
 namespace scratchpad::ui
 {
 
-/** A rotary control bound to one parameter, with the value in the parameter's
-    own text below the dial and the caption under that.
+/** The size of a knob's component: its disc's cell (the diameter and a margin each side, square) with the one line
+    of text under it. Used by `Knob`, `ModDial` and the cards that lay them out. */
+struct KnobGeometry
+{
+    static constexpr int cellFor (const layout::KnobSize& size) noexcept { return size.diameter + 2 * knobMetrics::margin; }
+    static constexpr int heightFor (const layout::KnobSize& size) noexcept { return cellFor (size) + knobMetrics::labelGap + knobMetrics::labelHeight; }
+    static constexpr float firstArcRadiusFor (const layout::KnobSize& size) noexcept { return (float) size.diameter * 0.5f + 6.0f; }
+};
+
+/** A rotary control bound to one parameter. At rest the line under the dial is its caption; while the pointer is
+    over it, it is being dragged or it has the keyboard focus, the parameter's own text replaces the caption. A click
+    on the value (when it shows) turns it into a typed entry. The component is `layout::KnobSize::cell` wide and
+    `height()` tall.
 
     Vertical drag, Shift for fine adjustment (both built into juce::Slider),
     double-click to reset, scroll wheel, and click the value to type one.
@@ -41,8 +53,8 @@ class Knob final : public juce::Component,
 public:
     Knob (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
           const juce::String& captionText, juce::UndoManager& undoToUse,
-          const juce::String& accessibleName = {})
-        : caption (captionText), paramId (paramID), undo (undoToUse)
+          const juce::String& accessibleName = {}, layout::KnobSize knobSize = layout::knobs::standard)
+        : size (knobSize), caption (captionText), paramId (paramID), undo (undoToUse)
     {
         param = state.getParameter (paramID);
         jassert (param != nullptr);
@@ -53,7 +65,8 @@ public:
         slider.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
                                     juce::MathConstants<float>::pi * 2.75f, true);
-        slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, knobWidth - 2, pillHeight);
+        slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, size.cell, knobMetrics::labelHeight);
+        slider.getProperties().set (knobMetrics::discSize, size.diameter);
         slider.setTextBoxIsEditable (true);
         slider.setMouseDragSensitivity (220);
         slider.setScrollWheelEnabled (true);
@@ -72,9 +85,17 @@ public:
         slider.updateText();
         slider.tidyValueLabel();
 
-        slider.onDragStart = [this] { valueAtDragStart = slider.getValue(); };
+        slider.addMouseListener (this, true);
+        slider.onFaceChange = [this] { refreshFace(); };
+        slider.beforeTyping = [this] { forceValue = true; refreshFace(); };
+        refreshFace();
+
+        slider.onDragStart = [this] { valueAtDragStart = slider.getValue(); dragging = true; refreshFace(); };
         slider.onDragEnd = [this]
         {
+            dragging = false;
+            refreshFace();
+
             if (std::abs (slider.getValue() - valueAtDragStart) > 1.0e-6)
                 undo.setCurrentTransactionName (slider.getTitle() + " " + slider.getTextFromValue (valueAtDragStart)
                                                 + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 "))
@@ -105,7 +126,33 @@ public:
     /** What a screen reader is told when the knob is dimmed, in place of nothing: why it is not in use. */
     void setDisabledNote (const juce::String& why) { disabledNote = why; }
 
+    /** The value arc runs from the middle of the travel (pitch, pan, an envelope amount). */
+    void setBipolar (bool shouldBeBipolar)
+    {
+        slider.getProperties().set (knobMetrics::bipolar, shouldBeBipolar);
+        slider.repaint();
+    }
+
     juce::Slider& getSlider() noexcept { return slider; }
+
+    /** Shows the caption and the value together (a pop-over's knobs, which have room): caption first, value under it. */
+    void setShowsCaptionAndValue()
+    {
+        both = true;
+        slider.getProperties().set (knobMetrics::valueY, KnobGeometry::cellFor (size) + knobMetrics::labelGap + knobMetrics::labelHeight);
+        refreshFace();
+    }
+
+    /** The value is always showing and the caption never does (a table's cells: the column headings are the labels). */
+    void setShowsValueOnly()
+    {
+        valueOnly = true;
+        refreshFace();
+    }
+
+    const layout::KnobSize& getSize() const noexcept { return size; }
+    int height() const noexcept { return KnobGeometry::heightFor (size) + (both ? knobMetrics::labelHeight : 0); }
+    void setBoundsAt (int x, int y) { setBounds (x, y, size.cell, height()); }
 
     /** Makes this knob a destination for `dests` (the first is the default for a drop). With
         `hardWiredFilterEnvAmount`, the filter envelope's own amount shows as one more arc. */
@@ -123,8 +170,9 @@ public:
     // ModTarget
     std::span<const engine::ModDest> getDestinations() const override { return destinations; }
     juce::Component& getComponent() override { return *this; }
-    juce::Point<float> getRingCentre() const override { return { knobWidth * 0.5f, (float) (knobHeight - pillHeight - captionHeight) * 0.5f }; }
-    float getDiscRadius() const override { return 14.75f; }
+    juce::Point<float> getRingCentre() const override { return { (float) getWidth() * 0.5f, (float) KnobGeometry::cellFor (size) * 0.5f }; }
+    float getDiscRadius() const override { return (float) size.diameter * 0.5f; }
+    float getFirstArcRadius() const override { return KnobGeometry::firstArcRadiusFor (size); }
 
     std::vector<ModArc> getArcs() const override
     {
@@ -146,19 +194,31 @@ public:
             const auto arcs = getArcs();
             if (! arcs.empty())
                 drawModArcs (g, paletteOf (*this), getRingCentre(), juce::MathConstants<float>::pi * 1.25f,
-                             juce::MathConstants<float>::pi * 2.75f, arcs);
+                             juce::MathConstants<float>::pi * 2.75f, arcs, getFirstArcRadius());
         }
 
-        // A caption may run a little wider than the knob; neighbours are far enough apart for that.
-        drawCaption (g, caption, getLocalBounds().removeFromBottom (captionHeight).expanded (captionOverhang, 0).toFloat(),
-                     isEnabled() ? paletteOf (*this).mute : paletteOf (*this).mute.withMultipliedAlpha (0.5f),
-                     juce::Justification::centred, 0.04f);
+        // The caption is the resting face of the line under the dial; the value replaces it (see `refreshFace`).
+        if (! valueOnly && (! valueShowing || both))
+        {
+            const auto line = juce::Rectangle<float> ((float) getWidth(), (float) knobMetrics::labelHeight)
+                                  .withY ((float) (KnobGeometry::cellFor (size) + knobMetrics::labelGap));
+            drawCaption (g, caption, line.expanded (captionOverhang, 0.0f),
+                         isEnabled() ? paletteOf (*this).mute : paletteOf (*this).mute.withMultipliedAlpha (0.5f),
+                         juce::Justification::centred, 0.04f);
+        }
     }
 
     void resized() override
     {
-        slider.setBounds (getLocalBounds().withTrimmedBottom (captionHeight));
+        slider.setBounds (getLocalBounds());
     }
+
+    /** The slider lays its disc and value box out from the look and feel, which a knob built outside the editor (in a
+        pop-over, before it is shown) only gets once it has a parent. */
+    void parentHierarchyChanged() override { slider.resized(); }
+
+    void mouseEnter (const juce::MouseEvent&) override { refreshFace(); }
+    void mouseExit (const juce::MouseEvent&) override  { refreshFace(); }
 
     void enablementChanged() override { repaint(); }
 
@@ -168,13 +228,26 @@ public:
         return a11y::makeIgnoredHandler (*this);
     }
 
-    static constexpr int knobWidth = 52;
-    static constexpr int pillHeight = 17;
-    static constexpr int captionHeight = 14;
     static constexpr int captionOverhang = 6;
-    static constexpr int knobHeight = 43 + pillHeight + captionHeight;
 
 private:
+    /** Value while hovered, dragged, focused or being typed; the caption otherwise. */
+    void refreshFace()
+    {
+        const bool editing = slider.findValueLabel() != nullptr && slider.findValueLabel()->isBeingEdited();
+        const bool show = isEnabled() && (both || valueOnly || slider.isMouseOver (true) || dragging || slider.hasKeyboardFocus (false) || editing || forceValue);
+        forceValue = editing;
+
+        if (auto* label = slider.findValueLabel())
+            label->setVisible (show);
+
+        if (show != valueShowing)
+        {
+            valueShowing = show;
+            repaint();
+        }
+    }
+
     void modulationChanged() override { repaint(); }
     void liveUpdated() override { if (hasArcs()) repaint(); }
 
@@ -244,6 +317,8 @@ private:
         return kilo ? number * 1000.0 : milli ? number / 1000.0 : number;
     }
 
+    layout::KnobSize size;
+    bool dragging = false, forceValue = false, valueShowing = false, both = false, valueOnly = false;
     juce::RangedAudioParameter* param = nullptr;
     juce::String caption, paramId, disabledNote;
     juce::UndoManager& undo;

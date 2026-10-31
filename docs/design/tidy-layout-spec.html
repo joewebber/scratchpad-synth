@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Scratchpad Synth — layout spec</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.t-light{--bg:#E6E5E0;--surface:#EEEDE9;--zone:#DEDDD7;--well:#E2E1DC;--ink:#2E2D2A;--ink2:#4F4C46;--mute:#615E57;--track:#CFCCC4;--line:rgba(60,50,30,.14);--sh-s:3px 3px 7px rgba(110,100,80,.18),-3px -3px 7px rgba(255,255,255,.9);--accent:#E8C83E;--src:#8DC2E8;--flt:#F0A3AD;--amp:#8ED3BC;--mod:#BCAFE4;--fx:#F2BC8F;--perf:#D3CBBC;--on:#1E1D1A}
+.t-dark{--bg:#17181B;--surface:#212226;--zone:#1C1D20;--well:#18191C;--ink:#EEECE6;--ink2:#CBC8C1;--mute:#A4A19A;--track:#3A3C42;--line:rgba(255,255,255,.09);--sh-s:3px 3px 8px rgba(0,0,0,.5),-2px -2px 6px rgba(255,255,255,.035);--accent:#E8C83E;--src:#8DC2E8;--flt:#F0A3AD;--amp:#8ED3BC;--mod:#BCAFE4;--fx:#F2BC8F;--perf:#8F877A;--on:#1E1D1A}
+.cap{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);line-height:13px;white-space:nowrap}
+.num{font-variant-numeric:tabular-nums}
+.sb{width:22px;height:20px;border-radius:7px;background:var(--surface);box-shadow:var(--sh-s);font-size:11px;color:var(--mute);display:inline-flex;align-items:center;justify-content:center;flex:none}
+</style>
+</helmet>
+<div class="{{themeClass}}" style="width: 1200px; height: 760px; box-sizing: border-box; padding: 26px 32px; background: var(--bg); color: var(--ink); font-family: 'Jost', sans-serif; display: flex; gap: 40px; overflow: hidden">
+
+<div style="width: 600px; flex: none; display: flex; flex-direction: column; gap: 14px">
+<div style="height: 36px; display: flex; align-items: flex-end; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 3px"><span class="cap">Layout spec</span><span style="font-size: 22px; line-height: 24px; font-weight: 300">1200 × 760 at 100%, drawn at half size</span></div>
+<span style="font-size: 12px; color: var(--mute)">Scales 75–200% as one unit</span>
+</div>
+
+<div aria-label="Layout wireframe" style="position: relative; width: 600px; height: 380px; flex: none; border-radius: 10px; background: var(--well)">
+<sc-for list="{{boxes}}" as="b" hint-placeholder-count="16">
+<div style="{{b.style}}"><span style="{{b.labelStyle}}">{{b.name}}</span><span class="num" style="font-size: 11px; line-height: 13px; color: var(--mute); white-space: nowrap">{{b.dims}}</span></div>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-direction: column">
+<div style="height: 20px; display: flex; align-items: center; border-bottom: 1px solid var(--line)">
+<span class="cap" style="width: 92px">Module</span>
+<span class="cap" style="width: 236px">On the card</span>
+<span class="cap">Behind ⋯ More</span>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="13">
+<div style="height: 17px; display: flex; align-items: center; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 14px">
+<span style="width: 92px; display: flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 500; white-space: nowrap"><span style="{{r.dot}}"></span>{{r.m}}</span>
+<span style="width: 236px; color: var(--ink2); white-space: nowrap">{{r.card}}</span>
+<span style="flex: 1; color: var(--ink2); white-space: nowrap">{{r.more}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px; padding-top: 50px">
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<span class="cap" style="color: var(--ink2)">Card header · every module</span>
+<div style="height: 64px; display: flex; align-items: flex-start">
+<div style="width: 236px; height: 36px; box-sizing: border-box; padding: 8px 9px; border-radius: 12px; background: var(--surface); box-shadow: var(--sh-s); display: flex; align-items: center; gap: 5px; transform: scale(1.6); transform-origin: left top">
+<span style="width: 20px; height: 20px; flex: none; border-radius: 50%; background: var(--flt); color: var(--on); font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center">1</span>
+<span style="font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px">Filter<span style="width: 15px; height: 15px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--track); font-size: 11px; line-height: 15px; text-align: center; color: var(--mute)">?</span></span>
+<span style="flex: 1"></span>
+<span class="sb">B</span><span class="sb">S</span><span class="sb">⋯</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{anatomy}}" as="a" hint-placeholder-count="5">
+<div style="display: flex; gap: 10px; font-size: 13px; line-height: 18px"><span style="width: 74px; flex: none; color: var(--ink); font-weight: 500">{{a.k}}</span><span style="color: var(--ink2)">{{a.v}}</span></div>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; padding-top: 18px; border-top: 1px solid var(--line)">
+<span class="cap" style="color: var(--ink2)">Layout rules</span>
+<sc-for list="{{rules}}" as="r" hint-placeholder-count="6">
+<div style="display: flex; gap: 10px; font-size: 13px; line-height: 18px"><span class="num" style="width: 18px; height: 18px; flex: none; border-radius: 50%; background: var(--surface); box-shadow: var(--sh-s); font-size: 11px; display: inline-flex; align-items: center; justify-content: center">{{r.n}}</span><span><span style="color: var(--ink); font-weight: 500">{{r.k}}</span> <span style="color: var(--ink2)">{{r.v}}</span></span></div>
+</sc-for>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = this.props.theme ?? 'dark';
+    const S = 0.5;
+    const box = (name, x, y, w, h, fam, o) => {
+      o = o || {};
+      const bg = o.zone ? 'var(--zone)' : 'var(--surface)';
+      const edge = fam ? 'box-shadow: inset 0 3px 0 var(--' + fam + ')' : 'box-shadow: inset 0 0 0 1px var(--line)';
+      return {
+        name, dims: o.noDims ? '' : w + ' × ' + h,
+        style: 'position: absolute; left: ' + (x * S) + 'px; top: ' + (y * S) + 'px; width: ' + (w * S) + 'px; height: ' + (h * S) + 'px; box-sizing: border-box; padding: 4px 6px; border-radius: 6px; background: ' + bg + '; ' + edge + '; display: flex; flex-direction: column; gap: 1px; overflow: hidden' + (o.z ? '; z-index: ' + o.z : ''),
+        labelStyle: 'font-size: 11px; line-height: 13px; color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis'
+      };
+    };
+    const boxes = [
+      box('Top bar', 12, 12, 1176, 48),
+      box('Per voice zone', 12, 96, 904, 306, null, { zone: true }),
+      box('Sources', 36, 104, 368, 290, 'src', { z: 1 }),
+      box('Filter', 422, 104, 234, 186, 'flt', { z: 1 }),
+      box('Filter Env', 422, 298, 234, 96, 'flt', { z: 1 }),
+      box('Amp', 674, 104, 234, 186, 'amp', { z: 1 }),
+      box('Amp Env', 674, 298, 234, 96, 'amp', { z: 1 }),
+      box('FX 1', 48, 436, 184, 80, 'fx'),
+      box('FX 2', 240, 436, 184, 80, 'fx'),
+      box('FX 3', 432, 436, 184, 80, 'fx'),
+      box('FX 4', 624, 436, 184, 80, 'fx'),
+      box('Out', 816, 436, 100, 80, 'amp'),
+      box('LFO 1', 12, 550, 214, 88, 'mod'),
+      box('LFO 2', 234, 550, 214, 88, 'mod'),
+      box('Playing', 456, 550, 190, 88, 'perf'),
+      box('Connections', 654, 550, 262, 88, 'mod'),
+      box('Voicing + keyboard', 12, 648, 904, 100, 'amp'),
+      box('Explain', 924, 68, 264, 680)
+    ];
+    const dot = fam => 'width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--' + fam + '); display: block';
+    const rows = [
+      ['src', 'Osc 1–3', 'Wave, Oct, Semi, Fine, Level, Morph', 'Phase reset, Unison, Sync or FM + Ring, Anti-alias'],
+      ['src', 'Noise', 'Colour, Level', 'Remove'],
+      ['flt', 'Filter', 'Mode, Cutoff, Res, Key, Drive', 'Shape type, Drive, Bias, Mix, Remove'],
+      ['flt', 'Filter Env', 'A, D, S, R, Amount', 'Remove'],
+      ['amp', 'Amp', 'Level, Pan, voice activity', 'No menu'],
+      ['amp', 'Amp Env', 'A, D, S, R, Velocity', 'Remove (back to the gate)'],
+      ['mod', 'LFO 1–2', 'Shape, Rate or Beat, Fade, Sync', 'Shape list, Retrigger, Remove'],
+      ['fx', 'Distortion', 'Drive, Tone, Mix', 'Mode, Bias, Remove'],
+      ['fx', 'Delay', 'Time, Feedback, Mix', 'Sync, Ping-pong, Remove'],
+      ['fx', 'Chorus', 'Rate, Depth, Mix', 'Remove'],
+      ['fx', 'Reverb', 'Size, Decay, Mix', 'Damping, Remove'],
+      ['amp', 'Voicing', 'Mode, Voices, Glide, Bend, Drift', 'No menu'],
+      ['mod', 'Connections', 'Source, destination, amount, ×', 'Scrolls past 3 rows']
+    ].map(([f, m, card, more]) => ({ dot: dot(f), m, card, more }));
+    const anatomy = [
+      { k: '1 Handle', v: 'Family colour. On sources (LFOs, envelopes) it’s the drag handle.' },
+      { k: 'Name ?', v: 'One target: click it to pin the explainer.' },
+      { k: 'B · S', v: 'Bypass and solo, 22 × 20. Pressed = inverted fill.' },
+      { k: '⋯ More', v: 'Pop-over with secondary controls, and Remove last.' },
+      { k: 'Bypassed', v: 'Header stays at full strength; the body fades to 40%.' }
+    ];
+    const rules = [
+      { n: 1, k: 'One raised layer.', v: 'Only cards cast shadows. Sections are headings on the background; visualisations are inset wells.' },
+      { n: 2, k: 'Labels or values, not both.', v: 'A knob shows its label at rest and its value while hovered or dragged. The oscillator table puts labels in the column headings and values in the cells.' },
+      { n: 3, k: 'Sentence-case options.', v: 'Segmented controls drop capitals and letter-spacing, which is what clipped “Notch” and “Hard clip”.' },
+      { n: 4, k: 'One knob per idea.', v: 'Rate becomes Beat when Sync is on, instead of showing both with one greyed out.' },
+      { n: 5, k: 'Controls live where they act.', v: 'Envelope handles sit on their envelopes; the limiter and meter sit in Out; voicing sits with the keyboard.' },
+      { n: 6, k: 'Nothing overlaps or truncates.', v: 'Fixed px boxes at 100%. If a control doesn’t fit its card, it goes behind ⋯ More.' }
+    ];
+    return { themeClass: theme === 'light' ? 't-light' : 't-dark', boxes, rows, anatomy, rules };
+  }
+}
+</script>
+</body>
+</html>

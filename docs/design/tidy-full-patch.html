@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Scratchpad Synth — tidied full patch</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:underline dotted;text-underline-offset:3px}a:hover{color:var(--ink)}
+.t-light{--bg:#E6E5E0;--surface:#EEEDE9;--zone:#DEDDD7;--well:#E2E1DC;--knob:#F0EFEB;--ink:#2E2D2A;--ink2:#4F4C46;--mute:#615E57;--track:#CFCCC4;--line:rgba(60,50,30,.12);--keyw:#F7F6F2;--keyb:#3A3936;--sh-s:3px 3px 7px rgba(110,100,80,.18),-3px -3px 7px rgba(255,255,255,.9);--sh-l:14px 14px 34px rgba(90,80,60,.28),-6px -6px 18px rgba(255,255,255,.8);--sh-i:inset 2px 2px 6px rgba(110,100,80,.16),inset -2px -2px 6px rgba(255,255,255,.8);--accent:#E8C83E;--accent-soft:#F3E7B4;--src:#8DC2E8;--flt:#F0A3AD;--amp:#8ED3BC;--mod:#BCAFE4;--fx:#F2BC8F;--perf:#D3CBBC;--src-ink:#2D6C9C;--flt-ink:#B2475A;--amp-ink:#23816A;--mod-ink:#6450B4;--fx-ink:#A85A22;--perf-ink:#6B6253;--on:#1E1D1A}
+.t-dark{--bg:#17181B;--surface:#212226;--zone:#1C1D20;--well:#18191C;--knob:#2A2B30;--ink:#EEECE6;--ink2:#CBC8C1;--mute:#A4A19A;--track:#3A3C42;--line:rgba(255,255,255,.07);--keyw:#2E2F34;--keyb:#0D0E10;--sh-s:3px 3px 8px rgba(0,0,0,.5),-2px -2px 6px rgba(255,255,255,.035);--sh-l:14px 14px 34px rgba(0,0,0,.65),-4px -4px 14px rgba(255,255,255,.04);--sh-i:inset 2px 2px 6px rgba(0,0,0,.55),inset -2px -2px 5px rgba(255,255,255,.03);--accent:#E8C83E;--accent-soft:#3A3420;--src:#8DC2E8;--flt:#F0A3AD;--amp:#8ED3BC;--mod:#BCAFE4;--fx:#F2BC8F;--perf:#8F877A;--src-ink:#A9D3F2;--flt-ink:#F6B9C1;--amp-ink:#A6E2CE;--mod-ink:#CFC5F0;--fx-ink:#F6CDA9;--perf-ink:#D8D0C2;--on:#1E1D1A}
+.sec{font-size:12px;line-height:14px;letter-spacing:.24em;text-transform:uppercase;font-weight:500;color:var(--ink);white-space:nowrap}
+.hint{font-size:12px;line-height:14px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cap{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);font-weight:400;line-height:13px;white-space:nowrap}
+.kl{font-size:11px;line-height:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);white-space:nowrap}
+.kv{font-size:11px;line-height:13px;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.num{font-variant-numeric:tabular-nums}
+.card{background:var(--surface);box-shadow:var(--sh-s);border-radius:12px;box-sizing:border-box}
+.well{background:var(--well);box-shadow:var(--sh-i);border-radius:9px;display:block;position:relative;overflow:hidden}
+.ib{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.sb{width:22px;height:20px;border-radius:7px;background:var(--surface);box-shadow:var(--sh-s);font-size:11px;color:var(--mute);flex:none}
+.sb.on{background:var(--ink);color:var(--surface);box-shadow:none}
+.nm{font-size:13px;font-weight:500;color:var(--ink);gap:5px;white-space:nowrap;cursor:help;justify-content:flex-start}
+.q{width:15px;height:15px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--track);font-size:11px;line-height:15px;text-align:center;color:var(--mute);font-weight:400;display:inline-block}
+.kb{all:unset;cursor:ns-resize;display:inline-flex;flex-direction:column;align-items:center;gap:3px;border-radius:8px;flex:none}
+.seg{display:flex;gap:2px;padding:2px;border-radius:9px;background:var(--well);box-shadow:var(--sh-i)}
+.so{all:unset;box-sizing:border-box;cursor:pointer;flex:1;height:20px;border-radius:7px;font-size:11px;color:var(--ink2);text-align:center;line-height:20px;white-space:nowrap}
+.kb:focus-visible,.ib:focus-visible,.so:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+</style>
+</helmet>
+<div class="{{themeClass}}" style="position: relative; width: 1200px; height: 760px; box-sizing: border-box; padding: 12px; background: var(--bg); color: var(--ink); font-family: 'Jost', sans-serif; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+
+<header class="card" style="height: 48px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 10px; border-radius: 14px">
+<span style="width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--surface); box-shadow: var(--sh-s); display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8c1.6-4.5 3.6-4.5 5 0s3.4 4.5 5 0 1.8-2.4 3-2" fill="none" style="stroke: var(--ink)" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+<span style="font-size: 14px; letter-spacing: .26em; font-weight: 500">SCRATCHPAD</span>
+<div style="width: 220px; flex: none; box-sizing: border-box; padding: 4px 12px; border-radius: 10px; background: var(--well); box-shadow: var(--sh-i); display: flex; flex-direction: column">
+<span style="font-size: 14px; line-height: 17px">Hard Drive</span>
+<span style="font-size: 11px; line-height: 13px; color: var(--mute)">Last: Nothing yet</span>
+</div>
+<div style="display: flex; gap: 4px">
+<button class="ib" aria-label="New patch" style="width: 30px; height: 30px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h5.5L12.5 5v9H4z M8 7.5v4.5 M5.8 9.75h4.4" fill="none" style="stroke: var(--ink)" stroke-width="1.4" stroke-linejoin="round"></path></svg></button>
+<button class="ib" aria-label="Save patch" style="width: 30px; height: 30px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7.5 M5 7l3 3 3-3 M3 11.5V14h10v-2.5" fill="none" style="stroke: var(--ink)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="ib" aria-label="Open patch" style="width: 30px; height: 30px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h4l1.5 1.5H14V13H2z" fill="none" style="stroke: var(--ink)" stroke-width="1.4" stroke-linejoin="round"></path></svg></button>
+</div>
+<div style="display: flex; gap: 4px">
+<button class="ib" aria-label="Undo, nothing to undo" disabled="" style="width: 30px; height: 30px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s); opacity: .45"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3L2 6l3 3 M2.5 6H10a3.5 3.5 0 0 1 0 7H6" fill="none" style="stroke: var(--ink)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="ib" aria-label="Redo, nothing to redo" disabled="" style="width: 30px; height: 30px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s); opacity: .45"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 3l3 3-3 3 M13.5 6H6a3.5 3.5 0 0 0 0 7h4" fill="none" style="stroke: var(--ink)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+</div>
+<span style="flex: 1"></span>
+<span class="cap num" style="color: var(--ink2)">CPU 7%</span>
+<button class="ib" style="height: 30px; padding: 0 14px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s); font-size: 13px; color: var(--ink)">Settings</button>
+<button class="ib" aria-label="{{themeAria}}" onClick="{{toggleTheme}}" style="width: 30px; height: 30px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.6" fill="none" style="stroke: var(--ink)" stroke-width="1.4"></circle><path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" style="fill: var(--ink)"></path></svg></button>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; gap: 8px">
+<div style="width: 904px; flex: none; display: flex; flex-direction: column">
+
+<div style="height: 22px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 4px">
+<span class="sec">Signal chain</span>
+<span style="flex: 1; min-width: 0; height: 22px; box-sizing: border-box; padding: 0 10px; border-radius: 11px; background: var(--accent-soft); display: flex; align-items: center; gap: 8px"><span class="cap" style="color: var(--ink2); flex: none">Listen for</span><span class="hint" style="color: var(--ink)">Hold a key. The arc round a knob is how far it can move; the dot is where it is now.</span></span>
+<button class="ib" style="height: 22px; padding: 0 12px; border-radius: 11px; background: var(--surface); box-shadow: var(--sh-s); font-size: 12px; color: var(--ink)">+ Add module</button>
+</div>
+
+<section aria-label="Per voice" style="height: 306px; flex: none; margin-top: 6px; box-sizing: border-box; padding: 8px 8px 8px 0; border-radius: 16px; background: var(--zone); display: flex">
+<div aria-hidden="true" style="width: 24px; flex: none; display: flex; align-items: center; justify-content: center"><span class="cap" style="writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .18em">Per voice · one copy per note</span></div>
+
+<div class="card" style="width: 368px; flex: none; padding: 10px; display: flex; flex-direction: column; gap: 0">
+<div style="height: 14px; display: flex; align-items: center; gap: 2px; margin-bottom: 6px">
+<span class="cap" style="width: 60px; margin-right: 4px; color: var(--ink2)">Sources</span>
+<span class="kl" style="width: 52px; text-align: center">Wave</span>
+<sc-for list="{{oscCols}}" as="c" hint-placeholder-count="5"><span class="kl" style="width: 38px; text-align: center">{{c.l}}</span></sc-for>
+</div>
+<sc-for list="{{oscs}}" as="o" hint-placeholder-count="3">
+<div style="height: 60px; display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line)">
+<div style="width: 60px; flex: none; display: flex; flex-direction: column; gap: 5px">
+<button class="ib nm" aria-label="Explain {{o.name}}">{{o.name}}<span class="q">?</span></button>
+<div style="display: flex; gap: 4px">
+<button class="{{o.bClass}}" aria-label="Bypass {{o.name}}" aria-pressed="{{o.bOn}}" onClick="{{o.toggleB}}" style="height: 18px">B</button>
+<button class="ib sb" aria-label="Solo {{o.name}}" aria-pressed="false" style="height: 18px">S</button>
+</div>
+</div>
+<div style="{{o.bodyStyle}}">
+<button class="ib" aria-label="{{o.waveAria}}" style="width: 52px; height: 44px; flex: none; flex-direction: column; gap: 2px">
+<span class="well" style="width: 52px; height: 30px"><svg width="52" height="30" viewBox="0 0 52 30" aria-hidden="true" style="display: block"><path d="{{o.thumb}}" fill="none" style="stroke: var(--src-ink)" stroke-width="1.6" stroke-linejoin="round"></path></svg></span>
+<span style="font-size: 11px; line-height: 12px; color: var(--ink2)">{{o.wave}}</span>
+</button>
+<sc-for list="{{o.knobs}}" as="k" hint-placeholder-count="5">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+<button class="ib sb" aria-label="More options for {{o.name}}" aria-expanded="{{o.open}}" onClick="{{o.more}}" style="{{o.moreStyle}}"><svg width="12" height="4" viewBox="0 0 12 4" aria-hidden="true"><path d="M2 2h.01M6 2h.01M10 2h.01" style="stroke: currentColor" stroke-width="2.6" stroke-linecap="round"></path></svg></button>
+</div>
+</sc-for>
+<div style="flex: 1; display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line)">
+<div style="width: 60px; flex: none; display: flex; flex-direction: column; gap: 5px">
+<button class="ib nm" aria-label="Explain noise">Noise<span class="q">?</span></button>
+<div style="display: flex; gap: 4px">
+<button class="{{noise.bClass}}" aria-label="Bypass noise" aria-pressed="{{noise.bOn}}" onClick="{{noise.toggleB}}" style="height: 18px">B</button>
+<button class="ib sb" aria-label="Solo noise" aria-pressed="false" style="height: 18px">S</button>
+</div>
+</div>
+<div style="{{noise.bodyStyle}}">
+<div role="radiogroup" aria-label="Noise colour" class="seg" style="width: 110px">
+<button class="so" role="radio" aria-checked="true" style="background: var(--src); color: var(--on)">White</button>
+<button class="so" role="radio" aria-checked="false">Pink</button>
+</div>
+<span style="flex: 1; font-size: 11px; line-height: 14px; color: var(--mute)">Every frequency equally loud: a bright hiss.</span>
+<sc-for list="{{noise.knobs}}" as="k" hint-placeholder-count="1">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+<button class="ib sb" aria-label="More options for noise" aria-expanded="{{noise.open}}" onClick="{{noise.more}}" style="{{noise.moreStyle}}"><svg width="12" height="4" viewBox="0 0 12 4" aria-hidden="true"><path d="M2 2h.01M6 2h.01M10 2h.01" style="stroke: currentColor" stroke-width="2.6" stroke-linecap="round"></path></svg></button>
+</div>
+</div>
+
+<div style="width: 18px; flex: none; display: flex; align-items: center; justify-content: center"><svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><path d="M2 2l4 4-4 4" fill="none" style="stroke: var(--mute)" stroke-width="1.5" stroke-linecap="round"></path></svg></div>
+
+<sc-for list="{{cols}}" as="col" hint-placeholder-count="2">
+<div style="width: 234px; flex: none; display: flex; flex-direction: column; gap: 8px">
+<div class="card" style="flex: 1; min-height: 0; padding: 9px; display: flex; flex-direction: column; gap: 7px">
+<div style="height: 20px; display: flex; align-items: center; gap: 5px">
+<span style="{{col.top.dot}}"><svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true"><path d="{{col.top.glyph}}" fill="none" style="stroke: var(--on)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+<button class="ib nm" aria-label="Explain {{col.top.name}}">{{col.top.name}}<span class="q">?</span></button>
+<span style="flex: 1"></span>
+<sc-if value="{{col.top.hasB}}" hint-placeholder-val="{{ true }}">
+<button class="{{col.top.bClass}}" aria-label="Bypass {{col.top.name}}" aria-pressed="{{col.top.bOn}}" onClick="{{col.top.toggleB}}">B</button>
+<button class="ib sb" aria-label="Solo {{col.top.name}}" aria-pressed="false">S</button>
+<button class="ib sb" aria-label="More options for {{col.top.name}}" aria-expanded="{{col.top.open}}" onClick="{{col.top.more}}" style="{{col.top.moreStyle}}"><svg width="12" height="4" viewBox="0 0 12 4" aria-hidden="true"><path d="M2 2h.01M6 2h.01M10 2h.01" style="stroke: currentColor" stroke-width="2.6" stroke-linecap="round"></path></svg></button>
+</sc-if>
+</div>
+<span class="well" style="flex: 1; min-height: 48px">
+<svg width="216" height="80" viewBox="0 0 216 80" preserveAspectRatio="none" aria-hidden="true" style="display: block; width: 100%; height: 100%"><path d="{{col.top.viz.ghost}}" style="{{col.top.viz.ghostStyle}}" stroke-width="1"></path><path d="{{col.top.viz.fill}}" style="{{col.top.viz.fillStyle}}" fill-opacity=".32"></path><path d="{{col.top.viz.d}}" fill="none" style="{{col.top.viz.stroke}}" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path><path d="{{col.top.viz.marks}}" fill="none" style="{{col.top.viz.stroke}}" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"></path></svg>
+<span class="num" style="position: absolute; left: 8px; bottom: 5px; font-size: 11px; line-height: 13px; color: var(--ink2)">{{col.top.vizL}}</span>
+<span class="num" style="position: absolute; right: 8px; bottom: 5px; font-size: 11px; line-height: 13px; color: var(--ink2)">{{col.top.vizR}}</span>
+</span>
+<sc-if value="{{col.top.hasModes}}" hint-placeholder-val="{{ true }}">
+<div role="radiogroup" aria-label="Filter mode" class="seg">
+<sc-for list="{{col.top.modes}}" as="m" hint-placeholder-count="6"><button class="so" role="radio" aria-checked="{{m.on}}" style="{{m.style}}">{{m.l}}</button></sc-for>
+</div>
+</sc-if>
+<div style="display: flex; gap: 6px; align-items: flex-start">
+<sc-for list="{{col.top.knobs}}" as="k" hint-placeholder-count="4">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.m1.d}}" fill="none" style="{{k.m1.s}}" stroke-width="2" stroke-linecap="round"></path><circle cx="{{k.m1.x}}" cy="{{k.m1.y}}" r="{{k.m1.r}}" style="fill: var(--ink)"></circle><path d="{{k.m2.d}}" fill="none" style="{{k.m2.s}}" stroke-width="2" stroke-linecap="round"></path><circle cx="{{k.m2.x}}" cy="{{k.m2.y}}" r="{{k.m2.r}}" style="fill: var(--ink)"></circle><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+
+<div class="card" style="height: 96px; flex: none; padding: 9px; display: flex; flex-direction: column; gap: 7px">
+<div style="height: 20px; display: flex; align-items: center; gap: 5px">
+<button class="ib" aria-label="{{col.env.handleAria}}" style="{{col.env.handle}}">{{col.env.tag}}</button>
+<button class="ib nm" aria-label="Explain {{col.env.name}}">{{col.env.name}}<span class="q">?</span></button>
+<span style="flex: 1"></span>
+<button class="{{col.env.bClass}}" aria-label="Bypass {{col.env.name}}" aria-pressed="{{col.env.bOn}}" onClick="{{col.env.toggleB}}">B</button>
+<button class="ib sb" aria-label="More options for {{col.env.name}}" aria-expanded="{{col.env.open}}" onClick="{{col.env.more}}" style="{{col.env.moreStyle}}"><svg width="12" height="4" viewBox="0 0 12 4" aria-hidden="true"><path d="M2 2h.01M6 2h.01M10 2h.01" style="stroke: currentColor" stroke-width="2.6" stroke-linecap="round"></path></svg></button>
+</div>
+<div style="display: flex; gap: 3px; align-items: flex-start">
+<span class="well" style="width: 50px; height: 44px; flex: none"><svg width="50" height="44" viewBox="0 0 50 44" aria-hidden="true" style="display: block"><path d="{{col.env.viz.fill}}" style="{{col.env.viz.fillStyle}}" fill-opacity=".38"></path><path d="{{col.env.viz.d}}" fill="none" style="{{col.env.viz.stroke}}" stroke-width="1.6" stroke-linejoin="round"></path></svg></span>
+<sc-for list="{{col.env.knobs}}" as="k" hint-placeholder-count="5">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</div>
+<sc-if value="{{col.arrow}}" hint-placeholder-val="{{ true }}"><div style="width: 18px; flex: none; display: flex; align-items: center; justify-content: center"><svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><path d="M2 2l4 4-4 4" fill="none" style="stroke: var(--mute)" stroke-width="1.5" stroke-linecap="round"></path></svg></div></sc-if>
+</sc-for>
+</section>
+
+<div style="height: 18px; flex: none; margin-top: 10px; display: flex; align-items: center; gap: 14px; padding: 0 4px">
+<span class="sec">Effects</span>
+<span class="hint">Whole mix: the voices are added together, then pass through these left to right. Drag to reorder.</span>
+</div>
+<section aria-label="Effects" style="height: 80px; flex: none; margin-top: 6px; display: flex; gap: 8px">
+<div aria-label="Voices added together" style="width: 28px; flex: none; display: flex; align-items: center; justify-content: center"><span style="width: 26px; height: 26px; border-radius: 50%; background: var(--zone); box-shadow: var(--sh-i); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; color: var(--ink2)">Σ</span></div>
+<sc-for list="{{fx}}" as="x" hint-placeholder-count="4">
+<div class="card" style="width: 184px; flex: none; padding: 7px; display: flex; flex-direction: column; gap: 5px">
+<div style="height: 20px; display: flex; align-items: center; gap: 4px">
+<button class="ib" aria-label="Drag to reorder {{x.name}}" style="width: 8px; height: 20px; flex: none; cursor: grab"><svg width="6" height="12" viewBox="0 0 6 12" aria-hidden="true"><path d="M1.5 2h.01M4.5 2h.01M1.5 6h.01M4.5 6h.01M1.5 10h.01M4.5 10h.01" style="stroke: var(--mute)" stroke-width="2.2" stroke-linecap="round"></path></svg></button>
+<span class="num" style="width: 16px; height: 16px; flex: none; border-radius: 50%; background: var(--fx); color: var(--on); font-size: 11px; display: inline-flex; align-items: center; justify-content: center">{{x.n}}</span>
+<button class="ib nm" aria-label="Explain {{x.name}}">{{x.name}}<span class="q">?</span></button>
+<span style="flex: 1"></span>
+<button class="{{x.bClass}}" aria-label="Bypass {{x.name}}" aria-pressed="{{x.bOn}}" onClick="{{x.toggleB}}">B</button>
+<button class="ib sb" aria-label="More options for {{x.name}}" aria-expanded="{{x.open}}" onClick="{{x.more}}" style="{{x.moreStyle}}"><svg width="12" height="4" viewBox="0 0 12 4" aria-hidden="true"><path d="M2 2h.01M6 2h.01M10 2h.01" style="stroke: currentColor" stroke-width="2.6" stroke-linecap="round"></path></svg></button>
+</div>
+<div style="{{x.bodyStyle}}">
+<span class="well" style="width: 56px; height: 40px; flex: none"><svg width="56" height="40" viewBox="0 0 56 40" aria-hidden="true" style="display: block"><path d="{{x.viz}}" fill="none" style="stroke: var(--fx-ink)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></path></svg><span class="num" style="position: absolute; right: 4px; bottom: 2px; font-size: 11px; line-height: 12px; color: var(--ink2)">{{x.tag}}</span></span>
+<sc-for list="{{x.knobs}}" as="k" hint-placeholder-count="3">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div class="card" style="width: 100px; flex: none; padding: 7px 9px; display: flex; flex-direction: column; gap: 5px">
+<div style="height: 20px; display: flex; align-items: center; gap: 6px"><span style="font-size: 13px; font-weight: 500">Out</span><span style="flex: 1"></span><span role="status" aria-label="Safety limiter idle" style="display: inline-flex; align-items: center; gap: 4px"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--track); box-shadow: var(--sh-i); display: block"></span><span class="kl">Lim</span></span></div>
+<div style="display: flex; gap: 10px; align-items: flex-start">
+<sc-for list="{{outKnobs}}" as="k" hint-placeholder-count="1">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+<div aria-label="Output level" style="height: 40px; display: flex; gap: 2px; align-items: flex-end; padding: 2px 3px; border-radius: 5px; background: var(--well); box-shadow: var(--sh-i)">
+<sc-for list="{{outMeter}}" as="m" hint-placeholder-count="2"><span style="width: 4px; height: {{m.h}}px; border-radius: 1px; background: var(--amp-ink); display: block"></span></sc-for>
+</div>
+</div>
+</div>
+</section>
+
+<div style="height: 18px; flex: none; margin-top: 10px; display: flex; align-items: center; gap: 14px; padding: 0 4px">
+<span class="sec">Modulation</span>
+<span class="hint">Drag a coloured handle onto any knob. The arc shows the range; the dot shows the live value.</span>
+</div>
+<section aria-label="Modulation" style="height: 88px; flex: none; margin-top: 6px; display: flex; gap: 8px">
+<sc-for list="{{lfos}}" as="l" hint-placeholder-count="2">
+<div class="card" style="width: 214px; flex: none; padding: 8px 9px; display: flex; flex-direction: column; gap: 6px">
+<div style="height: 22px; display: flex; align-items: center; gap: 5px">
+<button class="ib" aria-label="Drag {{l.name}} onto a knob to modulate it" style="width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--mod); color: var(--on); font-size: 11px; font-weight: 500; box-shadow: var(--sh-s); cursor: grab">{{l.tag}}</button>
+<button class="ib nm" aria-label="Explain {{l.name}}">{{l.name}}<span class="q">?</span></button>
+<span style="flex: 1"></span>
+<button class="ib" role="switch" aria-checked="true" aria-label="Sync {{l.name}} to tempo" style="height: 20px; padding: 0 7px; border-radius: 10px; background: var(--mod); color: var(--on); font-size: 11px">Sync</button>
+<button class="{{l.bClass}}" aria-label="Bypass {{l.name}}" aria-pressed="{{l.bOn}}" onClick="{{l.toggleB}}">B</button>
+<button class="ib sb" aria-label="More options for {{l.name}}" aria-expanded="{{l.open}}" onClick="{{l.more}}" style="{{l.moreStyle}}"><svg width="12" height="4" viewBox="0 0 12 4" aria-hidden="true"><path d="M2 2h.01M6 2h.01M10 2h.01" style="stroke: currentColor" stroke-width="2.6" stroke-linecap="round"></path></svg></button>
+</div>
+<div style="display: flex; gap: 6px; align-items: flex-start">
+<button class="ib" aria-label="{{l.shapeAria}}" style="flex: 1; height: 40px">
+<span class="well" style="width: 100%; height: 40px"><svg width="110" height="40" viewBox="0 0 110 40" aria-hidden="true" style="display: block"><path d="{{l.viz}}" fill="none" style="stroke: var(--mod-ink)" stroke-width="1.6" stroke-linejoin="round"></path><circle cx="{{l.dx}}" cy="{{l.dy}}" r="3" style="fill: var(--ink)"></circle></svg><span style="position: absolute; left: 6px; top: 3px; font-size: 11px; line-height: 12px; color: var(--ink2)">{{l.shape}}</span></span>
+</button>
+<sc-for list="{{l.knobs}}" as="k" hint-placeholder-count="2">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.m1.d}}" fill="none" style="{{k.m1.s}}" stroke-width="2" stroke-linecap="round"></path><circle cx="{{k.m1.x}}" cy="{{k.m1.y}}" r="{{k.m1.r}}" style="fill: var(--ink)"></circle><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div class="card" style="width: 190px; flex: none; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px">
+<span class="cap" style="height: 14px; color: var(--ink2)">Playing</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 6px">
+<sc-for list="{{perf}}" as="p" hint-placeholder-count="4">
+<button class="ib" aria-label="Drag {{p.label}} onto a knob to modulate it" style="justify-content: flex-start; gap: 5px; height: 22px; cursor: grab"><span style="width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--perf); color: var(--on); font-size: 11px; display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--sh-s)">{{p.tag}}</span><span style="font-size: 11px; color: var(--ink2); white-space: nowrap">{{p.label}}</span></button>
+</sc-for>
+</div>
+</div>
+<div class="card" style="flex: 1; min-width: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 5px">
+<div style="height: 14px; display: flex; align-items: center"><span class="cap" style="color: var(--ink2)">Connections</span><span style="flex: 1"></span><span class="num" style="font-size: 11px; color: var(--mute)">3 of 8</span></div>
+<sc-for list="{{conns}}" as="c" hint-placeholder-count="3">
+<div style="height: 17px; display: flex; align-items: center; gap: 7px">
+<span class="num" style="width: 22px; height: 16px; flex: none; border-radius: 8px; background: var(--mod); color: var(--on); font-size: 11px; line-height: 16px; text-align: center">{{c.src}}</span>
+<span style="width: 76px; flex: none; font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.dest}}</span>
+<span aria-label="{{c.aria}}" style="flex: 1; height: 6px; border-radius: 3px; background: var(--well); box-shadow: var(--sh-i); position: relative; display: block"><span style="position: absolute; left: 50%; top: 0; width: {{c.w}}%; height: 6px; border-radius: 0 3px 3px 0; background: var(--mod-ink); display: block"></span><span style="position: absolute; left: 50%; top: -2px; width: 1px; height: 10px; background: var(--mute); display: block"></span></span>
+<span class="num" style="width: 30px; flex: none; text-align: right; font-size: 11px; color: var(--ink2)">{{c.amt}}</span>
+<button class="ib" aria-label="Remove {{c.aria}}" style="width: 16px; height: 16px; flex: none"><svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M1 1l6 6M7 1L1 7" style="stroke: var(--mute)" stroke-width="1.3" stroke-linecap="round"></path></svg></button>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section aria-label="Voicing and keyboard" class="card" style="flex: 1; min-height: 0; margin-top: 10px; padding: 10px 14px; display: flex; align-items: center; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px; flex: none">
+<span class="cap" style="color: var(--ink2)">Voicing</span>
+<div role="radiogroup" aria-label="Voice mode" class="seg" style="width: 132px">
+<button class="so" role="radio" aria-checked="true" style="background: var(--amp); color: var(--on)">Poly</button>
+<button class="so" role="radio" aria-checked="false">Mono</button>
+<button class="so" role="radio" aria-checked="false">Legato</button>
+</div>
+</div>
+<div style="display: flex; gap: 4px; align-items: flex-start; flex: none">
+<sc-for list="{{voiceKnobs}}" as="k" hint-placeholder-count="4">
+<button class="kb" aria-label="{{k.aria}}" onMouseEnter="{{k.enter}}" onMouseLeave="{{k.leave}}" onFocus="{{k.enter}}" onBlur="{{k.leave}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="{{k.lc}}">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+<span style="width: 1px; height: 56px; flex: none; background: var(--line)"></span>
+<div style="display: flex; gap: 10px; flex: none">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 4px"><span style="width: 16px; height: 50px; border-radius: 8px; background: var(--well); box-shadow: var(--sh-i); display: block; position: relative"><button class="ib" aria-label="Pitch bend, centre" style="position: absolute; left: -3px; top: 19px; width: 22px; height: 12px; border-radius: 4px; background: var(--knob); box-shadow: var(--sh-s)"></button></span><span class="kl">Bend</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 4px"><span style="width: 16px; height: 50px; border-radius: 8px; background: var(--well); box-shadow: var(--sh-i); display: block; position: relative"><button class="ib" aria-label="Mod wheel, 0%" style="position: absolute; left: -3px; top: 36px; width: 22px; height: 12px; border-radius: 4px; background: var(--knob); box-shadow: var(--sh-s)"></button></span><span class="kl">Mod</span></div>
+</div>
+<div style="width: 74px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 5px">
+<div style="display: flex; align-items: center; gap: 4px">
+<button class="ib" aria-label="Octave down" style="width: 22px; height: 22px; border-radius: 7px; background: var(--surface); box-shadow: var(--sh-s); font-size: 14px; color: var(--ink)">−</button>
+<span class="num" style="width: 24px; text-align: center; font-size: 13px">C3</span>
+<button class="ib" aria-label="Octave up" style="width: 22px; height: 22px; border-radius: 7px; background: var(--surface); box-shadow: var(--sh-s); font-size: 14px; color: var(--ink)">+</button>
+</div>
+<span class="num" style="font-size: 11px; color: var(--mute); white-space: nowrap">Velocity 80%</span>
+</div>
+<div style="position: relative; width: 378px; height: 70px; flex: none">
+<sc-for list="{{whites}}" as="w" hint-placeholder-count="14"><button class="ib" aria-label="{{w.aria}}" style="position: absolute; left: {{w.x}}px; top: 0; width: 26px; height: 70px; border-radius: 0 0 6px 6px; background: var(--keyw); box-shadow: var(--sh-s); align-items: flex-end; padding-bottom: 5px; font-size: 11px; color: var(--mute)">{{w.key}}</button></sc-for>
+<sc-for list="{{blacks}}" as="b" hint-placeholder-count="10"><button class="ib" aria-label="{{b.aria}}" style="position: absolute; left: {{b.x}}px; top: 0; width: 16px; height: 42px; border-radius: 0 0 4px 4px; background: var(--keyb); align-items: flex-end; padding-bottom: 3px; font-size: 11px; color: #C9C5BC">{{b.key}}</button></sc-for>
+</div>
+</section>
+
+</div>
+
+<aside aria-label="Explain" class="card" style="flex: 1; min-width: 0; padding: 14px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="height: 24px; flex: none; display: flex; align-items: center; gap: 8px">
+<span class="sec">Explain</span>
+<span style="flex: 1"></span>
+<button class="ib" style="height: 24px; padding: 0 10px; border-radius: 12px; background: var(--surface); box-shadow: var(--sh-s); font-size: 12px; color: var(--ink2)">Glossary</button>
+<button class="ib" aria-label="Collapse the Explain panel" style="width: 24px; height: 24px; border-radius: 50%; background: var(--surface); box-shadow: var(--sh-s)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5L7 5l-3.5 3.5" fill="none" style="stroke: var(--ink)" stroke-width="1.4" stroke-linecap="round"></path></svg></button>
+</div>
+<div style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 7px"><span style="width: 9px; height: 9px; border-radius: 50%; background: var(--flt); display: block"></span><span class="cap" style="color: var(--flt-ink); font-weight: 500">Module</span></div>
+<span style="font-size: 26px; line-height: 30px; font-weight: 300">Filter</span>
+<p style="margin: 0; font-size: 13px; line-height: 19px; color: var(--ink2)">A filter turns part of the sound down. Set to low-pass, it keeps the lows and removes <a href="#">harmonics</a> above the <a href="#">cutoff</a>, so the sound gets darker.</p>
+<div style="display: flex; flex-direction: column; gap: 3px"><span class="cap">What it does</span><p style="margin: 0; font-size: 13px; line-height: 18px">Removes harmonics above the cutoff frequency. <a href="#">Resonance</a> adds a peak right at the cutoff.</p></div>
+<div style="display: flex; flex-direction: column; gap: 3px"><span class="cap">Listen for</span><p style="margin: 0; font-size: 13px; line-height: 18px">Hold a note and drag Cutoff down. The brightness drains out.</p></div>
+<div style="display: flex; flex-direction: column; gap: 3px"><span class="cap">Try this</span><p style="margin: 0; font-size: 13px; line-height: 18px">Switch the scope to Filter and Spectrum. The bars on the right go first.</p></div>
+</div>
+<div style="flex: none; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px">
+<span class="cap">Your patch</span>
+<p aria-live="polite" style="margin: 0; font-size: 12px; line-height: 17px; color: var(--ink2); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden">Two saws, the second 7 cents sharp, and a sine two octaves down, through a hard-clipped 24 dB low-pass at 2 kHz. A filter envelope opens it and a snappy amp envelope shapes each note. LFO 1 wobbles the cutoff and speeds up LFO 2, which moves the resonance. Then a chorus.</p>
+</div>
+<div style="flex: none; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 7px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span class="cap">Scope</span>
+<span style="flex: 1"></span>
+<div role="radiogroup" aria-label="Scope view" class="seg" style="width: 120px">
+<button class="so" role="radio" aria-checked="true" style="background: var(--accent); color: var(--on)">Wave</button>
+<button class="so" role="radio" aria-checked="false">Spectrum</button>
+</div>
+</div>
+<div role="radiogroup" aria-label="Scope tap point" class="seg">
+<button class="so" role="radio" aria-checked="false">Osc</button>
+<button class="so" role="radio" aria-checked="false">Filter</button>
+<button class="so" role="radio" aria-checked="true" style="background: var(--accent); color: var(--on)">Amp</button>
+<button class="so" role="radio" aria-checked="false">FX</button>
+</div>
+<span class="well" style="height: 92px; border-radius: 11px"><svg width="236" height="92" viewBox="0 0 236 92" aria-hidden="true" style="display: block"><line x1="6" y1="46" x2="230" y2="46" style="stroke: var(--track)" stroke-width="1" stroke-dasharray="2 4"></line><path d="{{scope}}" fill="none" style="stroke: var(--amp-ink)" stroke-width="1.7" stroke-linejoin="round"></path></svg></span>
+<span style="font-size: 12px; line-height: 16px; color: var(--mute)">After the amp, before the effects.</span>
+</div>
+</aside>
+</div>
+
+<sc-if value="{{popOpen}}" hint-placeholder-val="{{ false }}">
+<button class="ib" aria-label="Close options" onClick="{{closePop}}" style="position: absolute; inset: 0; z-index: 8; cursor: default"></button>
+<div role="dialog" aria-label="{{pop.title}} options" style="{{pop.style}}">
+<div style="height: 22px; display: flex; align-items: center; gap: 8px">
+<span style="{{pop.dot}}"></span>
+<span style="font-size: 15px; font-weight: 500">{{pop.title}}</span>
+<span class="cap">More</span>
+<span style="flex: 1"></span>
+<button class="ib" aria-label="Close" onClick="{{closePop}}" style="width: 22px; height: 22px; border-radius: 50%; background: var(--surface); box-shadow: var(--sh-s)"><svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M1 1l6 6M7 1L1 7" style="stroke: var(--ink)" stroke-width="1.3" stroke-linecap="round"></path></svg></button>
+</div>
+<sc-for list="{{pop.rows}}" as="r" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 7px; padding-top: 10px; border-top: 1px solid var(--line)">
+<sc-if value="{{r.isSwitch}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 10px"><span style="flex: 1; font-size: 13px; color: var(--ink)">{{r.label}}</span><button class="ib" role="switch" aria-checked="{{r.on}}" aria-label="{{r.label}}" onClick="{{r.toggle}}" style="{{r.track}}"><span style="width: 14px; height: 14px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s); display: block"></span></button></div>
+<sc-if value="{{r.hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; line-height: 16px; color: var(--mute)">{{r.note}}</span></sc-if>
+</sc-if>
+<sc-if value="{{r.isSeg}}" hint-placeholder-val="{{ false }}">
+<span class="cap">{{r.label}}</span>
+<div role="radiogroup" aria-label="{{r.label}}" class="seg" style="flex-wrap: wrap">
+<sc-for list="{{r.opts}}" as="op" hint-placeholder-count="3"><button class="so" role="radio" aria-checked="{{op.on}}" onClick="{{op.pick}}" style="{{op.style}}">{{op.l}}</button></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{r.isKnobs}}" hint-placeholder-val="{{ false }}">
+<span class="cap">{{r.label}}</span>
+<div style="display: flex; gap: 14px; align-items: flex-start">
+<sc-for list="{{r.knobs}}" as="k" hint-placeholder-count="3">
+<button class="kb" aria-label="{{k.aria}}" style="{{k.cell}}">
+<span style="position: relative; display: block; width: {{k.B}}px; height: {{k.B}}px">
+<span style="position: absolute; display: block; left: 3px; top: 3px; width: {{k.size}}px; height: {{k.size}}px; border-radius: 50%; background: var(--knob); box-shadow: var(--sh-s)"></span>
+<svg width="{{k.W}}" height="{{k.W}}" style="position: absolute; left: {{k.e}}px; top: {{k.e}}px; overflow: visible" aria-hidden="true"><path d="{{k.track}}" fill="none" style="stroke: var(--track)" stroke-width="2.4" stroke-linecap="round"></path><path d="{{k.val}}" fill="none" style="{{k.vs}}" stroke-width="2.4" stroke-linecap="round"></path><line x1="{{k.ix0}}" y1="{{k.iy0}}" x2="{{k.ix1}}" y2="{{k.iy1}}" style="stroke: var(--ink)" stroke-width="2" stroke-linecap="round"></line></svg>
+</span>
+<span class="kl">{{k.label}}</span>
+<span class="kv">{{k.text}}</span>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{r.hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; line-height: 16px; color: var(--mute)">{{r.note}}</span></sc-if>
+</sc-if>
+<sc-if value="{{r.isRemove}}" hint-placeholder-val="{{ false }}">
+<button class="ib" style="height: 30px; justify-content: flex-start; padding: 0 10px; border-radius: 9px; background: var(--surface); box-shadow: var(--sh-s); font-size: 13px; color: var(--ink2)"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" style="stroke: var(--ink2)" stroke-width="1.4" stroke-linecap="round"></path></svg>{{r.label}}</button>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      theme: null, hover: null, pop: null,
+      byp: { noise: true, dist: true, delay: true, reverb: true },
+      sw: { pr1: true, pr2: true, pr3: true, aa1: true, aa2: true, aa3: true, sy2: false, sy3: false, rt1: false, rt2: false, dsync: true, dpp: false },
+      seg: { fmt: 'Osc 2', shape: 'Hard clip', ls1: 'Square', ls2: 'Saw down', dmode: 'Tanh' }
+    };
+  }
+  renderVals() {
+    const s = this.state;
+    const theme = s.theme || this.props.theme || 'dark';
+    const f1 = n => Number(n).toFixed(1);
+    const clamp = v => Math.max(0, Math.min(1, v));
+    const P = (cx, cy, r, a) => { const t = a * Math.PI / 180; return [cx + r * Math.sin(t), cy - r * Math.cos(t)]; };
+    const arc = (cx, cy, r, a0, a1) => { if (a1 - a0 < 0.5) return ''; const p0 = P(cx, cy, r, a0), p1 = P(cx, cy, r, a1); return 'M' + f1(p0[0]) + ' ' + f1(p0[1]) + 'A' + r + ' ' + r + ' 0 ' + (a1 - a0 > 180 ? 1 : 0) + ' 1 ' + f1(p1[0]) + ' ' + f1(p1[1]); };
+    const ANG = f => -135 + 270 * clamp(f);
+
+    const knob = (id, label, f, size, fam, v, o) => {
+      o = o || {};
+      const mods = o.mods || [];
+      const B = size + 6, e = 3.5 * mods.length, W = B + 2 * e, c = W / 2, r = size / 2 + 2.5, aV = ANG(f);
+      const val = o.bi ? (aV >= 0 ? arc(c, c, r, 0, aV) : arc(c, c, r, aV, 0)) : arc(c, c, r, -135, aV);
+      const ms = [0, 1].map(i => {
+        const m = mods[i];
+        if (!m) return { d: '', s: 'stroke: none', x: 0, y: 0, r: 0 };
+        const rr = r + 3.5 * (i + 1), lo = Math.min(f, f + m.amt), hi = Math.max(f, f + m.amt);
+        const lp = P(c, c, rr, ANG(f + m.amt * (m.live ?? 0.55)));
+        return { d: arc(c, c, rr, ANG(lo), ANG(hi)), s: 'stroke: var(--' + m.fam + '-ink)', x: f1(lp[0]), y: f1(lp[1]), r: 2 };
+      });
+      const i0 = P(c, c, size * 0.1, aV), i1 = P(c, c, size * 0.36, aV);
+      const hov = s.hover === id, showVal = o.table || hov;
+      return {
+        label, B, W, e: f1(-e), size, track: arc(c, c, r, -135, 135), val, vs: 'stroke: var(--' + fam + ')',
+        m1: ms[0], m2: ms[1], ix0: f1(i0[0]), iy0: f1(i0[1]), ix1: f1(i1[0]), iy1: f1(i1[1]),
+        text: showVal ? v : label, lc: showVal ? 'kv' : 'kl',
+        aria: (o.full || label) + ', ' + v + (mods.length ? ', modulated by ' + mods.map(m => m.src).join(' and ') : ''),
+        cell: 'width: ' + (o.w || 36) + 'px',
+        enter: () => this.setState({ hover: id }),
+        leave: () => { if (this.state.hover === id) this.setState({ hover: null }); }
+      };
+    };
+
+    const wave = (type, w, h, cyc, amp, pad) => { let d = ''; const n = 160; pad = pad ?? 3; for (let i = 0; i <= n; i++) { const x = i / n, p = (x * cyc) % 1; let y; if (type === 'sine') y = Math.sin(2 * Math.PI * p); else if (type === 'tri') y = p < .25 ? 4 * p : p < .75 ? 2 - 4 * p : 4 * p - 4; else if (type === 'saw') y = 1 - 2 * p; else if (type === 'sawdn') y = 1 - 2 * p; else y = p < .5 ? 1 : -1; d += (i ? 'L' : 'M') + f1(pad + x * (w - 2 * pad)) + ' ' + f1(h / 2 - y * h * amp); } return d; };
+    const env = (a, d, su, r, w, h) => { const sq = Math.sqrt, tot = sq(a) + sq(d) + sq(r), span = w * 0.72, wa = span * sq(a) / tot, wd = span * sq(d) / tot, wr = span * sq(r) / tot, hold = w * 0.28 - 5, top = 5, bot = h - 4, sy = bot - (bot - top) * su; let x = 3; let p = 'M' + x + ' ' + bot; x += wa; p += ' L' + f1(x) + ' ' + top; const x1 = x + wd; p += ' Q' + f1(x + wd * 0.15) + ' ' + f1(sy) + ' ' + f1(x1) + ' ' + f1(sy); const xh = x1 + hold; p += ' L' + f1(xh) + ' ' + f1(sy); const x2 = xh + wr; p += ' Q' + f1(xh + wr * 0.15) + ' ' + bot + ' ' + f1(x2) + ' ' + bot; return { d: p, fill: p + ' Z' }; };
+    const lpMag = (f, fc, q) => { const w = f / fc; return 1 / Math.sqrt((1 - w * w) ** 2 + (w / q) ** 2); };
+    const fcurve = (fc, w, h) => { let d = ''; for (let i = 0; i <= 120; i++) { const x = i / 120, f = 20 * Math.pow(1000, x); const m = lpMag(f, fc, 0.707) * lpMag(f, fc, 1.22); const db = 20 * Math.log10(m); const y = Math.max(2, Math.min(h - 1, h * ((14 - db) / 64))); d += (i ? 'L' : 'M') + f1(x * w) + ' ' + f1(y); } const cx = f1(w * Math.log(fc / 20) / Math.log(1000)); return { d, fill: d + ' L' + w + ' ' + h + ' L0 ' + h + ' Z', marks: 'M' + cx + ' 4V' + (h - 4), ghost: 'M0 ' + f1(h * 14 / 64) + 'H' + w, ghostStyle: 'stroke: var(--track)', fillStyle: 'fill: var(--flt)', stroke: 'stroke: var(--flt-ink)' }; };
+    const voices = (w, h) => { const lv = [0.82, 0.64, 0.47, 0, 0, 0, 0, 0]; const bw = (w - 16) / 8; let d = '', g = ''; lv.forEach((l, i) => { const x = f1(8 + i * bw + bw / 2); g += 'M' + x + ' ' + (h - 8) + 'V12'; if (l) d += 'M' + x + ' ' + (h - 8) + 'V' + f1(h - 8 - (h - 20) * l); }); return { d: '', fill: '', marks: '', ghost: g, ghostStyle: 'stroke: var(--track); stroke-width: 14; stroke-linecap: round', fillStyle: 'fill: none', stroke: 'stroke: var(--amp-ink)', bars: d }; };
+
+    const oscRow = (n, name, type, wname, vals) => {
+      const id = 'osc' + n;
+      const ks = [
+        knob(id + 'oct', 'Oct', vals[0][0], 24, 'src', vals[0][1], { table: true, bi: true, full: name + ' octave', w: 38 }),
+        knob(id + 'semi', 'Semi', vals[1][0], 24, 'src', vals[1][1], { table: true, bi: true, full: name + ' semitone', w: 38 }),
+        knob(id + 'fine', 'Fine', vals[2][0], 24, 'src', vals[2][1], { table: true, bi: true, full: name + ' fine tune', w: 38 }),
+        knob(id + 'lvl', 'Level', vals[3][0], 24, 'src', vals[3][1], { table: true, full: name + ' level', w: 38 }),
+        knob(id + 'mor', 'Morph', vals[4][0], 24, 'src', vals[4][1], { table: true, full: name + ' wave morph', w: 38 })
+      ];
+      const m = this.mod(id, 'src');
+      m.bodyStyle = m.bodyStyle.replace('gap: 6px', 'gap: 2px');
+      return { name, wave: wname, thumb: wave(type, 52, 30, 2, 0.32, 3), waveAria: name + ' wave, ' + wname + '. Choose a wave', knobs: ks, ...m };
+    };
+    const oscs = [
+      oscRow(1, 'Osc 1', 'saw', 'Saw', [[0.5, '0'], [0.5, '0'], [0.5, '0 c'], [0.75, '−6 dB'], [0.5, '50%']]),
+      oscRow(2, 'Osc 2', 'saw', 'Saw', [[0.5, '0'], [0.5, '0'], [0.535, '+7 c'], [0.75, '−6 dB'], [0.5, '50%']]),
+      oscRow(3, 'Osc 3', 'sine', 'Sine', [[0, '−2'], [0.5, '0'], [0.535, '+7 c'], [0.75, '−6 dB'], [0, '0%']])
+    ];
+    const noise = { knobs: [knob('nlvl', 'Level', 0.2, 24, 'src', '−47.6 dB', { table: true, full: 'Noise level', w: 44 })], ...this.mod('noise', 'src') };
+
+    const dot = fam => 'width: 20px; height: 20px; flex: none; border-radius: 50%; background: var(--' + fam + '); display: inline-flex; align-items: center; justify-content: center';
+    const handle = fam => 'width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--' + fam + '); color: var(--on); font-size: 11px; font-weight: 500; box-shadow: var(--sh-s); cursor: grab';
+    const cutF = Math.log(100) / Math.log(1000);
+    const fv = fcurve(2000, 216, 80);
+    const modes = ['LP24', 'LP12', 'HP12', 'BP12', 'Notch', 'Comb'].map((l, i) => ({ l, on: i === 0 ? 'true' : 'false', style: i === 0 ? 'background: var(--flt); color: var(--on); font-weight: 500' : '' }));
+    const filterTop = {
+      name: 'Filter', glyph: 'M0.5 3h5.5c1.5 0 2-1 2.5 0s1.5 6 3 6.5', dot: dot('flt'), hasB: true, hasModes: true, modes,
+      viz: fv, vizL: '2.00 kHz · 20%', vizR: 'Hard clip',
+      knobs: [
+        knob('cut', 'Cutoff', cutF, 28, 'flt', '2.00 kHz', { w: 48, mods: [{ amt: 0.25, fam: 'flt', src: 'Filter Envelope', live: 0.4 }, { amt: 0.2, fam: 'mod', src: 'LFO 1', live: 0.7 }] }),
+        knob('res', 'Res', 0.2, 24, 'flt', '20%', { w: 40, full: 'Resonance', mods: [{ amt: 0.25, fam: 'mod', src: 'LFO 2', live: 0.3 }] }),
+        knob('key', 'Key', 0.63, 24, 'flt', '63%', { w: 40, full: 'Key tracking' }),
+        knob('drv', 'Drive', 0.41, 24, 'flt', '9.8 dB', { w: 40, full: 'Filter drive' })
+      ],
+      ...this.mod('filter', 'flt')
+    };
+    const vz = voices(216, 80);
+    const ampTop = {
+      name: 'Amp', glyph: 'M0.5 9.5L3 1.5l2 3h3.5l3 5', dot: dot('amp'), hasB: false, hasModes: false, modes: [],
+      viz: { d: vz.bars, fill: '', marks: '', ghost: vz.ghost, ghostStyle: vz.ghostStyle, fillStyle: 'fill: none', stroke: 'stroke: var(--amp-ink); stroke-width: 14; stroke-linecap: round' },
+      vizL: '3 of 8 voices sounding', vizR: '',
+      knobs: [knob('alvl', 'Level', 1, 24, 'amp', '100%', { w: 40, full: 'Amp level' }), knob('apan', 'Pan', 0.5, 24, 'amp', 'Centre', { w: 40, bi: true })],
+      bClass: '', bOn: 'false', toggleB: null, open: 'false', more: null, moreStyle: ''
+    };
+    const fe = env(30, 500, 0.2, 300, 50, 44), ae = env(5, 300, 0.8, 200, 50, 44);
+    const envCard = (id, tag, name, fam, shape, knobs) => ({ tag, name, handle: handle(fam), handleAria: 'Drag ' + name + ' onto a knob to modulate it', viz: { d: shape.d, fill: shape.fill, fillStyle: 'fill: var(--' + fam + ')', stroke: 'stroke: var(--' + fam + '-ink)' }, knobs, ...this.mod(id, fam) });
+    const ek = (id, l, f, fam, v, o) => knob(id, l, f, 22, fam, v, Object.assign({ w: 30 }, o || {}));
+    const cols = [
+      { arrow: true, top: filterTop, env: envCard('fenv', 'FE', 'Filter Env', 'flt', fe, [ek('fa', 'A', 0.37, 'flt', '30 ms', { full: 'Filter Envelope attack' }), ek('fd', 'D', 0.67, 'flt', '500 ms', { full: 'Filter Envelope decay' }), ek('fs', 'S', 0.2, 'flt', '20%', { full: 'Filter Envelope sustain' }), ek('fr', 'R', 0.58, 'flt', '300 ms', { full: 'Filter Envelope release' }), ek('famt', 'Amt', 0.75, 'flt', '+50%', { full: 'Filter Envelope amount', bi: true })]) },
+      { arrow: false, top: ampTop, env: envCard('aenv', 'AE', 'Amp Env', 'amp', ae, [ek('aa', 'A', 0.17, 'amp', '5 ms', { full: 'Amp Envelope attack' }), ek('ad', 'D', 0.62, 'amp', '300 ms', { full: 'Amp Envelope decay' }), ek('as', 'S', 0.8, 'amp', '80%', { full: 'Amp Envelope sustain' }), ek('ar', 'R', 0.53, 'amp', '200 ms', { full: 'Amp Envelope release' }), ek('av', 'Vel', 0.5, 'amp', '50%', { full: 'Velocity sensitivity' })]) }
+    ];
+
+    const fxk = (id, l, f, v, full) => knob(id, l, f, 22, 'fx', v, { w: 34, full });
+    const distViz = (() => { let d = ''; for (let i = 0; i <= 40; i++) { const x = -1 + 2 * i / 40; const y = Math.tanh(2.6 * x) / Math.tanh(2.6); d += (i ? 'L' : 'M') + f1(6 + (x + 1) / 2 * 44) + ' ' + f1(20 - y * 14); } return d; })();
+    const delayViz = (() => { let d = ''; for (let i = 0; i < 6; i++) { const x = f1(8 + i * 8); d += 'M' + x + ' 34V' + f1(34 - 26 * Math.pow(0.62, i)); } return d; })();
+    const chorusViz = wave('sine', 56, 40, 1.5, 0.28, 5) + ' ' + wave('sine', 56, 44, 1.62, 0.24, 5);
+    const revViz = (() => { let d = ''; for (let i = 0; i < 44; i++) { const x = f1(5 + i); const a = Math.exp(-i / 13); const r = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1; d += 'M' + x + ' 34V' + f1(34 - (6 + 22 * r) * a); } return d; })();
+    const fxCard = (id, n, name, viz, tag, knobs) => ({ n, name, viz, tag, knobs, ...this.mod(id, 'fx', true) });
+    const fx = [
+      fxCard('dist', 1, 'Distortion', distViz, 'Tanh', [fxk('dd', 'Drive', 0.56, '13.4 dB', 'Distortion drive'), fxk('dt', 'Tone', 0.5, '50%', 'Distortion tone'), fxk('dm', 'Mix', 1, '100%', 'Distortion mix')]),
+      fxCard('delay', 2, 'Delay', delayViz, '1/4', [fxk('yt', 'Time', 0.5, '1/4', 'Delay time, synced, 500 ms'), fxk('yf', 'Fdbk', 0.4, '40%', 'Delay feedback'), fxk('ym', 'Mix', 0.35, '35%', 'Delay mix')]),
+      fxCard('chorus', 3, 'Chorus', chorusViz, '', [fxk('cr', 'Rate', 0.4, '0.80 Hz', 'Chorus rate'), fxk('cd', 'Depth', 0.5, '50%', 'Chorus depth'), fxk('cm', 'Mix', 0.5, '50%', 'Chorus mix')]),
+      fxCard('reverb', 4, 'Reverb', revViz, '', [fxk('rs', 'Size', 0.5, '50%', 'Reverb size'), fxk('rd', 'Decay', 0.45, '2.00 s', 'Reverb decay'), fxk('rm', 'Mix', 0.3, '30%', 'Reverb mix')])
+    ];
+    const outKnobs = [knob('vol', 'Volume', 0.8, 26, 'amp', '0.0 dB', { w: 44, full: 'Output volume' })];
+
+    const lfoCard = (id, n, shape, type, ph, knobs) => {
+      const v = wave(type, 110, 40, 2, 0.3, 4);
+      const u = ph, p = (u * 2) % 1;
+      let y; if (type === 'square') y = p < .5 ? 1 : -1; else y = 1 - 2 * p;
+      return { tag: 'L' + n, name: 'LFO ' + n, shape, shapeAria: 'LFO ' + n + ' shape, ' + shape + '. Choose a shape', viz: v, dx: f1(4 + u * 102), dy: f1(20 - y * 12), knobs, ...this.mod(id, 'mod', true) };
+    };
+    const lfos = [
+      lfoCard('lfo1', 1, 'Square', 'square', 0.3, [knob('l1r', 'Beat', 0.5, 22, 'mod', '1/4', { w: 34, full: 'LFO 1 rate, synced' }), knob('l1f', 'Fade', 0, 22, 'mod', 'Off', { w: 34, full: 'LFO 1 fade-in' })]),
+      lfoCard('lfo2', 2, 'Saw down', 'sawdn', 0.62, [knob('l2r', 'Beat', 0.5, 22, 'mod', '1/4', { w: 34, full: 'LFO 2 rate, synced', mods: [{ amt: 0.2, fam: 'mod', src: 'LFO 1', live: 0.8 }] }), knob('l2f', 'Fade', 0, 22, 'mod', 'Off', { w: 34, full: 'LFO 2 fade-in' })])
+    ];
+    const perf = [{ tag: 'Vel', label: 'Velocity' }, { tag: 'MW', label: 'Mod wheel' }, { tag: 'AT', label: 'Aftertouch' }, { tag: 'Key', label: 'Key' }];
+    const conns = [['L1', 'Cutoff'], ['L2', 'Resonance'], ['L1', 'LFO 2 rate']].map(([src, dest]) => ({ src, dest, w: 25, amt: '+50%', aria: (src === 'L1' ? 'LFO 1' : 'LFO 2') + ' to ' + dest + ', +50%' }));
+
+    const vk = (id, l, f, v, full, bi) => knob(id, l, f, 22, 'amp', v, { w: 35, full, bi });
+    const voiceKnobs = [vk('vv', 'Voices', 7 / 15, '8', 'Voices'), vk('vg', 'Glide', 0, 'Off', 'Glide time'), vk('vb', 'Bend', 1 / 23, '±2', 'Pitch bend range'), vk('vd', 'Drift', 0, '0%', 'Analogue drift')];
+
+    const names = ['C', 'D', 'E', 'F', 'G', 'A', 'B'], wkeys = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K'];
+    const whites = Array.from({ length: 14 }, (_, i) => ({ x: i * 27, key: wkeys[i] || '', aria: names[i % 7] + (3 + Math.floor(i / 7)) }));
+    const bn = ['C♯', 'D♯', 'F♯', 'G♯', 'A♯'], bk = ['W', 'E', 'T', 'Y', 'U'];
+    const blacks = [];
+    [0, 1].forEach(o => [0, 1, 3, 4, 5].forEach((wi, j) => blacks.push({ x: (o * 7 + wi + 1) * 27 - 9, key: o === 0 ? bk[j] : '', aria: bn[j] + (3 + o) })));
+
+    const scope = (() => { let d = ''; for (let i = 0; i <= 220; i++) { const x = i / 220; let y = 0; for (let n = 1; n <= 14; n++) { const g = (1 / n) * lpMag(130.8 * n * 8, 2000, 1.22) * lpMag(130.8 * n * 8, 2000, 0.707); y += g * Math.sin(2 * Math.PI * n * x * 3); } d += (i ? 'L' : 'M') + f1(6 + x * 224) + ' ' + f1(46 - y * 26); } return d; })();
+
+    const pop = this.popData();
+    return {
+      themeClass: theme === 'light' ? 't-light' : 't-dark',
+      themeAria: theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme',
+      toggleTheme: () => this.setState({ theme: theme === 'light' ? 'dark' : 'light' }),
+      oscCols: [{ l: 'Oct' }, { l: 'Semi' }, { l: 'Fine' }, { l: 'Level' }, { l: 'Morph' }],
+      oscs, noise, cols, fx, outKnobs, outMeter: [{ h: 22 }, { h: 26 }], lfos, perf, conns, voiceKnobs, whites, blacks, scope,
+      popOpen: !!pop, pop: pop || { title: '', style: '', dot: '', rows: [] },
+      closePop: () => this.setState({ pop: null })
+    };
+  }
+
+  mod(id, fam, onCard) {
+    const s = this.state, on = !!s.byp[id], open = s.pop === id;
+    return {
+      bClass: 'ib sb' + (on ? ' on' : ''), bOn: on ? 'true' : 'false',
+      toggleB: () => this.setState(st => ({ byp: { ...st.byp, [id]: !st.byp[id] } })),
+      bodyStyle: (onCard ? 'display: flex; gap: 4px; align-items: flex-start; ' : 'flex: 1; display: flex; gap: 6px; align-items: center; ') + (on ? 'opacity: .4' : ''),
+      open: open ? 'true' : 'false',
+      more: () => this.setState(st => ({ pop: st.pop === id ? null : id })),
+      moreStyle: open ? 'background: var(--ink); color: var(--surface); box-shadow: none' : 'color: var(--ink2)'
+    };
+  }
+
+  popData() {
+    const s = this.state, id = s.pop;
+    if (!id) return null;
+    const f1 = n => Number(n).toFixed(1);
+    const P = (cx, cy, r, a) => { const t = a * Math.PI / 180; return [cx + r * Math.sin(t), cy - r * Math.cos(t)]; };
+    const arc = (cx, cy, r, a0, a1) => { if (a1 - a0 < 0.5) return ''; const p0 = P(cx, cy, r, a0), p1 = P(cx, cy, r, a1); return 'M' + f1(p0[0]) + ' ' + f1(p0[1]) + 'A' + r + ' ' + r + ' 0 ' + (a1 - a0 > 180 ? 1 : 0) + ' 1 ' + f1(p1[0]) + ' ' + f1(p1[1]); };
+    const ANG = f => -135 + 270 * Math.max(0, Math.min(1, f));
+    const pk = (label, f, fam, v) => { const size = 26, B = size + 6, c = B / 2, r = size / 2 + 2.5, aV = ANG(f); const i0 = P(c, c, size * 0.1, aV), i1 = P(c, c, size * 0.36, aV); return { label, text: v, B, W: B, e: 0, size, track: arc(c, c, r, -135, 135), val: arc(c, c, r, -135, aV), vs: 'stroke: var(--' + fam + ')', ix0: f1(i0[0]), iy0: f1(i0[1]), ix1: f1(i1[0]), iy1: f1(i1[1]), aria: label + ', ' + v, cell: 'width: 52px' }; };
+    const sw = (key, label, note) => { const on = !!s.sw[key]; return { isSwitch: true, label, on: on ? 'true' : 'false', toggle: () => this.setState(st => ({ sw: { ...st.sw, [key]: !st.sw[key] } })), track: 'width: 34px; height: 18px; flex: none; border-radius: 9px; padding: 0 2px; justify-content: ' + (on ? 'flex-end; background: var(--' + fam + ')' : 'flex-start; background: var(--well); box-shadow: var(--sh-i)'), hasNote: !!note, note: note || '' }; };
+    const seg = (key, label, opts) => ({ isSeg: true, label, opts: opts.map(l => ({ l, on: s.seg[key] === l ? 'true' : 'false', pick: () => this.setState(st => ({ seg: { ...st.seg, [key]: l } })), style: 'flex: 1 0 ' + (opts.length > 4 ? '30%' : '20%') + (s.seg[key] === l ? '; background: var(--' + fam + '); color: var(--on); font-weight: 500' : '') })) });
+    const kn = (label, knobs, note) => ({ isKnobs: true, label, knobs, hasNote: !!note, note: note || '' });
+    const rm = label => ({ isRemove: true, label });
+    let fam = 'src', title = '', rows = [], pos = { left: 412, top: 130 };
+    const rowY = { osc1: 128, osc2: 194, osc3: 230, noise: 300 };
+    if (id === 'osc1' || id === 'osc2' || id === 'osc3') {
+      const n = id.slice(3); fam = 'src'; title = 'Osc ' + n;
+      rows = [sw('pr' + n, 'Phase reset on each note'), kn('Unison', [pk('Copies', 0, 'src', '1'), pk('Detune', 0.2, 'src', '20 c'), pk('Spread', 0.5, 'src', '50%')])];
+      if (n === '1') rows.push(kn('Osc 1 shapes the others', [pk('FM', 0, 'src', '0%'), pk('Ring', 0, 'src', '−∞ dB')], 'Ring mod multiplies Osc 1 by Osc 2 and adds the result as its own source.'), seg('fmt', 'FM target', ['Osc 2', 'Osc 3', 'Both']));
+      else rows.push(sw('sy' + n, 'Hard sync to Osc 1', 'Restarts this wave whenever Osc 1 starts a cycle.'));
+      rows.push(sw('aa' + n, 'Anti-aliasing'));
+      if (n !== '1') rows.push(rm('Remove Osc ' + n));
+      pos = { left: 412, top: rowY[id] };
+    } else if (id === 'noise') { fam = 'src'; title = 'Noise'; rows = [rm('Remove noise')]; pos = { left: 412, top: rowY.noise }; }
+    else if (id === 'filter') { fam = 'flt'; title = 'Filter'; rows = [seg('shape', 'Shape', ['Off', 'Tanh', 'Hard clip', 'Wavefold']), kn('Shaper', [pk('Drive', 0.5, 'flt', '12.0 dB'), pk('Bias', 0, 'flt', '0%'), pk('Mix', 1, 'flt', '100%')]), rm('Remove filter')]; pos = { left: 664, top: 112 }; }
+    else if (id === 'fenv') { fam = 'flt'; title = 'Filter Env'; rows = [rm('Remove Filter Envelope')]; pos = { left: 664, top: 300 }; }
+    else if (id === 'aenv') { fam = 'amp'; title = 'Amp Env'; rows = [rm('Remove Amp Envelope (back to the on/off gate)')]; pos = { left: 620, top: 300 }; }
+    else if (id === 'lfo1' || id === 'lfo2') { const n = id.slice(3); fam = 'mod'; title = 'LFO ' + n; rows = [seg('ls' + n, 'Shape', ['Sine', 'Triangle', 'Saw up', 'Saw down', 'Square', 'S&H']), sw('rt' + n, 'Retrigger on each note'), rm('Remove LFO ' + n)]; pos = { left: 12 + (n - 1) * 222, bottom: 220 }; }
+    else { const i = ['dist', 'delay', 'chorus', 'reverb'].indexOf(id); fam = 'fx'; title = ['Distortion', 'Delay', 'Chorus', 'Reverb'][i]; pos = { left: Math.min(48 + i * 192, 628), top: 524 - 10 };
+      if (id === 'dist') rows = [seg('dmode', 'Mode', ['Tanh', 'Hard clip', 'Wavefold']), kn('Shape', [pk('Bias', 0.75, 'fx', '75%')]), rm('Remove distortion')];
+      if (id === 'delay') rows = [sw('dsync', 'Sync to tempo'), sw('dpp', 'Ping-pong', 'Bounces the echoes between left and right.'), rm('Remove delay')];
+      if (id === 'chorus') rows = [rm('Remove chorus')];
+      if (id === 'reverb') rows = [kn('Tone', [pk('Damping', 0.5, 'fx', '50%')]), rm('Remove reverb')];
+      pos.top = 340; pos = { left: pos.left, bottom: 760 - 432 };
+    }
+    rows = rows.map(r => Object.assign({ isSwitch: false, isSeg: false, isKnobs: false, isRemove: false, hasNote: false, note: '', label: '', opts: [], knobs: [], on: 'false', toggle: null, track: '' }, r));
+    const place = pos.bottom != null ? 'bottom: ' + pos.bottom + 'px' : 'top: ' + pos.top + 'px';
+    return {
+      title, rows,
+      dot: 'width: 10px; height: 10px; border-radius: 50%; background: var(--' + fam + '); display: block',
+      style: 'position: absolute; z-index: 9; left: ' + pos.left + 'px; ' + place + '; width: 288px; box-sizing: border-box; padding: 14px; border-radius: 16px; background: var(--surface); box-shadow: var(--sh-l); display: flex; flex-direction: column; gap: 10px'
+    };
+  }
+}
+</script>
+</body>
+</html>

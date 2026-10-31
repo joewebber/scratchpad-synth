@@ -12,8 +12,9 @@ namespace scratchpad::ui
 namespace
 {
     constexpr int pad = 14;
-    constexpr int patchHeight = 112;
-    constexpr int scopeHeight = 262;
+    constexpr int patchHeight = 1 + 10 + 14 + 4 + 5 * 17; // rule, padding, heading, gap, up to five lines
+    constexpr int patchLineHeight = 17;
+    constexpr int scopeHeight = Scope::height;
     constexpr float lineHeight = 16.0f;
 
     bool isModuleKey (const juce::String& id) { return ! id.containsChar ('.'); }
@@ -525,10 +526,9 @@ void ExplainPanel::resized()
 
     scopeArea = area.removeFromBottom (scopeHeight);
     scope.setBounds (scopeArea);
-    area.removeFromBottom (10);
     patchArea = area.removeFromBottom (patchHeight);
-    area.removeFromBottom (6);
-    area.removeFromTop (8);
+    area.removeFromBottom (10);
+    area.removeFromTop (12);
     bodyArea = area;
 }
 
@@ -774,7 +774,7 @@ void ExplainPanel::paintGlossary (juce::Graphics& g, juce::Rectangle<int> bounds
 void ExplainPanel::paint (juce::Graphics& g)
 {
     const auto& p = paletteOf (*this);
-    drawRaised (g, getLocalBounds().toFloat(), 18.0f, p, Elevation::raised, p.surface);
+    drawRaised (g, getLocalBounds().toFloat(), 16.0f, p, Elevation::small, p.surface);
 
     if (collapsed)
     {
@@ -782,8 +782,8 @@ void ExplainPanel::paint (juce::Graphics& g)
         backArea = {};
 
         // The name, reading downwards from under the button.
-        auto titleFont = uiFont (13.0f, Weight::medium);
-        titleFont.setExtraKerningFactor (0.22f);
+        auto titleFont = uiFont (12.0f, Weight::medium);
+        titleFont.setExtraKerningFactor (cssTracking (0.24f));
         const float length = textWidth (titleFont, "EXPLAIN");
         const auto origin = juce::Point<float> ((float) getWidth() * 0.5f, (float) unfoldButton.getBottom() + 18.0f);
 
@@ -798,8 +798,8 @@ void ExplainPanel::paint (juce::Graphics& g)
         return;
     }
 
-    auto titleFont = uiFont (13.0f, Weight::medium);
-    titleFont.setExtraKerningFactor (0.22f);
+    auto titleFont = uiFont (12.0f, Weight::medium);
+    titleFont.setExtraKerningFactor (cssTracking (0.24f));
     g.setFont (titleFont);
     g.setColour (p.ink);
     g.drawText ("EXPLAIN", headerRow, juce::Justification::centredLeft, false);
@@ -816,17 +816,27 @@ void ExplainPanel::paint (juce::Graphics& g)
     if (! glossaryOpen)
     {
         auto area = patchArea.toFloat();
+        g.setColour (p.line);
+        g.fillRect (area.removeFromTop (1.0f));
+        area.removeFromTop (10.0f);
         drawCaption (g, "Your patch", area.removeFromTop (14.0f), p.ink2);
         area.removeFromTop (4.0f);
 
+        // Five lines at most; the sentence is the whole patch and can run longer, the last line ends in an ellipsis.
         const auto font = uiFont (12.0f);
         g.setFont (font);
-        g.setColour (p.ink);
-        const auto lines = wrapLines (font, patchText, area.getWidth());
-        drawLines (g, lines, area.getPosition(), area.getWidth(), lineHeight);
+        g.setColour (p.ink2);
+        auto lines = wrapLines (font, patchText, area.getWidth());
+
+        if (lines.size() > 5)
+        {
+            lines.removeRange (5, lines.size() - 5);
+            lines.set (4, lines[4].trimEnd().upToLastOccurrenceOf (" ", false, false) + juce::String (juce::CharPointer_UTF8 ("\xe2\x80\xa6")));
+        }
+
+        drawLines (g, lines, area.getPosition(), area.getWidth(), (float) patchLineHeight);
     }
 
-    drawCaption (g, "Scope", juce::Rectangle<float> ((float) scopeArea.getX(), (float) scopeArea.getY() - 14.0f, 80.0f, 12.0f), p.ink2);
     syncLinks();
 }
 

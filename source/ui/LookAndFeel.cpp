@@ -1,5 +1,7 @@
 #include "ui/LookAndFeel.h"
 
+#include "ui/Layout.h"
+
 #include <cmath>
 #include <numbers>
 
@@ -115,49 +117,77 @@ void ScratchpadLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Butto
         drawFocusRing (g, bounds, radius, p.ink);
 }
 
+void ScratchpadLookAndFeel::drawCallOutBoxBackground (juce::CallOutBox& box, juce::Graphics& g, const juce::Path&, juce::Image&)
+{
+    const auto bounds = box.getLocalBounds().reduced (getCallOutBoxBorderSize (box)).toFloat();
+    drawRaised (g, bounds, (float) layout::popover::radius, *palette, Elevation::lifted, palette->surface);
+}
+
+juce::Slider::SliderLayout ScratchpadLookAndFeel::getSliderLayout (juce::Slider& slider)
+{
+    if (! slider.isRotary())
+        return LookAndFeel_V4::getSliderLayout (slider);
+
+    const auto& props = slider.getProperties();
+    const int cell = (int) props.getWithDefault (knobMetrics::discSize, knobMetrics::defaultDisc) + 2 * knobMetrics::margin;
+    const int valueY = (int) props.getWithDefault (knobMetrics::valueY, cell + knobMetrics::labelGap);
+
+    juce::Slider::SliderLayout layout;
+    layout.sliderBounds = juce::Rectangle<int> (cell, cell).withX ((slider.getWidth() - cell) / 2);
+    layout.textBoxBounds = { 0, valueY, slider.getWidth(), knobMetrics::labelHeight };
+    return layout;
+}
+
 void ScratchpadLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                                               float sliderPos, float startAngle, float endAngle,
                                               juce::Slider& slider)
 {
+    // The design's knob: a disc `size` across with a 2.4 px track 2.5 px outside it, a pointer, and the value arc
+    // over the track from the start (or, for a bipolar knob, from the centre).
     const auto& p = *palette;
     const auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
-    const float outer = juce::jmin (bounds.getWidth(), bounds.getHeight());
+    const float size = juce::jmin (bounds.getWidth(), bounds.getHeight()) - 2.0f * (float) knobMetrics::margin;
+    constexpr float stroke = 2.4f, ringGap = 2.5f;
 
-    // Disc, then a track ring 2.5 px outside it, as in the prototype.
-    constexpr float stroke = 2.5f, ringGap = 2.5f, margin = 3.0f;
-    const float discSize = outer - 2.0f * (margin + ringGap + stroke * 0.5f);
     const auto centre = bounds.getCentre();
-    const auto disc = juce::Rectangle<float> (discSize, discSize).withCentre (centre);
-    const float ringRadius = discSize * 0.5f + ringGap;
+    const auto disc = juce::Rectangle<float> (size, size).withCentre (centre);
+    const float ringRadius = size * 0.5f + ringGap;
     const float angle = startAngle + sliderPos * (endAngle - startAngle);
-    const bool active = slider.isMouseButtonDown();
+    const float middle = (startAngle + endAngle) * 0.5f;
+    const bool bipolar = (bool) slider.getProperties().getWithDefault (knobMetrics::bipolar, false);
 
     if (! slider.isEnabled())
         g.beginTransparencyLayer (0.45f);
 
-    drawRaised (g, disc, discSize * 0.5f, p, active ? Elevation::lifted : Elevation::small, p.surface);
+    drawRaised (g, disc, size * 0.5f, p, Elevation::small, p.knob);
+
+    const juce::PathStrokeType round (stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
 
     juce::Path track;
     track.addCentredArc (centre.x, centre.y, ringRadius, ringRadius, 0.0f, startAngle, endAngle, true);
     g.setColour (slider.findColour (juce::Slider::rotarySliderOutlineColourId));
-    g.strokePath (track, juce::PathStrokeType (stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.strokePath (track, round);
 
-    if (sliderPos > 0.0f)
+    const float from = bipolar ? juce::jmin (middle, angle) : startAngle;
+    const float to = bipolar ? juce::jmax (middle, angle) : angle;
+
+    if (to - from > 0.01f)
     {
         juce::Path value;
-        value.addCentredArc (centre.x, centre.y, ringRadius, ringRadius, 0.0f, startAngle, angle, true);
+        value.addCentredArc (centre.x, centre.y, ringRadius, ringRadius, 0.0f, from, to, true);
         g.setColour (slider.findColour (juce::Slider::rotarySliderFillColourId));
-        g.strokePath (value, juce::PathStrokeType (active ? 4.0f : stroke, juce::PathStrokeType::curved,
-                                                   juce::PathStrokeType::rounded));
+        g.strokePath (value, round);
     }
 
-    const juce::Point<float> inner (centre.x + std::sin (angle) * discSize * 0.12f, centre.y - std::cos (angle) * discSize * 0.12f);
-    const juce::Point<float> tip (centre.x + std::sin (angle) * discSize * 0.36f, centre.y - std::cos (angle) * discSize * 0.36f);
+    const juce::Point<float> inner (centre.x + std::sin (angle) * size * 0.1f, centre.y - std::cos (angle) * size * 0.1f);
+    const juce::Point<float> tip (centre.x + std::sin (angle) * size * 0.36f, centre.y - std::cos (angle) * size * 0.36f);
     g.setColour (p.ink);
-    g.drawLine ({ inner, tip }, 2.2f);
+    g.drawLine (juce::Line<float> (inner, tip), 2.0f);
+    g.fillEllipse (juce::Rectangle<float> (2.0f, 2.0f).withCentre (inner));
+    g.fillEllipse (juce::Rectangle<float> (2.0f, 2.0f).withCentre (tip));
 
     if (slider.hasKeyboardFocus (false))
-        drawFocusRing (g, disc, discSize * 0.5f + ringGap, p.ink);
+        drawFocusRing (g, disc.expanded (2.5f), size * 0.5f + 2.5f, p.ink);
 
     if (! slider.isEnabled())
         g.endTransparencyLayer();
@@ -215,12 +245,10 @@ void ScratchpadLookAndFeel::drawCornerResizer (juce::Graphics& g, int w, int h, 
 
 void ScratchpadLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
 {
-    const auto& p = *palette;
     const auto bg = label.findColour (juce::Label::backgroundColourId);
 
-    if (dynamic_cast<juce::Slider*> (label.getParentComponent()) != nullptr)
-        drawInset (g, label.getLocalBounds().toFloat(), 8.0f, p, p.well);
-    else if (bg.getAlpha() > 0)
+    // A knob's value is plain text under the dial (the design has no pill round it).
+    if (dynamic_cast<juce::Slider*> (label.getParentComponent()) == nullptr && bg.getAlpha() > 0)
     {
         g.setColour (bg);
         g.fillRoundedRectangle (label.getLocalBounds().toFloat(), 6.0f);
@@ -230,10 +258,10 @@ void ScratchpadLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
         return;
 
     g.setColour (label.findColour (juce::Label::textColourId).withMultipliedAlpha (label.isEnabled() ? 1.0f : 0.5f));
-    // Knob value pills are narrower than a typical label, so they run a size smaller.
-    const bool pill = dynamic_cast<juce::Slider*> (label.getParentComponent()) != nullptr;
-    g.setFont (uiFont (pill ? 11.0f : 12.0f));
-    g.drawText (label.getText(), label.getLocalBounds().reduced (pill ? 1 : 4, 0), label.getJustificationType(), false);
+    // Knob values are narrower than a typical label, so they run a size smaller.
+    const bool knobValue = dynamic_cast<juce::Slider*> (label.getParentComponent()) != nullptr;
+    g.setFont (uiFont (knobValue ? 11.0f : 12.0f));
+    g.drawText (label.getText(), label.getLocalBounds().reduced (knobValue ? 1 : 4, 0), label.getJustificationType(), false);
 }
 
 } // namespace scratchpad::ui

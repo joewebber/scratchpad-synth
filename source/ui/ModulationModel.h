@@ -186,8 +186,12 @@ public:
     virtual float getDiscRadius() const = 0;
     virtual std::vector<ModArc> getArcs() const = 0;
 
+    /** Radius of the innermost modulation arc (a knob puts it just outside its value track), and the step to each next one. */
+    virtual float getFirstArcRadius() const { return firstArcRadius; }
+    float getArcRadius (size_t i) const noexcept { return getFirstArcRadius() + (float) i * arcSpacing; }
+
     static constexpr float firstArcRadius = 20.5f;
-    static constexpr float arcSpacing = 3.0f;
+    static constexpr float arcSpacing = 3.5f;
 };
 
 } // namespace scratchpad::ui

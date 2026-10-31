@@ -104,7 +104,7 @@ TEST_CASE ("The M5 modules, controls and glossary terms have copy", "[content]")
         REQUIRE (content.param (juce::String (key) + ".bypass") != nullptr);
     }
 
-    for (const char* id : { "control.limiter", "control.effectGrip", "control.oscMore" })
+    for (const char* id : { "control.limiter", "control.effectGrip", "control.more" })
     {
         INFO (id);
         REQUIRE (content.control (id) != nullptr);

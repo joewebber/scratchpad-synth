@@ -157,14 +157,14 @@ void Scope::visibilityChanged()
 void Scope::lookAndFeelChanged()
 {
     // The selected segments carry a palette colour, so a new theme has to hand them the new one.
-    modeButtons.setSelected (mode == Mode::wave ? 0 : 1, paletteOf (*this).src);
-    tapButtons.setSelected ((int) tap, tapColour (paletteOf (*this)));
+    modeButtons.setSelected (mode == Mode::wave ? 0 : 1, paletteOf (*this).accent);
+    tapButtons.setSelected ((int) tap, paletteOf (*this).accent);
 }
 
 void Scope::setMode (Mode m)
 {
     mode = m;
-    modeButtons.setSelected (m == Mode::wave ? 0 : 1, paletteOf (*this).src);
+    modeButtons.setSelected (m == Mode::wave ? 0 : 1, paletteOf (*this).accent);
     repaint();
 }
 
@@ -175,7 +175,7 @@ void Scope::setTap (ScopeTap t)
     processor.readScope (scratch.data(), (int) scratch.size());
     history.fill (0.0f);
     peaks.fill (floorDb);
-    tapButtons.setSelected ((int) t, tapColour (paletteOf (*this)));
+    tapButtons.setSelected ((int) t, paletteOf (*this).accent);
     repaint();
 }
 
@@ -194,13 +194,15 @@ juce::Colour Scope::tapColour (const Palette& p) const
 void Scope::resized()
 {
     auto area = getLocalBounds();
+    area.removeFromTop (11); // the rule and its padding
+    auto heading = area.removeFromTop (24);
+    modeButtons.setBounds (heading.removeFromRight (120));
+    area.removeFromTop (7);
     tapButtons.setBounds (area.removeFromTop (24));
-    area.removeFromTop (4);
-    modeButtons.setBounds (area.removeFromTop (24).removeFromLeft (150));
-    area.removeFromTop (6);
-    captionArea = area.removeFromBottom (48);
-    area.removeFromBottom (4);
-    display = area;
+    area.removeFromTop (7);
+    display = area.removeFromTop (92);
+    area.removeFromTop (7);
+    captionArea = area;
 }
 
 int Scope::findTrigger (const float* x, int count, int searchFrom, int searchTo)
@@ -350,7 +352,12 @@ void Scope::drawSpectrum (juce::Graphics& g, juce::Rectangle<float> area)
 void Scope::paint (juce::Graphics& g)
 {
     const auto& p = paletteOf (*this);
-    drawInset (g, display.toFloat(), 10.0f, p, p.well);
+
+    g.setColour (p.line);
+    g.fillRect (0, 0, getWidth(), 1);
+    drawCaption (g, "Scope", juce::Rectangle<float> (0.0f, 11.0f, 80.0f, 24.0f), p.ink2, juce::Justification::centredLeft);
+
+    drawInset (g, display.toFloat(), 11.0f, p, p.well);
 
     if (mode == Mode::wave)
         drawWave (g, display.toFloat());

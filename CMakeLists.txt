@@ -116,6 +116,10 @@ target_link_libraries(ScratchpadParameterList PRIVATE ScratchpadCore juce::juce_
 add_executable(ScratchpadBenchmark tools/Benchmark.cpp tools/BenchmarkRig.h)
 target_link_libraries(ScratchpadBenchmark PRIVATE ScratchpadCore juce::juce_recommended_config_flags)
 
+# Renders the editor to a PNG (see the header of tools/Snapshot.cpp).
+add_executable(ScratchpadSnapshot tools/Snapshot.cpp)
+target_link_libraries(ScratchpadSnapshot PRIVATE ScratchpadCore juce::juce_recommended_config_flags)
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------

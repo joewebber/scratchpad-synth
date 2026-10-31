@@ -206,7 +206,7 @@ ModTarget* ModulationModel::findTargetAt (juce::Point<int> screenPoint) const
 
         const auto local = c.getLocalPoint (nullptr, screenPoint).toFloat();
 
-        if (local.getDistanceFrom (t->getRingCentre()) <= t->getDiscRadius() + ModTarget::firstArcRadius - 14.0f)
+        if (local.getDistanceFrom (t->getRingCentre()) <= t->getDiscRadius() + t->getFirstArcRadius() - 14.0f)
             return t;
     }
 

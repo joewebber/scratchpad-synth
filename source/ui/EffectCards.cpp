@@ -11,20 +11,10 @@ namespace scratchpad::ui
 
 namespace
 {
-    // 12 x 10 glyphs for the header dot, in the style of the module glyphs.
-    const char* effectGlyph (engine::EffectKind kind)
-    {
-        switch (kind)
-        {
-            case engine::EffectKind::distortion: return "M0.5 9C2 9 2.5 1.5 4 1.5h4c1.5 0 2 7.5 3.5 7.5";
-            case engine::EffectKind::chorus:     return "M0.5 3.5c1.4-3.5 3.6-3.5 5.5 0s4 3.5 5.5 0 M0.5 8c1.4-3.5 3.6-3.5 5.5 0s4 3.5 5.5 0";
-            case engine::EffectKind::delay:      return "M1.5 9V1.5 M4.5 9V3 M7.5 9V5 M10.5 9V7";
-            case engine::EffectKind::reverb:     return "M0.5 1C2 5 5 8 11.5 8.8";
-        }
-        return "";
-    }
+    constexpr int badgeSize = 16;
 
-    constexpr int knobPitch = Knob::knobWidth;
+    // The name starts after the grip (8 px), the badge and a 4 px gap each; `placeHeader` adds the header gap itself.
+    constexpr int headerHandleWidth = 8 + 4 + badgeSize + 4 - layout::header::gap;
 
     float rawValue (plugin::ScratchpadProcessor& p, const char* id)
     {
@@ -59,6 +49,7 @@ EffectDisplay::Values EffectDisplay::read() const
             v[0] = rawValue (processor, params::distortionDrive);
             v[1] = rawValue (processor, params::distortionTone);
             v[2] = rawValue (processor, params::distortionMix);
+            v[3] = rawValue (processor, params::distortionMode);
             break;
 
         case engine::EffectKind::chorus:
@@ -187,6 +178,11 @@ void EffectDisplay::paintDistortion (juce::Graphics& g, juce::Rectangle<float> a
 
     g.setColour (p.fxInk);
     g.strokePath (curve, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    static const char* const modeWords[] = { "Tanh", "Hard clip", "Wavefold" };
+    g.setColour (p.ink2);
+    g.setFont (uiFont (11.0f));
+    g.drawText (modeWords[juce::jlimit (0, 2, (int) std::lround (v[3]))], area.expanded (2.0f, 3.0f), juce::Justification::bottomRight, false);
 }
 
 // The delay time a chorus sweeps, over one and a half seconds: faster and deeper as the knobs say.
@@ -259,17 +255,14 @@ void EffectDisplay::paintDelay (juce::Graphics& g, juce::Rectangle<float> area, 
         bar (area.getX() + t / windowMs * span, level, pingPong && (k % 2 == 1));
     }
 
-    if (synced)
+    const auto tag = [&] (const juce::String& text)
     {
-        const auto label = params::timeText (ms / 1000.0f);
-        const auto font = uiFont (11.0f);
-        const auto tag = juce::Rectangle<float> (textWidth (font, label) + 6.0f, 13.0f).withRightX (area.getRight() + 3.0f).withY (area.getY() - 2.0f);
-        g.setColour (p.well.withAlpha (0.85f));
-        g.fillRoundedRectangle (tag, 4.0f);
         g.setColour (p.ink2);
-        g.setFont (font);
-        g.drawText (label, tag, juce::Justification::centred, false);
-    }
+        g.setFont (uiFont (11.0f));
+        g.drawText (text, area.expanded (2.0f, 3.0f), juce::Justification::bottomRight, false);
+    };
+
+    tag (synced ? processor.apvts.getParameter (params::delayDivision)->getCurrentValueAsText() : params::timeText (ms / 1000.0f));
 }
 
 // Level in dB against time over ten seconds: a straight fall to -60 dB at the decay time, steeper at the
@@ -338,12 +331,12 @@ void EffectGrip::paintButton (juce::Graphics& g, bool highlighted, bool)
         g.fillRoundedRectangle (bounds, 5.0f);
     }
 
-    // Two columns of three dots.
+    // Two columns of three dots, as in the design's 6 x 12 grip.
     g.setColour (highlighted || hasKeyboardFocus (false) ? p.ink : p.mute);
     for (int column = 0; column < 2; ++column)
         for (int row = 0; row < 3; ++row)
-            g.fillEllipse (juce::Rectangle<float> (3.0f, 3.0f).withCentre ({ bounds.getCentreX() + (column == 0 ? -2.5f : 2.5f),
-                                                                             bounds.getCentreY() + ((float) row - 1.0f) * 5.0f }));
+            g.fillEllipse (juce::Rectangle<float> (2.2f, 2.2f).withCentre ({ bounds.getCentreX() + (column == 0 ? -1.5f : 1.5f),
+                                                                             bounds.getCentreY() + ((float) row - 1.0f) * 4.0f }));
 
     if (hasKeyboardFocus (false))
         ScratchpadLookAndFeel::drawFocusRing (g, bounds, 5.0f, p.ink);
@@ -395,8 +388,9 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
 {
     const auto module = effectModule (kind);
     setTitle (name);
-    makeRemovable ("Remove " + name, [&p, module] { p.removeModule (module); });
     makeControllable (p, params::effectKeys[(size_t) kind], false);
+    makeMore (name, &Palette::fx, [this] (MorePopover& popover) { fillMore (popover); },
+              "Remove " + name.toLowerCase(), "Remove " + name, [&p, module] { p.removeModule (module); });
 
     switch (kind)
     {
@@ -404,9 +398,6 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
             addKnob (params::distortionDrive, "Drive", "drive");
             addKnob (params::distortionTone, "Tone", "tone");
             addKnob (params::distortionMix, "Mix", "mix");
-            distortionBias = addKnob (params::distortionBias, "Bias", "bias");
-            distortionMode = std::make_unique<ChoiceSegments> (p.apvts, params::distortionMode, "Mode", p.undoManager, &Palette::fx);
-            addAndMakeVisible (*distortionMode);
             break;
 
         case engine::EffectKind::chorus:
@@ -417,16 +408,11 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
 
         case engine::EffectKind::delay:
             addKnob (params::delayTime, "Time", "time");
-            addKnob (params::delayFeedback, "Feedback", "feedback");
+            addKnob (params::delayFeedback, "Fdbk", "feedback");
             addKnob (params::delayMix, "Mix", "mix");
 
-            // While synced, the note length takes the time knob's place; the time knob goes quiet.
-            alternateKnob = addKnob (params::delayDivision, "Beat", "note length", false);
-
-            syncChip = std::make_unique<ToggleChip> (p.apvts, params::delaySync, "Sync", name + " tempo sync", p.undoManager, &Palette::fxInk);
-            pingPongChip = std::make_unique<ToggleChip> (p.apvts, params::delayPingPong, "Ping-pong", name + " ping-pong", p.undoManager, &Palette::fxInk);
-            addAndMakeVisible (*syncChip);
-            addAndMakeVisible (*pingPongChip);
+            // While synced, the note length takes the time knob's place.
+            alternateKnob = addKnob (params::delayDivision, "Time", "note length", false);
 
             syncWatcher = std::make_unique<juce::ParameterAttachment> (*p.apvts.getParameter (params::delaySync),
                                                                        [this] (float v) { showDelayMode (v > 0.5f); });
@@ -436,7 +422,6 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
         case engine::EffectKind::reverb:
             addKnob (params::reverbSize, "Size", "size");
             addKnob (params::reverbDecay, "Decay", "decay");
-            addKnob (params::reverbDamping, "Damping", "damping");
             addKnob (params::reverbMix, "Mix", "mix");
             break;
     }
@@ -445,14 +430,9 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
     addAndMakeVisible (display);
     applyColours();
 
-    // Tab order: the grip, the chips on the left, then the knobs left to right (the delay's note length takes its
-    // time knob's place), then the picture. A newly added effect offers its first knob.
+    // Tab order: the grip, then the knobs left to right (the delay's note length takes its time knob's place), then
+    // the picture. A newly added effect offers its first knob.
     std::vector<juce::Component*> order { &grip };
-    if (distortionMode != nullptr)
-        order.push_back (distortionMode.get());
-    for (auto* chip : { (juce::Component*) syncChip.get(), (juce::Component*) pingPongChip.get() })
-        if (chip != nullptr)
-            order.push_back (chip);
     for (auto* knob : row)
     {
         order.push_back (knob);
@@ -466,7 +446,8 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
 
 Knob* EffectCard::addKnob (const char* id, const char* caption, const juce::String& accessibleSuffix, bool inRow)
 {
-    ownedKnobs.push_back (std::make_unique<Knob> (processor.apvts, id, caption, processor.undoManager, name + " " + accessibleSuffix));
+    ownedKnobs.push_back (std::make_unique<Knob> (processor.apvts, id, caption, processor.undoManager,
+                                                  name + " " + accessibleSuffix, layout::knobs::effect));
     auto* knob = ownedKnobs.back().get();
     addAndMakeVisible (*knob);
 
@@ -476,9 +457,38 @@ Knob* EffectCard::addKnob (const char* id, const char* caption, const juce::Stri
     return knob;
 }
 
-void EffectCard::setPosition (int position, int count)
+void EffectCard::fillMore (MorePopover& popover) const
 {
-    grip.setDescription ("Position " + juce::String (position) + " of " + juce::String (count) + " in the chain. Press the left or right arrow key, or drag sideways, to move this effect earlier or later.");
+    switch (kind)
+    {
+        case engine::EffectKind::distortion:
+            popover.addSegments (processor, params::distortionMode, "Mode", name + " mode", 3, { "Tanh", "Hard clip", "Wavefold" });
+            popover.addKnobs (processor, "Shape", { { params::distortionBias, "Bias", name + " bias", [] (Knob& k) { k.setBipolar (true); } } });
+            break;
+
+        case engine::EffectKind::delay:
+            popover.addSwitch (processor, params::delaySync, "Sync to tempo", name + " tempo sync");
+            popover.addSwitch (processor, params::delayPingPong, "Ping-pong", name + " ping-pong", "Bounces the echoes between left and right.");
+            break;
+
+        case engine::EffectKind::reverb:
+            popover.addKnobs (processor, "Tone", { { params::reverbDamping, "Damping", name + " damping", {} } });
+            break;
+
+        case engine::EffectKind::chorus:
+            break;
+    }
+}
+
+void EffectCard::setPosition (int newPosition, int count)
+{
+    grip.setDescription ("Position " + juce::String (newPosition) + " of " + juce::String (count) + " in the chain. Press the left or right arrow key, or drag sideways, to move this effect earlier or later.");
+
+    if (newPosition != position)
+    {
+        position = newPosition;
+        repaint (headerRow);
+    }
 }
 
 void EffectCard::showDelayMode (bool synced)
@@ -502,37 +512,26 @@ void EffectCard::lookAndFeelChanged()
 
 void EffectCard::resized()
 {
-    constexpr int top = 26;
+    namespace pad = layout::padding;
+    constexpr int wellWidth = 56, wellHeight = 40, bodyGap = 4, rowGap = 5, gripWidth = 10;
 
-    headerRow = { pad, 4, width - 2 * pad, 20 };
-    grip.setBounds (pad, 4, 14, 20);
-    placeRemoveButton (headerRow);
+    headerRow = { pad::fx, pad::fx, getWidth() - 2 * pad::fx, layout::header::height };
+    grip.setBounds (headerRow.withWidth (gripWidth));
 
-    const int knobsX = width - pad - (int) row.size() * knobPitch;
-    const int leftWidth = knobsX - pad - 6;
+    placeHeader (headerRow, headerHandleWidth);
 
-    if (kind == engine::EffectKind::delay)
-    {
-        display.setBounds (pad, top, leftWidth, 32);
-        syncChip->setBounds (pad, top + 34, leftWidth, 18);
-        pingPongChip->setBounds (pad, top + 54, leftWidth, 18);
-    }
-    else
-    {
-        display.setBounds (pad, top, leftWidth, distortionMode != nullptr ? 42 : 72);
-        if (distortionMode != nullptr)
-            distortionMode->setBounds (pad, top + 44, leftWidth, 24);
-    }
+    const int bodyY = headerRow.getBottom() + rowGap;
+    display.setBounds (pad::fx, bodyY, wellWidth, wellHeight);
 
-    int x = knobsX;
+    int x = pad::fx + wellWidth + bodyGap;
     for (auto* k : row)
     {
-        k->setBounds (x, top, Knob::knobWidth, Knob::knobHeight);
-        x += knobPitch;
+        k->setBoundsAt (x, bodyY);
+        x += layout::knobs::effect.cell + bodyGap;
     }
 
     if (alternateKnob != nullptr)
-        alternateKnob->setBounds (knobsX, top, Knob::knobWidth, Knob::knobHeight);
+        alternateKnob->setBoundsAt (row.front()->getX(), bodyY);
 }
 
 void EffectCard::paint (juce::Graphics& g)
@@ -540,7 +539,19 @@ void EffectCard::paint (juce::Graphics& g)
     ModuleCard::paint (g);
 
     const auto& p = paletteOf (*this);
-    drawHeader (g, p, headerRow.toFloat().withTrimmedLeft (18.0f).withTrimmedRight (75.0f), p.fx, effectGlyph (kind), name);
+    const auto header = headerRow.toFloat();
+    drawHeader (g, p, header, p.fx, nullptr, name, headerHandleWidth);
+
+    if (position > 0)
+    {
+        const auto badge = juce::Rectangle<float> ((float) badgeSize, (float) badgeSize)
+                               .withCentre ({ header.getX() + 8.0f + 4.0f + (float) badgeSize * 0.5f, header.getCentreY() });
+        g.setColour (p.fx);
+        g.fillEllipse (badge);
+        g.setColour (p.onAccent);
+        g.setFont (uiFont (11.0f));
+        g.drawText (juce::String (position), badge, juce::Justification::centred, false);
+    }
 }
 
 } // namespace scratchpad::ui

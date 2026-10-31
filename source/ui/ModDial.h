@@ -26,8 +26,9 @@ public:
     /** `base` is the dial's value in the units `modulatedValue` uses for `dest`, `toNormalised`
         maps such a value to 0..1 of the dial's travel, and `valueText` is printed in the pill. */
     ModDial (ModulationModel& m, engine::ModDest d, const juce::String& captionText, const juce::String& accessibleName,
-             float baseValue, std::function<float (float)> toNormalisedFn, const juce::String& valueTextToShow)
-        : model (m), dest (d), caption (captionText), base (baseValue), toNormalised (std::move (toNormalisedFn)),
+             float baseValue, std::function<float (float)> toNormalisedFn, const juce::String& valueTextToShow,
+             layout::KnobSize knobSize = layout::knobs::standard)
+        : size (knobSize), model (m), dest (d), caption (captionText), base (baseValue), toNormalised (std::move (toNormalisedFn)),
           valueText (valueTextToShow)
     {
         setPaintingIsUnclipped (true);
@@ -44,8 +45,15 @@ public:
 
     std::span<const engine::ModDest> getDestinations() const override { return { &dest, 1 }; }
     juce::Component& getComponent() override { return *this; }
-    juce::Point<float> getRingCentre() const override { return { Knob::knobWidth * 0.5f, discAreaHeight() * 0.5f }; }
-    float getDiscRadius() const override { return 14.75f; }
+    juce::Point<float> getRingCentre() const override { return { (float) getWidth() * 0.5f, (float) KnobGeometry::cellFor (size) * 0.5f }; }
+    float getDiscRadius() const override { return (float) size.diameter * 0.5f; }
+    float getFirstArcRadius() const override { return KnobGeometry::firstArcRadiusFor (size); }
+
+    int height() const noexcept { return KnobGeometry::heightFor (size); }
+    void setBoundsAt (int x, int y) { setBounds (x, y, size.cell, height()); }
+
+    void mouseEnter (const juce::MouseEvent&) override { hovering = true; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override  { hovering = false; repaint(); }
 
     std::vector<ModArc> getArcs() const override
     {
@@ -57,14 +65,13 @@ public:
         const auto& p = paletteOf (*this);
         const auto centre = getRingCentre();
 
-        constexpr float stroke = 2.5f, ringGap = 2.5f, margin = 3.0f;
-        const float outer = std::min ((float) Knob::knobWidth, discAreaHeight());
-        const float discSize = outer - 2.0f * (margin + ringGap + stroke * 0.5f);
+        constexpr float stroke = 2.4f, ringGap = 2.5f;
+        const float discSize = (float) size.diameter;
         const float ringRadius = discSize * 0.5f + ringGap;
         const float startAngle = juce::MathConstants<float>::pi * 1.25f, endAngle = juce::MathConstants<float>::pi * 2.75f;
         const float angle = startAngle + toNormalised (base) * (endAngle - startAngle);
 
-        drawRaised (g, juce::Rectangle<float> (discSize, discSize).withCentre (centre), discSize * 0.5f, p, Elevation::small, p.surface);
+        drawRaised (g, juce::Rectangle<float> (discSize, discSize).withCentre (centre), discSize * 0.5f, p, Elevation::small, p.knob);
 
         juce::Path track;
         track.addCentredArc (centre.x, centre.y, ringRadius, ringRadius, 0.0f, startAngle, endAngle, true);
@@ -72,21 +79,27 @@ public:
         g.strokePath (track, juce::PathStrokeType (stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         g.setColour (p.ink);
-        g.drawLine ({ centre.x + std::sin (angle) * discSize * 0.12f, centre.y - std::cos (angle) * discSize * 0.12f,
-                      centre.x + std::sin (angle) * discSize * 0.36f, centre.y - std::cos (angle) * discSize * 0.36f }, 2.2f);
+        g.drawLine ({ centre.x + std::sin (angle) * discSize * 0.1f, centre.y - std::cos (angle) * discSize * 0.1f,
+                      centre.x + std::sin (angle) * discSize * 0.36f, centre.y - std::cos (angle) * discSize * 0.36f }, 2.0f);
 
         const auto arcs = getArcs();
         if (! arcs.empty())
-            drawModArcs (g, p, centre, startAngle, endAngle, arcs);
+            drawModArcs (g, p, centre, startAngle, endAngle, arcs, getFirstArcRadius());
 
-        const auto pill = juce::Rectangle<float> (1.0f, discAreaHeight(), (float) Knob::knobWidth - 2.0f, (float) Knob::pillHeight);
-        drawInset (g, pill, 8.0f, p, p.well);
-        g.setColour (p.mute);
-        g.setFont (uiFont (11.0f));
-        g.drawText (valueText, pill.reduced (1.0f, 0.0f), juce::Justification::centred, false);
+        // The caption at rest, the (fixed) value while the pointer is over the dial, as a `Knob` does.
+        const auto line = juce::Rectangle<float> ((float) getWidth(), (float) knobMetrics::labelHeight)
+                              .withY ((float) (KnobGeometry::cellFor (size) + knobMetrics::labelGap));
 
-        drawCaption (g, caption, getLocalBounds().removeFromBottom (Knob::captionHeight).expanded (Knob::captionOverhang, 0).toFloat(),
-                     p.mute, juce::Justification::centred, 0.04f);
+        if (hovering)
+        {
+            g.setColour (p.ink);
+            g.setFont (uiFont (11.0f));
+            g.drawText (valueText, line, juce::Justification::centred, false);
+        }
+        else
+        {
+            drawCaption (g, caption, line.expanded ((float) Knob::captionOverhang, 0.0f), p.mute, juce::Justification::centred, 0.04f);
+        }
     }
 
 private:
@@ -103,8 +116,6 @@ private:
                 [this] { return valueText == "C" ? juce::String ("centre") : a11y::spokenValue (valueText); }) });
     }
 
-    static constexpr float discAreaHeight() { return (float) (Knob::knobHeight - Knob::pillHeight - Knob::captionHeight); }
-
     void modulationChanged() override { repaint(); }
     void liveUpdated() override { if (! getArcs().empty()) repaint(); }
 
@@ -113,6 +124,8 @@ private:
         setAlpha (model.isConnecting() && ! model.isValidTarget (*this, model.getConnectingSource()) ? 0.3f : 1.0f);
     }
 
+    layout::KnobSize size;
+    bool hovering = false;
     ModulationModel& model;
     engine::ModDest dest;
     juce::String caption;

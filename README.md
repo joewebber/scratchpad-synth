@@ -105,7 +105,7 @@ audio device is open, the top bar says so.
 /source/dsp       Oscillator, BlepTable, Gate, Noise, Envelope, Lfo, SvfFilter, LadderFilter, MultimodeFilter,
                   Distortion, Chorus, Delay, Reverb, HalfbandDecimator, Limiter
 /source/ui        LookAndFeel, Theme, Typography, Neumorph (shadows), Knob, ModDial, Meter, TopBar, PatchView,
-                  ModuleCards, ModulationStrip (LFO cards, handles, slots), ModulationModel, ModArcs, ModOverlay, PerformanceBar,
+                  ModuleCard, ModuleCards, SourcesCard, MorePopover, Layout (every region's size), ModulationStrip (LFO cards, handles, Playing, connections), ModulationModel, ModArcs, ModOverlay, PerformanceBar,
                   ExplainPanel, Scope, Visualisers (filter curve, envelope display)
 /assets/fonts     Jost (Light, Book, Medium), SIL OFL 1.1, embedded in the binary
 /tests            Catch2 tests

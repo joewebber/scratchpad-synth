@@ -3,7 +3,6 @@
 #include "plugin/PluginProcessor.h"
 #include "ui/Accessibility.h"
 #include "ui/IconButton.h"
-#include "ui/Meter.h"
 #include "ui/ViewMenu.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -11,14 +10,14 @@
 namespace scratchpad::ui
 {
 
-/** Patch name, New patch, Save, Open, Undo, Redo, the safety limiter's light, output meter and (standalone only)
-    the route to audio settings. Scope tap and CPU readout arrive with the milestones that make them meaningful.
+/** Patch name, New patch, Save, Open, Undo, Redo and (standalone only) the route to audio settings, then the View
+    options button. The safety limiter's light and the output meter are in the Out card, at the end of the chain.
     Save and Open ask for a file with an asynchronous chooser that starts in the patches folder; Ctrl/Cmd+S and
     Ctrl/Cmd+O (`handleKeyPressed`, forwarded by the editor) do the same, and Ctrl/Cmd+Z undoes and
     Ctrl/Cmd+Shift+Z (or Ctrl/Cmd+Y) redoes.
 
     Tab visits, left to right: New patch, Save, Open, Undo, Redo, (No audio device), Settings, View options. The
-    patch name, limiter light and level meter are read by a screen reader but are not Tab stops. New, save, open,
+    patch name is read by a screen reader but is not a Tab stop. New, save, open,
     undo, redo and failures are announced. */
 class TopBar final : public juce::Component,
                      private juce::ChangeListener,
@@ -66,8 +65,6 @@ private:
     IconButton noDeviceButton { "No audio device: open Settings", "M2 5h2.5L8 2v10L4.5 9H2z M10 4.5c1 .8 1 4.2 0 5",
                                 14.0f, 1.3, "No audio device: open Settings" };
     ViewMenuButton viewButton;
-    LimiterLight limiter;
-    Meter meter;
     a11y::Region patchRegion;
 
     juce::Rectangle<int> patchPill;

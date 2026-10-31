@@ -427,9 +427,9 @@
         "reverb"
       ]
     },
-    "control.oscMore": {
+    "control.more": {
       "title": "More",
-      "what": "Opens the oscillator's extra row: unison, hard sync, anti-aliasing, and for Oscillator 1, ring modulation and FM.",
+      "what": "Opens this module's other controls in a small panel next to it: the ones used less often, and Remove at the bottom.",
       "listenFor": "Nothing changes by opening it. The controls inside do the work.",
       "tryThis": "Open it on Oscillator 2 and try Sync.",
       "glossaryTerms": [

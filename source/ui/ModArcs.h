@@ -20,12 +20,6 @@ juce::Colour sourceInk (const Palette&, engine::ModSource);
     and a dot where the knob is right now. The first is nearest the knob. Angles are the
     knob's own, measured clockwise from twelve o'clock. */
 void drawModArcs (juce::Graphics&, const Palette&, juce::Point<float> centre, float startAngle, float endAngle,
-                  const std::vector<ModArc>&);
-
-/** Radius of arc number `i`. */
-constexpr float modArcRadius (size_t i) noexcept
-{
-    return ModTarget::firstArcRadius + (float) i * ModTarget::arcSpacing;
-}
+                  const std::vector<ModArc>&, float firstRadius = ModTarget::firstArcRadius);
 
 } // namespace scratchpad::ui

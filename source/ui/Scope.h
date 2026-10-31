@@ -38,6 +38,10 @@ public:
 
     enum class Mode { wave, spectrum };
 
+    /** The block's fixed height: a rule and 10 px, the heading row with the Wave / Spectrum selector, the tap
+        selector, the 92 px well and a two-line caption, 7 px apart. */
+    static constexpr int height = 1 + 10 + 24 + 7 + 24 + 7 + 92 + 7 + 32;
+
     static constexpr int fftOrder = 11, fftSize = 1 << fftOrder, historySize = engine::scopeFifoSize;
     static constexpr int numBars = 72;
 

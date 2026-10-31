@@ -328,6 +328,14 @@ void SynthEngine::publishLive() noexcept
     live.envStage[0].store (voice != nullptr ? voice->getAmpEnvStage() : 0, std::memory_order_relaxed);
     live.envStage[1].store (voice != nullptr ? voice->getFilterEnvStage() : 0, std::memory_order_relaxed);
 
+    const auto& voices = allocator.getVoices();
+    for (size_t i = 0; i < voices.size(); ++i)
+    {
+        // A sounding voice always shows a sliver, even at the very start of its attack.
+        const float level = voices[i].isActive() ? std::max (0.06f, std::min (1.0f, voices[i].getAmpEnvLevel())) : 0.0f;
+        live.voiceLevel[i].store (level, std::memory_order_relaxed);
+    }
+
     for (size_t i = 0; i < sharedLfo.size(); ++i)
     {
         const double phase = voice != nullptr && params.lfo[i].retrigger ? voice->getLfoPhase (i) : sharedLfo[i].getPhase();

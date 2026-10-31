@@ -170,8 +170,8 @@ Eight fixed connection slots, `modN.source`, `modN.dest` (non-automatable choice
 
 ## Editor structure (M3)
 
-`PatchView` is the chain panel (sources, filter, amp with the voicing under it, output) over the modulation
-strip (LFO 1, LFO 2, other sources' handles, the eight slots). `ModulationModel` is its message-thread view of
+`PatchView` is the chain (sources, filter, amp, their envelopes, the effects and the output) over the modulation
+strip (LFO 1, LFO 2, the Playing card, the connections list); see "Editor layout (tidy design)" for how it is laid out now. `ModulationModel` is its message-thread view of
 modulation: the slot snapshot (refreshed by a `ChangeBroadcaster` the processor fires from parameter
 attachments, so undo, load and the host reach it), the live values, and the state of a connection being made.
 Knobs and dials that modulation can reach register with it as `ModTarget`s and draw an arc per connection
@@ -214,23 +214,9 @@ is armed, and owns the arcs at rest (drag one to change the amount, right-click 
 
 ## Editor structure (M5)
 
-The window is now 1500 x 900 (it was 840 high). The effects row cannot sit beside the stages: the chain row is 1,140 px
-of the 1,158 the panel offers. Under them there was room for only about 58 px, and the row needs 124 (a 14 px caption,
-the 102 px effect cards and their margins), so the chain panel grows from 506 to 566 px (the tallest column, amp, amp
-envelope and voicing, is 380 px; the well adds 18 px above it and 6 below). Nothing else moved. The well's metrics are
-constants in `PatchView.cpp` (`effectsBlock` is what the row needs), and a `static_assert` there keeps the four effect
-places as wide as an effect card. The LFO cards are 288 px wide (were 285) for their third knob; the connections panel
-takes the difference.
+(The layout described here has since been replaced by the fixed-box layout in "Editor layout (tidy design)"; what the
+effects, order, LFO sync and limiter parts below say about behaviour still holds.)
 
-- **Oscillator extras.** Each oscillator card has a chevron (`MoreButton`, `control.oscMore`) beside Phase reset. It opens
-  `OscillatorExtras` (unison copies, detune, spread, anti-aliasing, and on Oscillators 2 and 3 hard sync) as a drawer
-  over the cards under it, so the column keeps its height and a full patch still fits. One drawer is open at a time; the
-  state lives in `PatchView::openExtras`, not in the patch, and closes with its oscillator. Ring level, FM amount and FM
-  target sit in Oscillator 1's drawer because they are Oscillator 1 acting on the others (their copy says "osc1"); they dim,
-  and the line at the foot of the drawer says why, while Oscillator 2 (ring) or the FM target is not in the patch.
-  The chevron wears a dot when the extras are doing something (unison above 1, sync, ring or FM) and an accent dot when
-  anti-aliasing is off; with AA off the wave well also gets an accent outline and an "AA off" tag, which is the calm
-  warning the brief asks for. Listeners read the parameter's own value, not the cached atomic (see State and undo).
 - **Effect cards.** `EffectCard` (header with grip, name, "?", bypass and remove; a computed picture, `EffectDisplay`;
   the knobs) for distortion, chorus, delay and reverb. The delay shows a note-length knob in place of the time knob
   while Sync is on. The pictures are drawn from the parameters (transfer curve, swaying delay, echo bars with the
@@ -243,14 +229,57 @@ takes the difference.
   `getEffectsBroadcaster()` fires, so undo, loading and a new patch reorder them too.
 - **LFO tempo sync.** Each LFO card has a Sync chip in its header and a note-length knob beside Rate. With Sync on, Rate dims
   and the wave picture shows the rate the tempo gives (`params::lfoSyncRateHz`, following `getBpm()`).
-- **Limiter light.** `LimiterLight` (top bar, left of the meter, `control.limiter`) polls
+- **Limiter light.** `LimiterLight` (in the Out card beside the vertical level meter, `control.limiter`) polls
   `getLimiterReductionDb()` on the vertical blank like the meter and lights while it is above 0.1 dB, with a quarter-second
   hold so a brief touch is seen.
 - **Learning-layer test.** The test that walks the editor still requires an `explainId` on every button, slider and
   keyboard. New controls get theirs from the parameter ID (knobs, chips, segments), from `control.limiter`,
-  `control.effectGrip`, `control.oscMore`, `control.addModule` (the effect slots), or from a module key.
+  `control.effectGrip`, `control.more`, `control.addModule` (the effect slots), or from a module key.
+
+## Editor layout (tidy design)
+
+The editor follows `docs/design/tidy-full-patch.html` (and `tidy-layout-spec.html`, which has the sizes, the card header
+anatomy and a table of what is on each card versus behind More). The rules it was tidied by:
+
+1. **One raised layer.** Only cards cast shadows; sections are headings on the background, visualisations are inset wells.
+2. **Labels or values, not both.** A `Knob` shows its caption at rest and its value while hovered, dragged or focused;
+   the oscillator table puts the labels in its column headings and the values in the cells (`Knob::setShowsValueOnly`).
+3. **Sentence-case options.** `ChoiceSegments` draws its text as is, 12 px, no tracking (capitals and letter-spacing
+   were what clipped "Notch" and "Hard clip").
+4. **One knob per idea.** An LFO's Rate becomes Beat when Sync is on, in the same place.
+5. **Controls live where they act.** Envelope drag handles are on the envelope cards, the limiter and meter are in Out,
+   the voicing is on the keyboard's card.
+6. **Nothing overlaps or truncates.** Every region has a fixed size at 100% (`source/ui/Layout.h` is the one place
+   they are written: the stage, each card's box, the header, table, knob and pop-over numbers) and the editor scales the
+   whole 1200 x 760 stage as one unit. Nothing sizes itself from its content; a control that does not fit goes behind
+   the card's "..." More button.
+
+- **Cards.** `ModuleCard` (`ModuleCard.*`) draws the header (`layout::header`): handle, name, "?", then B, S and More
+  at the right. Bypass fades the body to 40% and leaves the header at full strength. `SourcesCard` is one card holding
+  the oscillator table (three `OscillatorCard` rows and `NoiseCard`, each a `SourceRow`; absent rows show their dashed
+  slot in the same 60 px row). `FilterCard`, `EnvelopeCard` (with the module's `SourceHandle`), `AmpCard` (with a
+  per-voice activity display fed by `LiveModulation::voiceLevel`) and `OutputCard` (volume, limiter light, vertical
+  meter) are in `ModuleCards.*`; effects are in `EffectCards.*`; `LfoCard`, `PlayingCard` and `ConnectionsPanel` (three
+  rows at a time, scrolling) in `ModulationStrip.*`. `VoicingCard` sits at the left of `PerformanceBar`, which is the
+  single card holding the voicing, the wheels, the octave and velocity and the 14-key keyboard.
+- **More pop-over.** `MorePopover` (`MorePopover.*`) is a `juce::CallOutBox` on the stage with rows of switches,
+  wrapped segmented controls (also one for a bool plus a choice, `addOffChoice`, used for the filter's shaper with "Off"
+  first), knobs with caption and value, notes and a last Remove row. It is built on each open, so what it says is how
+  things are now; its controls are bound to the parameters like any other, so every change is undoable. A card says
+  what goes in it with `makeMore (title, family, fillFn, removeLabel, ...)`.
+- **Presence.** `PatchView::refreshModules` still follows the modules' `enabled` parameters. The Sources card owns its
+  own rows and slots (`refreshPresence`, `focusModule`, `focusSlot`).
+- **Explain panel.** 264 px wide: the entry, "Your patch" (five lines at most), and a fixed-height `Scope`. Folding it
+  to its rail narrows the stage (992 x 760) and the window with it; the chain does not change, there is nothing for it
+  to grow into. The auto-fold below 100% and the user's choice work as before.
+- **Dark is the default theme.** The half-moon button in the top bar opens the View menu (theme, reduced motion, Explain
+  panel).
+- **Snapshots.** `ScratchpadSnapshot out.png [--light] [--empty] [--scale n] [--more "Oscillator 1"]` renders the editor
+  (optionally with a More pop-over open) to a PNG without a window, for comparing with the design.
 
 ## Oscillator extras (M5)
+
+(The unison, hard sync, anti-aliasing, ring and FM controls described here now live in each oscillator's More pop-over.)
 
 `OscSection` (`source/engine/OscSection.*`) holds the three oscillators of a voice with everything that links them; the
 voice owns two of them on the heap (`Voice` stays small on the stack). It makes stereo audio per oscillator; levels, ring
@@ -381,12 +410,13 @@ Aftertouch has no on-screen control; it arrives from MIDI channel pressure.
   that is not a number reads as 1.0. `ViewSettings (File)` takes an explicit file; `setDefaultFileOverride` points the
   default constructor at one, which `tests/ViewTestSetup.cpp` does for the whole test run so no test reads or writes real
   preferences.
-- **A fixed stage under a transform.** `ScratchpadEditor` lays everything out on a `Stage` child that is always 1500 x 900 and
+- **A fixed stage under a transform.** `ScratchpadEditor` lays everything out on a `Stage` child that is always 1200 x 760 (992 x 760
+  with the Explain panel folded to its rail) and
   puts a scale-and-translate transform on it, so no control layout knows the window's size. The transform is on the child, not
   the editor, because `AudioProcessorEditor` keeps the host's own scale in the editor's transform. The window is resizable from
-  1125 x 675 (75%) to 3000 x 1800 (200%) at a fixed 5:3 shape by a `ComponentBoundsConstrainer`: the standalone app's frame
+  900 x 570 (75%) to 2400 x 1520 (200%) at the stage's shape by a `ComponentBoundsConstrainer`: the standalone app's frame
   honours it through JUCE's decorator constrainer, a plugin gets a corner grip (`drawCornerResizer`, in palette colours) and
-  the host can resize it too. A host that sets some other size gets the stage fitted (`min (w / 1500, h / 900)`) and centred
+  the host can resize it too. A host that sets some other size gets the stage fitted (`min (w / stageWidth, h / stageHeight)`) and centred
   with the background round it; nothing is clipped. The scale is written 400 ms after the last resize and again when the
   editor closes, and read back at the next start.
 - **Under the transform.** Mouse events arrive in stage units, so drags are 1 px = 1 stage px at any scale. The modulation code
@@ -434,8 +464,8 @@ Aftertouch has no on-screen control; it arrives from MIDI channel pressure.
   throttle, the meter and limiter steps, timer rate changes, the scope and model following the preference, without waiting on
   a clock), `ContrastTests`, and `EditorViewTests` (limits and shape, panel rules and persistence, layout, hit-testing at 75%,
   100%, 133% and 200%, host sizes, theme reaching every knob, a snapshot's corner pixels in each theme and size, the menu).
-- **Limits.** Below the 1125 x 675 minimum a host's window still shows everything, fitted. The scope, envelopes and meters at
-  200% are drawn by scaling 1500 x 900 up, so on a high-resolution display the text is rendered at the larger size but images
+- **Limits.** Below the 900 x 570 minimum a host's window still shows everything, fitted. The scope, envelopes and meters at
+  200% are drawn by scaling the stage up, so on a high-resolution display the text is rendered at the larger size but images
   (the soft shadows) are scaled bitmaps. The drag sensitivity of knobs is in stage pixels, so a knob needs twice the pointer
   travel at 200%.
 

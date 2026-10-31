@@ -56,12 +56,14 @@ void FilterCurve::visibilityChanged()
 void FilterCurve::timerCallback()
 {
     const float c = raw (processor, params::filterCutoff), r = raw (processor, params::filterResonance), m = raw (processor, params::filterMode);
+    const float s = raw (processor, params::voiceShaperEnabled) > 0.5f ? 1.0f + raw (processor, params::voiceShaperMode) : 0.0f;
 
-    if (! dsp::same (c, lastCutoff) || ! dsp::same (r, lastResonance) || ! dsp::same (m, lastMode))
+    if (! dsp::same (c, lastCutoff) || ! dsp::same (r, lastResonance) || ! dsp::same (m, lastMode) || ! dsp::same (s, lastShaper))
     {
         lastCutoff = c;
         lastResonance = r;
         lastMode = m;
+        lastShaper = s;
         repaint();
     }
 }
@@ -125,12 +127,21 @@ void FilterCurve::paint (juce::Graphics& g)
     g.setColour (p.fltInk.withAlpha (0.8f));
     g.drawDashedLine ({ cx, area.getY(), cx, area.getBottom() }, dashes, 2, 1.0f);
 
+    // The readout sits in the well's bottom corners, as in the design: cutoff and resonance left, the shaper (when on) right.
     g.setColour (p.ink2);
-    g.setFont (uiFont (11.0f));
-    const auto label = params::frequencyText (cutoff);
-    const float tw = textWidth (uiFont (11.0f), label) + 4.0f;
-    g.drawText (label, juce::Rectangle<float> (juce::jlimit (area.getX(), area.getRight() - tw, cx + 4.0f), area.getBottom() - 14.0f, tw, 12.0f),
-                juce::Justification::centredLeft, false);
+    const auto font = uiFont (11.0f);
+    g.setFont (font);
+    const auto bottom = getLocalBounds().toFloat().withTrimmedBottom (5.0f).removeFromBottom (13.0f);
+    const auto reading = params::frequencyText (cutoff) + juce::String (juce::CharPointer_UTF8 (" \xc2\xb7 "))
+                         + processor.apvts.getParameter (params::filterResonance)->getCurrentValueAsText();
+    g.drawText (reading, bottom.withTrimmedLeft (8.0f), juce::Justification::centredLeft, false);
+
+    if (raw (processor, params::voiceShaperEnabled) > 0.5f)
+    {
+        static const char* const shapes[] = { "Tanh", "Hard clip", "Wavefold" };
+        g.drawText (shapes[juce::jlimit (0, 2, (int) (raw (processor, params::voiceShaperMode) + 0.5f))],
+                    bottom.withTrimmedRight (8.0f), juce::Justification::centredRight, false);
+    }
 }
 
 //==============================================================================

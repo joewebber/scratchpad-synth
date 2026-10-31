@@ -9,8 +9,8 @@ namespace
 {
     constexpr int minOctave = 1;
     constexpr int maxOctave = 7;
-    constexpr int keyboardKeys = 24; // two octaves, plus the top C
-    constexpr int whiteKeysShown = 15;
+    constexpr int keyboardKeys = 23; // two octaves, C to B
+    constexpr int whiteKeysShown = 14, whiteKeyWidth = 27, keyboardHeight = 70;
 
     struct KeyMap { char key; int semitone; };
     constexpr KeyMap keyMap[] = {
@@ -115,6 +115,7 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     modWheel.getProperties().set ("explainId", "control.modWheel");
 
     addAndMakeVisible (summary);
+    addAndMakeVisible (voicing);
 
     // Tab: the octave buttons, then the wheels. The text and the keyboard follow in the screen reader's order.
     octaveDown.setExplicitFocusOrder (1);
@@ -255,54 +256,52 @@ void PerformanceBar::paint (juce::Graphics& g)
 {
     const auto& p = paletteOf (*this);
 
-    drawRaised (g, getLocalBounds().toFloat(), 18.0f, p, Elevation::raised, p.surface);
+    drawRaised (g, getLocalBounds().toFloat(), 12.0f, p, Elevation::small, p.surface);
+
+    g.setColour (p.line);
+    g.fillRect (divider);
 
     g.setColour (p.ink);
     g.setFont (uiFont (13.0f));
-    g.drawText ("Octave " + juce::String (octave - 1), octaveLabelArea, juce::Justification::centredLeft, false);
-    g.drawText ("Velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + "%", velocityLabelArea,
-                juce::Justification::centredLeft, false);
+    g.drawText ("C" + juce::String (octave - 1), octaveLabelArea, juce::Justification::centred, false);
 
     g.setColour (p.mute);
-    g.setFont (uiFont (12.0f));
-    g.drawFittedText (juce::String (juce::CharPointer_UTF8 ("A\xe2\x80\x93K play notes \xc2\xb7 W E T Y U are the black keys \xc2\xb7 Z / X octave \xc2\xb7 C / V velocity")),
-                      hintArea, juce::Justification::centredLeft, 4);
+    g.setFont (uiFont (11.0f));
+    g.drawText ("Velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + "%", velocityLabelArea, juce::Justification::centred, false);
 
-    drawCaption (g, "Bend", bendCaptionArea.toFloat(), p.mute, juce::Justification::centred);
-    drawCaption (g, "Mod", modCaptionArea.toFloat(), p.mute, juce::Justification::centred);
+    drawCaption (g, "Bend", bendCaptionArea.toFloat().expanded (10.0f, 0.0f), p.mute, juce::Justification::centred);
+    drawCaption (g, "Mod", modCaptionArea.toFloat().expanded (10.0f, 0.0f), p.mute, juce::Justification::centred);
 }
 
 void PerformanceBar::resized()
 {
-    auto area = getLocalBounds().reduced (16, 12);
+    // The design's flex row, resolved to pixels at 100%: each group is centred on the card's height.
+    const int h = getHeight();
+    const auto centred = [h] (int x, int width, int height) { return juce::Rectangle<int> (x, (h - height) / 2, width, height); };
 
-    // Octave and velocity on the left, then the bend wheel, the keys, and the key hints.
-    auto left = area.removeFromLeft (150);
-    auto row = left.removeFromTop (28);
-    octaveDown.setBounds (row.removeFromLeft (28));
-    row.removeFromLeft (6);
-    octaveUp.setBounds (row.removeFromLeft (28));
-    row.removeFromLeft (10);
+    voicing.setBounds (centred (layout::padding::voicing + 4, VoicingCard::width, VoicingCard::height));
+
+    divider = centred (voicing.getRight() + 16, 1, 56);
+
+    // Bend and mod wheels: a 16 x 50 slot each, 22 px wide thumb, the caption under.
+    const auto wheels = centred (divider.getRight() + 19, 60, 50 + 4 + 13);
+    auto bendArea = wheels.withWidth (26), modArea = wheels.withTrimmedLeft (34);
+    bendCaptionArea = bendArea.removeFromBottom (13);
+    modCaptionArea = modArea.removeFromBottom (13);
+    bendWheel.setBounds (bendArea.withTrimmedBottom (4));
+    modWheel.setBounds (modArea.withTrimmedBottom (4));
+
+    // Octave: [-] C3 [+] over the velocity.
+    const auto octaveBlock = centred (wheels.getRight() + 20, 74, 22 + 5 + 13);
+    auto row = octaveBlock.withHeight (22);
+    octaveDown.setBounds (row.removeFromLeft (22));
+    octaveUp.setBounds (row.removeFromRight (22));
     octaveLabelArea = row;
-    left.removeFromTop (10);
-    velocityLabelArea = left.removeFromTop (20);
-    summary.setBounds (octaveLabelArea.getUnion (velocityLabelArea));
+    velocityLabelArea = octaveBlock.withTrimmedTop (27);
+    summary.setBounds (octaveBlock);
 
-    area.removeFromLeft (12);
-    auto wheels = area.removeFromLeft (76);
-    auto bendArea = wheels.removeFromLeft (38);
-    auto modArea = wheels;
-    bendCaptionArea = bendArea.removeFromBottom (16);
-    modCaptionArea = modArea.removeFromBottom (16);
-    bendWheel.setBounds (bendArea);
-    modWheel.setBounds (modArea);
-    area.removeFromLeft (12);
-
-    hintArea = area.removeFromRight (200);
-    area.removeFromRight (12);
-
-    keyboard.setKeyWidth ((float) area.getWidth() / (float) whiteKeysShown);
-    keyboard.setBounds (area.withTrimmedBottom (4));
+    keyboard.setKeyWidth ((float) whiteKeyWidth);
+    keyboard.setBounds (centred (getWidth() - layout::padding::voicing - 4 - whiteKeysShown * whiteKeyWidth, whiteKeysShown * whiteKeyWidth, keyboardHeight));
     for (auto* child : keyboard.getChildren())
         if (dynamic_cast<juce::Button*> (child) != nullptr)
             child->setAccessible (false);

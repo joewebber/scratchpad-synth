@@ -53,16 +53,18 @@ ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
     lookAndFeel.setPalette (paletteFor (theme));
     setLookAndFeel (&lookAndFeel);
 
-    // 75% to 200% of 1500 x 900, always the same shape. Set before the size so the first size is already checked.
-    constrainer.setSizeLimits (minWidth, minHeight, maxWidth, maxHeight);
-    constrainer.setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
+    // 75% to 200% of the stage, at the stage's shape. Set before the size so the first size is already checked.
+    const auto stageSize = getStageSize();
+    constrainer.setSizeLimits (juce::roundToInt (minScale * stageSize.x), juce::roundToInt (minScale * stageSize.y),
+                               juce::roundToInt (maxScale * stageSize.x), juce::roundToInt (maxScale * stageSize.y));
+    constrainer.setFixedAspectRatio ((double) stageSize.x / (double) stageSize.y);
     setConstrainer (&constrainer);
 
     // The window of the standalone app has its own frame to drag; a plugin's window gets a corner grip.
     setResizable (true, processor.wrapperType != juce::AudioProcessor::wrapperType_Standalone);
 
     layoutStage();
-    setSize (juce::roundToInt ((double) baseWidth * scale), juce::roundToInt ((double) baseHeight * scale));
+    setSize (juce::roundToInt ((double) stageSize.x * scale), juce::roundToInt ((double) stageSize.y * scale));
 
     juce::Desktop::getInstance().addFocusChangeListener (this);
 }
@@ -103,6 +105,11 @@ void ScratchpadEditor::paint (juce::Graphics& g)
     g.fillAll (ui::paletteOf (*this).bg);
 }
 
+juce::Point<int> ScratchpadEditor::getStageSize() const noexcept
+{
+    return { explainPanel.isCollapsed() ? foldedWidth : baseWidth, baseHeight };
+}
+
 void ScratchpadEditor::resized()
 {
     if (getWidth() <= 0 || getHeight() <= 0)
@@ -110,12 +117,14 @@ void ScratchpadEditor::resized()
 
     // Fit the stage in whatever size the window has. The constrainer keeps the shape right when the user drags, but a
     // host may set any size, and then the stage is centred with the background showing round it.
-    scale = juce::jmin ((double) getWidth() / (double) baseWidth, (double) getHeight() / (double) baseHeight);
+    const auto stageSize = getStageSize();
+    scale = juce::jmin ((double) getWidth() / (double) stageSize.x, (double) getHeight() / (double) stageSize.y);
 
-    const auto offset = juce::Point<float> (((float) getWidth() - (float) (baseWidth * scale)) * 0.5f,
-                                            ((float) getHeight() - (float) (baseHeight * scale)) * 0.5f);
+    const auto offset = juce::Point<float> (((float) getWidth() - (float) (stageSize.x * scale)) * 0.5f,
+                                            ((float) getHeight() - (float) (stageSize.y * scale)) * 0.5f);
 
-    stage.setBounds (0, 0, baseWidth, baseHeight);
+    shownStage = stageSize;
+    stage.setBounds (0, 0, stageSize.x, stageSize.y);
     stage.setTransform (juce::AffineTransform::scale ((float) scale).translated (offset.x, offset.y));
 
     refreshExplainState();
@@ -124,19 +133,34 @@ void ScratchpadEditor::resized()
 
 void ScratchpadEditor::layoutStage()
 {
-    auto area = juce::Rectangle<int> (0, 0, baseWidth, baseHeight).reduced (12);
+    namespace layout = ui::layout;
 
-    topBar.setBounds (area.removeFromTop (52));
-    area.removeFromTop (10);
+    topBar.setBounds (layout::topBar.rect().withWidth (getStageSize().x - 2 * layout::margin));
+    patchView.setBounds (layout::patchView.rect());
+    performanceBar.setBounds (layout::voicingKeyboard.rect());
 
-    explainPanel.setBounds (area.removeFromRight (explainPanel.isCollapsed() ? ui::ExplainPanel::railWidth
-                                                                              : ui::ExplainPanel::width));
-    area.removeFromRight (10);
+    // Folded, the rail takes the panel's place at the right edge, and the stage has narrowed by the difference.
+    const auto stageRight = getStageSize().x - layout::margin;
+    const int panelWidth = explainPanel.isCollapsed() ? ui::ExplainPanel::railWidth : ui::ExplainPanel::width;
+    explainPanel.setBounds (stageRight - panelWidth, layout::explain.y, panelWidth, layout::explain.h);
+}
 
-    constexpr int performanceHeight = 96;
-    performanceBar.setBounds (area.removeFromBottom (performanceHeight));
-    area.removeFromBottom (10);
-    patchView.setBounds (area);
+void ScratchpadEditor::applyStageSize()
+{
+    // The window follows the stage: same scale, new width. The constrainer keeps its limits and shape in step. A
+    // window the host gave some other shape is left as it is; the stage is fitted inside it.
+    const auto stageSize = getStageSize();
+    const double windowShape = (double) getWidth() / (double) juce::jmax (1, getHeight());
+    const bool followsStage = std::abs (windowShape - (double) shownStage.x / (double) shownStage.y) < 0.01;
+
+    constrainer.setSizeLimits (juce::roundToInt (minScale * stageSize.x), juce::roundToInt (minScale * stageSize.y),
+                               juce::roundToInt (maxScale * stageSize.x), juce::roundToInt (maxScale * stageSize.y));
+    constrainer.setFixedAspectRatio ((double) stageSize.x / (double) stageSize.y);
+
+    if (followsStage)
+        setSize (juce::roundToInt ((double) stageSize.x * scale), juce::roundToInt ((double) stageSize.y * scale));
+
+    resized();
 }
 
 void ScratchpadEditor::refreshExplainState()
@@ -145,7 +169,10 @@ void ScratchpadEditor::refreshExplainState()
     const bool shouldCollapse = settings.isExplainCollapsed (scale);
 
     if (shouldCollapse != explainPanel.isCollapsed())
+    {
         explainPanel.setCollapsed (shouldCollapse);
+        applyStageSize();
+    }
 
     layoutStage();
 }
@@ -189,6 +216,7 @@ void ScratchpadEditor::setExplainCollapsed (bool collapsed)
     if (collapsed != explainPanel.isCollapsed())
     {
         explainPanel.setCollapsed (collapsed);
+        applyStageSize();
         layoutStage();
     }
 

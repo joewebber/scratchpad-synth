@@ -46,14 +46,14 @@ ModOverlay::RingHit ModOverlay::findRing (juce::Point<int> overlayPoint) const
         const auto local = c.getLocalPoint (this, overlayPoint).toFloat();
         const float distance = local.getDistanceFrom (t->getRingCentre());
 
-        if (distance > modArcRadius (8) + ringGrab || distance < ModTarget::firstArcRadius - ringGrab)
+        if (distance > t->getArcRadius (8) + ringGrab || distance < t->getFirstArcRadius() - ringGrab)
             continue;
 
         const auto arcs = t->getArcs();
 
         for (size_t i = 0; i < arcs.size(); ++i)
         {
-            const float gap = std::abs (distance - modArcRadius (i));
+            const float gap = std::abs (distance - t->getArcRadius (i));
 
             if (arcs[i].slot >= 0 && gap < bestGap)
             {
@@ -151,7 +151,7 @@ void ModOverlay::paint (juce::Graphics& g)
 
         const auto centre = getLocalPoint (&hover.target->getComponent(), hover.target->getRingCentre());
         const float width = textWidth (uiFont (11.0f, Weight::medium), label) + 16.0f;
-        const auto pill = juce::Rectangle<float> (width, 18.0f).withCentre ({ centre.x, centre.y - modArcRadius (hover.position) - 18.0f });
+        const auto pill = juce::Rectangle<float> (width, 18.0f).withCentre ({ centre.x, centre.y - hover.target->getArcRadius (hover.position) - 18.0f });
         g.setColour (p.ink);
         g.fillRoundedRectangle (pill, 9.0f);
         g.setColour (p.surface);

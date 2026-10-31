@@ -21,14 +21,14 @@ juce::Colour sourceInk (const Palette& p, ModSource s)
 }
 
 void drawModArcs (juce::Graphics& g, const Palette& p, juce::Point<float> centre, float startAngle, float endAngle,
-                  const std::vector<ModArc>& arcs)
+                  const std::vector<ModArc>& arcs, float firstRadius)
 {
     const float sweep = endAngle - startAngle;
 
     for (size_t i = 0; i < arcs.size(); ++i)
     {
         const auto& arc = arcs[i];
-        const float radius = modArcRadius (i);
+        const float radius = firstRadius + (float) i * ModTarget::arcSpacing;
         const auto colour = sourceInk (p, arc.source);
 
         // The range the connection can move the knob over. A range too short to see still gets a stub.
