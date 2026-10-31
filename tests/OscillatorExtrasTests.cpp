@@ -327,7 +327,21 @@ TEST_CASE ("FM adds sidebands at the carrier plus and minus multiples of the mod
 
     // With a modulation index of 3 the sidebands follow the Bessel functions of the first kind:
     // J0(3) for the carrier, J1(3) and J2(3) for the first two pairs.
-    const auto bessel = [] (double k) { return std::cyl_bessel_j (k, testIndex); };
+    // J_k(x) = (1/pi) * integral over 0..pi of cos(k t - x sin t) dt. std::cyl_bessel_j is missing from libc++ (macOS);
+    // the trapezoid rule on this periodic integrand converges exponentially, so 512 steps is exact to double precision.
+    const auto bessel = [] (double k, double x = testIndex)
+    {
+        constexpr int steps = 512;
+        double sum = 0.0;
+
+        for (int i = 0; i <= steps; ++i)
+        {
+            const double t = juce::MathConstants<double>::pi * i / steps;
+            sum += (i == 0 || i == steps ? 0.5 : 1.0) * std::cos (k * t - x * std::sin (t));
+        }
+
+        return sum / steps;
+    };
     const auto relative = [&] (double hz) { return fm.around (hz, 6.0) / carrier; };
 
     const double j0 = bessel (0.0) * bessel (0.0);
