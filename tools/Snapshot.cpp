@@ -1,6 +1,6 @@
 // Renders the editor to a PNG, for looking at the layout without a window.
 //
-//   ScratchpadSnapshot out.png [--light] [--empty] [--scale 1.0] [--more "Osc 1"]
+//   ScratchpadSnapshot out.png [--light] [--empty] [--scale 1.0] [--explain] [--more "Osc 1"]
 //
 // By default the patch has every module present, so every card is visible. `--empty` is a new patch.
 // `--more NAME` opens the More pop-over of the card whose More button is named "NAME more options".
@@ -35,7 +35,7 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI gui;
 
     juce::String out = "snapshot.png";
-    bool light = false, empty = false;
+    bool light = false, empty = false, explain = false;
     juce::String more;
     double scale = 1.0;
 
@@ -45,6 +45,7 @@ int main (int argc, char** argv)
 
         if (a == "--light")      light = true;
         else if (a == "--empty") empty = true;
+        else if (a == "--explain") explain = true;
         else if (a == "--more" && i + 1 < argc)  more = argv[++i];
         else if (a == "--scale" && i + 1 < argc) scale = juce::String (argv[++i]).getDoubleValue();
         else                     out = a;
@@ -64,8 +65,9 @@ int main (int argc, char** argv)
 
         plugin::ScratchpadEditor editor (processor);
         editor.setTheme (light ? ui::ViewSettings::Theme::light : ui::ViewSettings::Theme::dark);
-        editor.setSize (juce::roundToInt (plugin::ScratchpadEditor::baseWidth * scale),
-                        juce::roundToInt (plugin::ScratchpadEditor::baseHeight * scale));
+        editor.setExplainCollapsed (! explain); // the panel starts folded
+        const auto stageSize = editor.getBaseSize();
+        editor.setSize (juce::roundToInt (stageSize.x * scale), juce::roundToInt (stageSize.y * scale));
         editor.addToDesktop (0);
         editor.setVisible (true);
 

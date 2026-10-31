@@ -140,7 +140,7 @@ void WaveChooser::showMenu()
     for (int i = 0; i < names.size(); ++i)
         menu.addItem (i + 1, names[i], true, i == wave);
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+    showStyledMenu (menu, juce::PopupMenu::Options().withTargetComponent (this),
                         [safe = juce::Component::SafePointer<WaveChooser> (this)] (int result)
                         {
                             if (safe != nullptr && result >= 1 && safe->onPick)

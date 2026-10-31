@@ -193,7 +193,7 @@ void ModOverlay::showRingMenu (const ModArc& arc)
     const int slot = arc.slot;
     juce::Component::SafePointer<ModOverlay> safe (this);
     // Targeted at this component so the menu is scaled with the window, and placed at the pointer.
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, slot] (int result)
+    showStyledMenu (menu, juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, slot] (int result)
                         {
                             if (safe != nullptr && result == 1)
                                 safe->model.getProcessor().disconnectMod (slot);

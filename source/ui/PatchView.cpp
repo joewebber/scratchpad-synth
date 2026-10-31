@@ -113,9 +113,20 @@ namespace
 }
 
 //==============================================================================
-juce::Rectangle<int> PatchView::local (const layout::Box& box) noexcept
+juce::Rectangle<int> PatchView::local (const layout::Box& box) const noexcept
 {
-    return box.rect().translated (-L::patchView.x, -L::patchView.y);
+    const int shift = box.y >= L::modulationHeading.y ? 2 * extraGap : box.y >= L::effectsHeading.y ? extraGap : 0;
+    return box.rect().translated (-L::patchView.x, -L::patchView.y + shift);
+}
+
+void PatchView::setExtraGap (int pixels)
+{
+    if (pixels == extraGap)
+        return;
+
+    extraGap = pixels;
+    resized();
+    repaint();
 }
 
 PatchView::PatchView (plugin::ScratchpadProcessor& p)
@@ -291,7 +302,7 @@ void PatchView::showAddMenu()
     }
 
     juce::Component::SafePointer<PatchView> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton).withMinimumWidth (addButton.getWidth()),
+    showStyledMenu (menu, juce::PopupMenu::Options().withTargetComponent (&addButton).withMinimumWidth (addButton.getWidth()),
                         [safe] (int result)
                         {
                             if (safe != nullptr && result >= 1 && result <= (int) plugin::allModules.size())

@@ -638,11 +638,12 @@ void MorePopover::show (std::unique_ptr<MorePopover> popover, juce::Component& a
 {
     popover->setSize (pop::width, popover->heightForRows());
 
-    // The stage is the editor's scaled child; a pop-over inside it scales with everything else.
-    juce::Component* top = anchor.getTopLevelComponent();
+    // The stage is the editor's scaled child; a pop-over inside it scales with everything else. In a window the editor
+    // is itself a child (of the standalone app's window), so "the top-level component's child" is not the stage:
+    // look for the child of the editor.
     juce::Component* stage = &anchor;
 
-    while (stage->getParentComponent() != nullptr && stage->getParentComponent() != top)
+    while (stage->getParentComponent() != nullptr && dynamic_cast<juce::AudioProcessorEditor*> (stage->getParentComponent()) == nullptr)
         stage = stage->getParentComponent();
 
     auto* owner = popover.get();

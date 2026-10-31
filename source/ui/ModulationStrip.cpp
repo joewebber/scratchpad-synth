@@ -739,7 +739,7 @@ void ConnectionRow::showRemoveMenu()
     juce::PopupMenu menu;
     menu.addItem (1, "Remove " + info::connectionText (model.getProcessor().getModConnections()[(size_t) slot]));
     juce::Component::SafePointer<ConnectionRow> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe] (int result)
+    showStyledMenu (menu, juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe] (int result)
                         {
                             if (safe != nullptr && result == 1)
                                 safe->remove();

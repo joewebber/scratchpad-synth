@@ -251,7 +251,7 @@ anatomy and a table of what is on each card versus behind More). The rules it wa
    the voicing is on the keyboard's card.
 6. **Nothing overlaps or truncates.** Every region has a fixed size at 100% (`source/ui/Layout.h` is the one place
    they are written: the stage, each card's box, the header, table, knob and pop-over numbers) and the editor scales the
-   whole 1200 x 760 stage as one unit. Nothing sizes itself from its content; a control that does not fit goes behind
+   whole stage by one transform when it has to shrink. Nothing sizes itself from its content; a control that does not fit goes behind
    the card's "..." More button.
 
 - **Cards.** `ModuleCard` (`ModuleCard.*`) draws the header (`layout::header`): handle, name, "?", then B, S and More
@@ -269,12 +269,11 @@ anatomy and a table of what is on each card versus behind More). The rules it wa
   what goes in it with `makeMore (title, family, fillFn, removeLabel, ...)`.
 - **Presence.** `PatchView::refreshModules` still follows the modules' `enabled` parameters. The Sources card owns its
   own rows and slots (`refreshPresence`, `focusModule`, `focusSlot`).
-- **Explain panel.** 264 px wide: the entry, "Your patch" (five lines at most), and a fixed-height `Scope`. Folding it
-  to its rail narrows the stage (992 x 760) and the window with it; the chain does not change, there is nothing for it
-  to grow into. The auto-fold below 100% and the user's choice work as before.
+- **Explain panel.** 264 px wide, plus any extra width the window has: the entry, "Your patch" (five lines at most), and a
+  fixed-height `Scope`. Folding it to its rail leaves the chain alone (the design stage is then 992 x 760). It starts folded; the user's choice is remembered.
 - **Dark is the default theme.** The half-moon button in the top bar opens the View menu (theme, reduced motion, Explain
   panel).
-- **Snapshots.** `ScratchpadSnapshot out.png [--light] [--empty] [--scale n] [--more "Oscillator 1"]` renders the editor
+- **Snapshots.** `ScratchpadSnapshot out.png [--light] [--empty] [--scale n] [--explain] [--more "Oscillator 1"]` renders the editor
   (optionally with a More pop-over open) to a PNG without a window, for comparing with the design.
 
 ## Oscillator extras (M5)
@@ -410,15 +409,16 @@ Aftertouch has no on-screen control; it arrives from MIDI channel pressure.
   that is not a number reads as 1.0. `ViewSettings (File)` takes an explicit file; `setDefaultFileOverride` points the
   default constructor at one, which `tests/ViewTestSetup.cpp` does for the whole test run so no test reads or writes real
   preferences.
-- **A fixed stage under a transform.** `ScratchpadEditor` lays everything out on a `Stage` child that is always 1200 x 760 (992 x 760
-  with the Explain panel folded to its rail) and
-  puts a scale-and-translate transform on it, so no control layout knows the window's size. The transform is on the child, not
-  the editor, because `AudioProcessorEditor` keeps the host's own scale in the editor's transform. The window is resizable from
-  900 x 570 (75%) to 2400 x 1520 (200%) at the stage's shape by a `ComponentBoundsConstrainer`: the standalone app's frame
-  honours it through JUCE's decorator constrainer, a plugin gets a corner grip (`drawCornerResizer`, in palette colours) and
-  the host can resize it too. A host that sets some other size gets the stage fitted (`min (w / stageWidth, h / stageHeight)`) and centred
-  with the background round it; nothing is clipped. The scale is written 400 ms after the last resize and again when the
-  editor closes, and read back at the next start.
+- **A stage under a transform.** `ScratchpadEditor` lays everything out on a `Stage` child and puts a scale transform on it, so no
+  control layout knows the window's size. The design is 1200 x 760 (992 x 760 with the Explain panel folded). The stage is only ever
+  scaled down: below the design size the whole stage shrinks to fit, to a minimum of 75%; at or above it the scale stays 1.0 and the
+  stage is the window's size, so a bigger window is more room, not bigger controls. The Explain panel takes extra width (folded, the
+  column and rail sit in the middle) and extra height goes into the gaps between the sections (`PatchView::setExtraGap`; the keyboard
+  card moves down by three gaps) and the panel. The transform is on the child, not the editor, because `AudioProcessorEditor` keeps the
+  host's own scale in the editor's transform. The window is resizable at any shape from 900 x 570 (744 x 570 folded) by a
+  `ComponentBoundsConstrainer`: the standalone app's frame honours it through JUCE's decorator constrainer, a plugin gets a corner grip
+  (`drawCornerResizer`, in palette colours) and the host can resize it too. The scale (at most 1.0) is written 400 ms after the last
+  resize and again when the editor closes, and read back at the next start; a window made bigger than the design opens at the design size.
 - **Under the transform.** Mouse events arrive in stage units, so drags are 1 px = 1 stage px at any scale. The modulation code
   that goes through screen coordinates (`localPointToGlobal`, `getLocalPoint (nullptr, ...)`, `e.getScreenPosition()`) is
   correct under a transform. Menus take their scale from `PopupMenu::Options::withTargetComponent`, so the two right-click

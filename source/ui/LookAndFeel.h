@@ -8,6 +8,8 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
+
 namespace scratchpad::ui
 {
 
@@ -86,6 +88,16 @@ inline const Palette& paletteOf (const juce::Component& c)
         return laf->getPalette();
 
     return darkPalette();
+}
+
+/** Shows `menu` the way the editor looks. A pop-up menu takes its look from the menu itself, not from the component
+    it points at, so without this it opens in JUCE's default colours and type (the standalone window's own look). */
+inline void showStyledMenu (juce::PopupMenu& menu, const juce::PopupMenu::Options& options, std::function<void (int)> callback)
+{
+    if (auto* target = options.getTargetComponent())
+        menu.setLookAndFeel (&target->getLookAndFeel());
+
+    menu.showMenuAsync (options, std::move (callback));
 }
 
 } // namespace scratchpad::ui

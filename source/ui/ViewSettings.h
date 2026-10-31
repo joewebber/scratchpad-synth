@@ -12,7 +12,7 @@ namespace scratchpad::ui
     carry any of it. Stored in a small properties file in the user's settings folder.
 
     Keys:  `theme` ("dark" or "light"), `reducedMotion` (true or false), `explainCollapsed` (true or false; absent
-    means "follow the window size") and `editorScale` (0.75 to 2.0, where 1.0 is 1500 x 900).
+    means folded) and `editorScale` (0.75 to 1.0: how far the stage is shrunk to fit a window smaller than the design; it is never scaled up).
 
     A missing, unreadable or half-written file, and values that make no sense, all read as the defaults.
     Every write goes to disk straight away, after re-reading the file so that a second instance in the same
@@ -22,10 +22,8 @@ class ViewSettings
 public:
     enum class Theme { dark, light };
 
-    static constexpr double minScale = 0.75, maxScale = 2.0, defaultScale = 1.0;
+    static constexpr double minScale = 0.75, maxScale = 1.0, defaultScale = 1.0;
 
-    /** The explain panel starts collapsed below this scale, until the user chooses. */
-    static constexpr double collapseBelowScale = 0.995;
 
     /** The user's settings file ("Scratchpad Synth.view" next to the standalone's own settings), unless
         `setDefaultFileOverride` has pointed somewhere else. */
@@ -52,8 +50,8 @@ public:
     std::optional<bool> getExplainCollapsedChoice() const;
     void setExplainCollapsed (bool);
 
-    /** What to show at `scale`: the user's choice, else collapsed below 100%. */
-    bool isExplainCollapsed (double scale) const;
+    /** Whether the panel is folded: the user's choice, else folded (it starts closed). */
+    bool isExplainCollapsed() const;
 
     double getEditorScale() const;
     void setEditorScale (double);

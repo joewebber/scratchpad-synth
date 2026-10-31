@@ -121,9 +121,9 @@ void ViewSettings::setExplainCollapsed (bool collapsed)
     write (explainCollapsedKey, collapsed ? "true" : "false");
 }
 
-bool ViewSettings::isExplainCollapsed (double scale) const
+bool ViewSettings::isExplainCollapsed() const
 {
-    return getExplainCollapsedChoice().value_or (scale < collapseBelowScale);
+    return getExplainCollapsedChoice().value_or (true);
 }
 
 double ViewSettings::clampScale (double scale) noexcept

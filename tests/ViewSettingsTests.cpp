@@ -58,7 +58,7 @@ TEST_CASE ("Every setting survives being written and read back by a new object",
         s.setTheme (ViewSettings::Theme::light);
         s.setReducedMotion (true);
         s.setExplainCollapsed (false);
-        s.setEditorScale (1.6);
+        s.setEditorScale (0.9);
     }
 
     ViewSettings again (temp.file());
@@ -66,7 +66,7 @@ TEST_CASE ("Every setting survives being written and read back by a new object",
     CHECK (again.getReducedMotion());
     REQUIRE (again.getExplainCollapsedChoice().has_value());
     CHECK_FALSE (*again.getExplainCollapsedChoice());
-    CHECK_THAT (again.getEditorScale(), WithinAbs (1.6, 1.0e-6));
+    CHECK_THAT (again.getEditorScale(), WithinAbs (0.9, 1.0e-6));
 }
 
 TEST_CASE ("The file uses the documented keys", "[view][settings]")
@@ -141,11 +141,11 @@ TEST_CASE ("A corrupt settings file reads as the defaults and can be written ove
     CHECK_THAT (s.getEditorScale(), WithinAbs (1.0, 1.0e-9));
 
     s.setTheme (ViewSettings::Theme::light);
-    s.setEditorScale (1.25);
+    s.setEditorScale (0.9);
 
     ViewSettings again (temp.file());
     CHECK (again.getTheme() == ViewSettings::Theme::light);
-    CHECK_THAT (again.getEditorScale(), WithinAbs (1.25, 1.0e-6));
+    CHECK_THAT (again.getEditorScale(), WithinAbs (0.9, 1.0e-6));
 }
 
 TEST_CASE ("Values that make no sense read as the defaults or are pulled into range", "[view][settings]")
@@ -158,15 +158,15 @@ TEST_CASE ("Values that make no sense read as the defaults or are pulled into ra
         return ViewSettings (temp.file()).getEditorScale();
     };
 
-    CHECK_THAT (scaleFor ("1.3"), WithinAbs (1.3, 1.0e-9));
+    CHECK_THAT (scaleFor ("0.9"), WithinAbs (0.9, 1.0e-9));
     CHECK_THAT (scaleFor ("0.75"), WithinAbs (0.75, 1.0e-9));
-    CHECK_THAT (scaleFor ("2"), WithinAbs (2.0, 1.0e-9));
+    CHECK_THAT (scaleFor ("2"), WithinAbs (1.0, 1.0e-9));
 
     // Out of range: the nearest scale the window allows.
     CHECK_THAT (scaleFor ("0.1"), WithinAbs (0.75, 1.0e-9));
     CHECK_THAT (scaleFor ("-3"), WithinAbs (0.75, 1.0e-9));
-    CHECK_THAT (scaleFor ("9"), WithinAbs (2.0, 1.0e-9));
-    CHECK_THAT (scaleFor ("1e9"), WithinAbs (2.0, 1.0e-9));
+    CHECK_THAT (scaleFor ("9"), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (scaleFor ("1e9"), WithinAbs (1.0, 1.0e-9));
 
     // Not a number at all: the default, not "0 clamped up to the minimum".
     CHECK_THAT (scaleFor ("big"), WithinAbs (1.0, 1.0e-9));
@@ -188,8 +188,8 @@ TEST_CASE ("Scales written are clamped to the window's limits", "[view][settings
     TempSettings temp;
     ViewSettings s (temp.file());
 
-    s.setEditorScale (50.0);
-    CHECK_THAT (s.getEditorScale(), WithinAbs (2.0, 1.0e-9));
+    s.setEditorScale (50.0); // the stage is never scaled up
+    CHECK_THAT (s.getEditorScale(), WithinAbs (1.0, 1.0e-9));
 
     s.setEditorScale (0.0);
     CHECK_THAT (s.getEditorScale(), WithinAbs (0.75, 1.0e-9));
@@ -197,21 +197,18 @@ TEST_CASE ("Scales written are clamped to the window's limits", "[view][settings
     CHECK_THAT (ViewSettings::clampScale (std::numeric_limits<double>::infinity()), WithinAbs (1.0, 1.0e-9));
 }
 
-TEST_CASE ("The Explain panel follows the scale until the user chooses", "[view][settings]")
+TEST_CASE ("The Explain panel starts folded until the user chooses", "[view][settings]")
 {
     TempSettings temp;
     ViewSettings s (temp.file());
 
-    CHECK (s.isExplainCollapsed (0.75));
-    CHECK (s.isExplainCollapsed (0.9));
-    CHECK_FALSE (s.isExplainCollapsed (1.0));
-    CHECK_FALSE (s.isExplainCollapsed (2.0));
+    CHECK (s.isExplainCollapsed());
 
     s.setExplainCollapsed (false);
-    CHECK_FALSE (s.isExplainCollapsed (0.75));
+    CHECK_FALSE (s.isExplainCollapsed());
 
     s.setExplainCollapsed (true);
-    CHECK (s.isExplainCollapsed (2.0));
+    CHECK (s.isExplainCollapsed());
 }
 
 TEST_CASE ("The default settings file can be redirected, as the tests do", "[view][settings]")

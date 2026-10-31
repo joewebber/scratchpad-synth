@@ -3,6 +3,7 @@
 #include "plugin/ModulationInfo.h"
 #include "plugin/Parameters.h"
 #include "ui/Accessibility.h"
+#include "ui/LookAndFeel.h"
 
 #include <algorithm>
 #include <cmath>
@@ -329,7 +330,7 @@ void ModulationModel::chooseDestination (ModSource source, juce::Component& menu
     }
 
     auto alive = aliveFlag;
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuTarget),
+    showStyledMenu (menu, juce::PopupMenu::Options().withTargetComponent (&menuTarget),
                         [this, alive, source, choices] (int result)
                         {
                             if (*alive && result >= 1 && result <= (int) choices.size())
@@ -375,7 +376,7 @@ void ModulationModel::dropOn (ModTarget& target, juce::Component* menuParent)
         menu.addItem ((int) i + 1, describe (choices[i]));
 
     auto alive = aliveFlag;
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (menuParent != nullptr ? menuParent : &target.getComponent()),
+    showStyledMenu (menu, juce::PopupMenu::Options().withTargetComponent (menuParent != nullptr ? menuParent : &target.getComponent()),
                         [this, alive, source, choices] (int result)
                         {
                             if (*alive && result >= 1 && result <= (int) choices.size())

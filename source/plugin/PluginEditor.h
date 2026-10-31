@@ -14,19 +14,21 @@
 namespace scratchpad::plugin
 {
 
-/** One window. Everything inside is laid out on a fixed stage - 1200 x 760 px with the Explain panel showing (the
-    sizes are in `ui/Layout.h`) - and the stage is scaled as one unit to fit the window, so no control has to know the
-    window's size and nothing sizes itself from its content. Below the top bar sit the signal chain, the effects, the
-    modulation and the voicing-and-keyboard card in a column, with the Explain panel to their right.
+/** One window. Everything inside is laid out on a stage in logical pixels, and the stage is scaled by a transform so
+    no control has to know the window's size. The design is 1200 x 760 px with the Explain panel showing (992 x 760
+    folded to its rail); the sizes of the cards are in `ui/Layout.h` and nothing sizes itself from its content.
 
-    Folding the Explain panel to its rail narrows the stage by what the panel gives up (the chain does not change;
-    there is nothing for it to grow into) and the window narrows with it at the same scale. The window is resizable
-    from 75% to 200% of the stage at its current shape, by its corner in a plugin host and by its frame in the
-    standalone app. A host that sets some other size gets the stage fitted and centred inside it. The scale is
+    The window never scales the stage up: at or above 100% the stage is the size of the window and the extra room is
+    used. The Explain panel (or, folded, the space round the column) takes the extra width; the extra height goes
+    into the gaps between the signal chain, the effects, the modulation and the keyboard, and into the Explain panel.
+    Below 100% the whole stage is scaled down to fit, to a minimum of 75%. So a bigger window means more room, not
+    bigger controls.
+
+    The window is resizable (a corner grip in a plugin host, the frame in the standalone app) with no fixed shape. A
+    host that sets a size under the minimum gets the stage scaled to fit regardless. The scale below 100% is
     remembered between sessions.
 
-    Below 100% the Explain panel starts folded to a rail. Folding or unfolding it is remembered and then wins over
-    the size.
+    The Explain panel starts folded to a rail. Folding or unfolding it is remembered.
 
     How the window looks (theme, reduced motion, panel folded, scale) is the user's preference and lives in
     `ViewSettings`, never in the patch or the host session. */
@@ -34,15 +36,18 @@ class ScratchpadEditor final : public juce::AudioProcessorEditor,
                                private juce::FocusChangeListener
 {
 public:
-    /** The stage with the Explain panel showing and with it folded to its rail. */
+    /** The design's stage size with the Explain panel showing and with it folded to its rail. */
     static constexpr int baseWidth = ui::layout::stageWidth;
     static constexpr int baseHeight = ui::layout::stageHeight;
     static constexpr int foldedWidth = baseWidth - (ui::ExplainPanel::width - ui::ExplainPanel::railWidth);
 
-    /** The smallest and largest scale the window can be dragged to. */
-    static constexpr double minScale = 0.75, maxScale = 2.0;
+    /** The smallest scale the stage is shrunk to; it is never scaled up. */
+    static constexpr double minScale = 0.75, maxScale = 1.0;
 
-    /** The stage's size now: `foldedWidth` x `baseHeight` while the panel is folded. */
+    /** The design size now: `foldedWidth` x `baseHeight` while the panel is folded. */
+    juce::Point<int> getBaseSize() const noexcept;
+
+    /** The stage's size in its own pixels: the window's size divided by the scale, never less than `getBaseSize()`. */
     juce::Point<int> getStageSize() const noexcept;
 
     explicit ScratchpadEditor (ScratchpadProcessor&);
@@ -95,8 +100,7 @@ private:
 
     void globalFocusChanged (juce::Component*) override;
     void layoutStage();
-    void applyStageSize();
-    void refreshExplainState();
+    void updateConstrainer();
     void applyPalette();
 
     ScratchpadProcessor& processor;
@@ -104,7 +108,6 @@ private:
     ui::ViewSettings settings;
     ui::ViewSettings::Theme theme = ui::ViewSettings::Theme::dark;
     double scale = 1.0;
-    juce::Point<int> shownStage { baseWidth, baseHeight }; // the stage the window was last fitted to
 
     ui::ScratchpadLookAndFeel lookAndFeel { ui::darkPalette() };
     juce::ComponentBoundsConstrainer constrainer;

@@ -97,41 +97,42 @@ namespace
         return -1;
     }
 
+    /** The panel starts folded; a test that wants it showing says so, as a user does. */
+    void showPanel() { ViewSettings().setExplainCollapsed (false); }
+
     bool within (juce::Rectangle<int> inner, juce::Rectangle<int> outer)
     {
         return outer.expanded (1).contains (inner);
     }
 }
 
-TEST_CASE ("The editor opens at 100% with the Explain panel showing", "[view][editor]")
+TEST_CASE ("The editor opens at 100% with the Explain panel folded", "[view][editor]")
 {
     CleanPreferences clean;
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
 
-    CHECK (e.getWidth() == ScratchpadEditor::baseWidth);
+    CHECK (e.getWidth() == ScratchpadEditor::foldedWidth);
     CHECK (e.getHeight() == ScratchpadEditor::baseHeight);
     CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
-    CHECK_FALSE (e.isExplainCollapsed());
+    CHECK (e.isExplainCollapsed());
     CHECK (e.getTheme() == ViewSettings::Theme::dark);
     CHECK_FALSE (ui::motion::isReduced());
 }
 
-TEST_CASE ("The window resizes between 75% and 200% at one shape", "[view][editor]")
+TEST_CASE ("The window shrinks the stage down to 75% and is never scaled up", "[view][editor]")
 {
     CleanPreferences clean;
+    showPanel();
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
 
     REQUIRE (e.isResizable());
     auto* constrainer = e.getConstrainer();
     REQUIRE (constrainer != nullptr);
-    constexpr double shape = (double) ScratchpadEditor::baseWidth / (double) ScratchpadEditor::baseHeight;
     CHECK (constrainer->getMinimumWidth() == 900);
     CHECK (constrainer->getMinimumHeight() == 570);
-    CHECK (constrainer->getMaximumWidth() == 2400);
-    CHECK (constrainer->getMaximumHeight() == 1520);
-    CHECK_THAT (constrainer->getFixedAspectRatio(), WithinAbs (shape, 1.0e-9));
+    CHECK_THAT (constrainer->getFixedAspectRatio(), WithinAbs (0.0, 1.0e-9)); // any shape
 
     const auto asked = [&e] (juce::Rectangle<int> bounds)
     {
@@ -139,58 +140,45 @@ TEST_CASE ("The window resizes between 75% and 200% at one shape", "[view][edito
         return e.getBounds();
     };
 
-    SECTION ("too big is held at 200%")
-    {
-        const auto b = asked ({ 0, 0, 5000, 4000 });
-        CHECK (b.getWidth() <= 2400);
-        CHECK (b.getHeight() <= 1520);
-        CHECK_THAT ((double) b.getWidth() / (double) b.getHeight(), WithinAbs (shape, 0.002));
-    }
-
     SECTION ("too small is held at 75%")
     {
-        // 75% is below 100%, so the panel folds and the stage, and the window with it, is the narrower one.
         const auto b = asked ({ 0, 0, 300, 200 });
-        CHECK (b.getWidth() == juce::roundToInt (0.75 * ScratchpadEditor::foldedWidth));
+        CHECK (b.getWidth() == 900);
         CHECK (b.getHeight() == 570);
-        CHECK_THAT ((double) b.getWidth() / (double) b.getHeight(), WithinAbs (constrainer->getFixedAspectRatio(), 0.002));
+        CHECK_THAT (e.getScale(), WithinAbs (0.75, 1.0e-9));
     }
 
-    SECTION ("a size in range keeps its shape")
+    SECTION ("between 75% and 100% the whole stage shrinks to fit")
+    {
+        asked ({ 0, 0, 1000, 700 });
+        CHECK_THAT (e.getScale(), WithinAbs (1000.0 / ScratchpadEditor::baseWidth, 1.0e-9));
+        CHECK (e.getStageSize().x >= ScratchpadEditor::baseWidth);
+    }
+
+    SECTION ("bigger is more room, not bigger controls")
     {
         const auto b = asked ({ 0, 0, 1800, 1000 });
-        CHECK (b.getWidth() >= 900);
-        CHECK (b.getWidth() <= 2400);
-        CHECK_THAT ((double) b.getWidth() / (double) b.getHeight(), WithinAbs (shape, 0.002));
+        CHECK (b.getWidth() == 1800);
+        CHECK (b.getHeight() == 1000);
+        CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
+        CHECK (e.getStageSize() == juce::Point<int> (1800, 1000));
     }
 }
 
-TEST_CASE ("The Explain panel folds below 100% and opens at 100% unless the user has chosen", "[view][editor]")
+TEST_CASE ("The Explain panel starts folded whatever the window size", "[view][editor]")
 {
     CleanPreferences clean;
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
     auto& panel = only<ui::ExplainPanel> (e);
 
-    setSizeFor (e, 75);
-    CHECK_THAT (e.getScale(), WithinAbs (0.75, 1.0e-9));
-    CHECK (e.isExplainCollapsed());
-    CHECK (panel.getWidth() == ui::ExplainPanel::railWidth);
-
-    setSizeFor (e, 93);
-    CHECK (e.isExplainCollapsed());
-
-    setSizeFor (e, 100);
-    CHECK_FALSE (e.isExplainCollapsed());
-    CHECK (panel.getWidth() == ui::ExplainPanel::width);
-
-    setSizeFor (e, 200);
-    CHECK_THAT (e.getScale(), WithinAbs (2.0, 1.0e-9));
-    CHECK_FALSE (e.isExplainCollapsed());
-
-    // One pixel short is 100% for all anyone can tell.
-    e.setSize (ScratchpadEditor::baseWidth - 1, ScratchpadEditor::baseHeight - 1);
-    CHECK_FALSE (e.isExplainCollapsed());
+    for (int percent : { 75, 100, 200 })
+    {
+        setSizeFor (e, percent);
+        INFO (percent << "%");
+        CHECK (e.isExplainCollapsed());
+        CHECK (panel.getWidth() == ui::ExplainPanel::railWidth);
+    }
 }
 
 TEST_CASE ("The user's choice about the Explain panel beats the window size and is remembered", "[view][editor]")
@@ -224,6 +212,7 @@ TEST_CASE ("The user's choice about the Explain panel beats the window size and 
 TEST_CASE ("The fold and unfold buttons, and the panel's own parts, match its state", "[view][editor]")
 {
     CleanPreferences clean;
+    showPanel();
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
     auto& panel = only<ui::ExplainPanel> (e);
@@ -272,7 +261,6 @@ TEST_CASE ("A module's ? button unfolds a folded Explain panel and pins the modu
     ScratchpadEditor e (p);
     auto& panel = only<ui::ExplainPanel> (e);
 
-    setSizeFor (e, 75);
     REQUIRE (panel.isCollapsed());
     REQUIRE (panel.getShownId() == "osc1");
 
@@ -288,9 +276,10 @@ TEST_CASE ("A module's ? button unfolds a folded Explain panel and pins the modu
     CHECK (panel.getShownId() == "filter");
 }
 
-TEST_CASE ("Folding the Explain panel narrows the stage and leaves the chain where it is", "[view][editor]")
+TEST_CASE ("Folding the Explain panel leaves the chain's cards alone", "[view][editor]")
 {
     CleanPreferences clean;
+    showPanel();
     plugin::ScratchpadProcessor p;
     p.addModule (plugin::Module::filter);
     p.addModule (plugin::Module::lfo1);
@@ -299,16 +288,19 @@ TEST_CASE ("Folding the Explain panel narrows the stage and leaves the chain whe
     auto& panel = only<ui::ExplainPanel> (e);
 
     const auto chain = view.getBounds();
-    const int expandedWidth = e.getWidth();
+    const auto size = e.getBounds();
+    CHECK (panel.getRight() == ScratchpadEditor::baseWidth - 12);
+
     e.setExplainCollapsed (true);
 
-    // Nothing in the chain moves or grows (its boxes are fixed); the rail takes the panel's place at the right edge, and the
-    // window loses what the panel gave up, at the same scale.
-    CHECK (view.getBounds() == chain);
-    CHECK (e.getWidth() == expandedWidth - (ui::ExplainPanel::width - ui::ExplainPanel::railWidth));
-    CHECK (e.getHeight() == ScratchpadEditor::baseHeight);
-    CHECK (panel.getRight() == ScratchpadEditor::foldedWidth - 12);
+    // The window stays as it is. The chain's boxes do not change size; with the panel folded the extra width has
+    // nowhere to go, so the column and the rail sit in the middle.
+    CHECK (e.getBounds() == size);
+    CHECK (view.getWidth() == chain.getWidth());
+    CHECK (view.getX() == chain.getX() + (ScratchpadEditor::baseWidth - ScratchpadEditor::foldedWidth) / 2);
+    CHECK (panel.getWidth() == ui::ExplainPanel::railWidth);
     CHECK (view.getRight() < panel.getX());
+    CHECK (panel.getRight() <= e.getStageSize().x - 12);
 
     for (auto* child : view.getChildren())
         if (child->isVisible())
@@ -318,13 +310,14 @@ TEST_CASE ("Folding the Explain panel narrows the stage and leaves the chain whe
         }
 
     e.setExplainCollapsed (false);
-    CHECK (e.getWidth() == expandedWidth);
+    CHECK (view.getBounds() == chain);
     CHECK (panel.getRight() == ScratchpadEditor::baseWidth - 12);
 }
 
 TEST_CASE ("Controls are where the eye sees them at every scale", "[view][editor]")
 {
     CleanPreferences clean;
+    showPanel();
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
     e.setVisible (true); // hit-testing only finds what is visible
@@ -335,7 +328,7 @@ TEST_CASE ("Controls are where the eye sees them at every scale", "[view][editor
         INFO (percent << "%");
         setSizeFor (e, percent);
 
-        const double scale = percent / 100.0;
+        const double scale = e.getScale();
         const auto centre = button.getLocalBounds().getCentre();
 
         // Where the button's centre falls in the window: its place on the stage, scaled.
@@ -358,60 +351,66 @@ TEST_CASE ("Controls are where the eye sees them at every scale", "[view][editor
     }
 }
 
-TEST_CASE ("A host that sets an odd size gets the window fitted and centred", "[view][editor]")
+TEST_CASE ("A window of any shape gets a stage that fills it", "[view][editor]")
 {
     CleanPreferences clean;
+    showPanel();
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
     auto& top = only<ui::TopBar> (e);
+    auto& panel = only<ui::ExplainPanel> (e);
+    auto& keys = only<ui::PerformanceBar> (e);
 
-    SECTION ("wider than the shape: the sides are bare")
+    SECTION ("wider: the Explain panel takes the width")
     {
-        e.setSize (ScratchpadEditor::baseWidth + 500, ScratchpadEditor::baseHeight); // fits at 100%, 250 px spare each side
+        e.setSize (ScratchpadEditor::baseWidth + 500, ScratchpadEditor::baseHeight);
         CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
-        const auto area = e.getLocalArea (&top, top.getLocalBounds());
-        CHECK (area.getX() == 250 + 12);
-        CHECK (area.getY() == 12);
+        CHECK (e.getLocalArea (&top, top.getLocalBounds()).getRight() == e.getWidth() - 12);
+        CHECK (panel.getWidth() == ui::ExplainPanel::width + 500);
+        CHECK (panel.getRight() == e.getWidth() - 12);
     }
 
-    SECTION ("taller than the shape: top and bottom are bare")
+    SECTION ("taller: the gaps between the sections and the panel take the height")
     {
-        e.setSize (ScratchpadEditor::baseWidth, ScratchpadEditor::baseHeight + 200);
+        e.setSize (ScratchpadEditor::baseWidth, ScratchpadEditor::baseHeight + 300);
         CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
-        const auto area = e.getLocalArea (&top, top.getLocalBounds());
-        CHECK (area.getY() == 100 + 12);
+        CHECK (panel.getHeight() == ui::layout::explain.h + 300);
+        CHECK (keys.getY() == ui::layout::voicingKeyboard.y + 300);
+        CHECK (keys.getHeight() == ui::layout::voicingKeyboard.h);
+        CHECK (keys.getBottom() <= e.getHeight() - 12);
     }
 
-    SECTION ("narrower than the minimum: everything still fits")
+    SECTION ("smaller than the design: everything is scaled down to fit")
     {
-        e.setSize (800, 700); // below 100%, so the panel folds and the stage is the narrower one
-        CHECK_THAT (e.getScale(), WithinAbs (800.0 / ScratchpadEditor::foldedWidth, 1.0e-9));
-        CHECK (within (e.getLocalArea (&top, top.getLocalBounds()), e.getLocalBounds()));
+        e.setSize (800, 700);
+        CHECK_THAT (e.getScale(), WithinAbs (0.75, 1.0e-9)); // never below 75%; the host's window clips what is left
+        CHECK (e.getLocalArea (&top, top.getLocalBounds()).getX() >= 0);
     }
 }
 
 TEST_CASE ("The scale is remembered between sessions", "[view][editor]")
 {
     CleanPreferences clean;
+    showPanel();
     plugin::ScratchpadProcessor p;
 
     {
         ScratchpadEditor e (p);
-        setSizeFor (e, 160);
+        setSizeFor (e, 80);
     } // the scale is written when the editor closes at the latest
 
     {
         ScratchpadEditor again (p);
-        CHECK (again.getWidth() == 1920);
-        CHECK (again.getHeight() == 1216);
-        CHECK_THAT (again.getScale(), WithinAbs (1.6, 1.0e-9));
+        CHECK (again.getWidth() == 960);
+        CHECK (again.getHeight() == 608);
+        CHECK_THAT (again.getScale(), WithinAbs (0.8, 1.0e-9));
         setSizeFor (again, 75);
     }
 
     ScratchpadEditor third (p);
-    CHECK (third.getWidth() == 744); // 75% of the folded stage, 992 x 760
+    CHECK (third.getWidth() == 900);
     CHECK (third.getHeight() == 570);
-    CHECK (third.isExplainCollapsed());
+    CHECK_FALSE (third.isExplainCollapsed());
 }
 
 TEST_CASE ("A damaged preferences file still opens the editor at the defaults", "[view][editor]")
@@ -423,7 +422,7 @@ TEST_CASE ("A damaged preferences file still opens the editor at the defaults", 
 
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
-    CHECK (e.getWidth() == ScratchpadEditor::baseWidth);
+    CHECK (e.getWidth() == ScratchpadEditor::foldedWidth);
     CHECK (e.getTheme() == ViewSettings::Theme::dark);
 }
 
@@ -464,7 +463,7 @@ TEST_CASE ("Choosing from the View menu changes the window and is remembered", "
         const auto state = e.getViewState();
         CHECK (state.theme == ViewSettings::Theme::dark);
         CHECK_FALSE (state.reducedMotion);
-        CHECK (state.explainShown);
+        CHECK_FALSE (state.explainShown);
 
         e.applyViewChoice (ui::ViewChoice::themeLight);
         CHECK (e.getTheme() == ViewSettings::Theme::light);
@@ -473,9 +472,9 @@ TEST_CASE ("Choosing from the View menu changes the window and is remembered", "
         CHECK (ui::motion::isReduced());
         CHECK (e.getViewState().reducedMotion);
 
-        e.applyViewChoice (ui::ViewChoice::explainPanel); // shown -> folded
-        CHECK (e.isExplainCollapsed());
-        CHECK_FALSE (e.getViewState().explainShown);
+        e.applyViewChoice (ui::ViewChoice::explainPanel); // folded -> shown
+        CHECK_FALSE (e.isExplainCollapsed());
+        CHECK (e.getViewState().explainShown);
 
         e.applyViewChoice (ui::ViewChoice::none);
         CHECK (e.getTheme() == ViewSettings::Theme::light);
@@ -486,15 +485,15 @@ TEST_CASE ("Choosing from the View menu changes the window and is remembered", "
     ScratchpadEditor again (p);
     CHECK (again.getTheme() == ViewSettings::Theme::light);
     CHECK (ui::motion::isReduced());
-    CHECK (again.isExplainCollapsed());
+    CHECK_FALSE (again.isExplainCollapsed());
     CHECK (&ui::paletteOf (again) == &ui::lightPalette());
 
     again.applyViewChoice (ui::ViewChoice::themeDark);
     again.applyViewChoice (ui::ViewChoice::reducedMotion); // toggles back off
-    again.applyViewChoice (ui::ViewChoice::explainPanel);  // folded -> shown
+    again.applyViewChoice (ui::ViewChoice::explainPanel);  // shown -> folded
     CHECK (again.getTheme() == ViewSettings::Theme::dark);
     CHECK_FALSE (ui::motion::isReduced());
-    CHECK_FALSE (again.isExplainCollapsed());
+    CHECK (again.isExplainCollapsed());
 }
 
 TEST_CASE ("The view button is in the top bar, named, and explained", "[view][menu]")
@@ -575,7 +574,7 @@ TEST_CASE ("Each theme paints its own background, across the whole window", "[vi
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
 
-    for (int percent : { 75, 100, 200 })
+    for (int percent : { 75, 100, 133 })
         for (auto theme : { ViewSettings::Theme::dark, ViewSettings::Theme::light })
         {
             const auto& palette = theme == ViewSettings::Theme::dark ? ui::darkPalette() : ui::lightPalette();
@@ -597,4 +596,30 @@ TEST_CASE ("Each theme paints its own background, across the whole window", "[vi
 
             CHECK (different > (image.getWidth() / 7) * (image.getHeight() / 7) / 3);
         }
+}
+
+TEST_CASE ("A More pop-over opened in a hosted editor is drawn with the editor's look", "[view][popover]")
+{
+    CleanPreferences clean;
+    plugin::ScratchpadProcessor p;
+    p.addModule (plugin::Module::filter);
+
+    // The standalone app and plugin hosts put the editor inside a window of their own, with their own look and feel.
+    juce::Component window, holder;
+    window.setSize (ScratchpadEditor::foldedWidth, ScratchpadEditor::baseHeight);
+    window.addAndMakeVisible (holder);
+    holder.setBounds (window.getLocalBounds());
+    ScratchpadEditor e (p);
+    holder.addAndMakeVisible (e);
+    e.setBounds (holder.getLocalBounds());
+    e.setTheme (ViewSettings::Theme::light);
+
+    buttonTitled (e, "Filter more options").onClick();
+
+    auto popovers = all<ui::MorePopover> (window);
+    REQUIRE (popovers.size() == 1);
+    CHECK (e.isParentOf (popovers.front()));
+    CHECK (&ui::paletteOf (*popovers.front()) == &ui::lightPalette());
+
+    popovers.front()->close();
 }
