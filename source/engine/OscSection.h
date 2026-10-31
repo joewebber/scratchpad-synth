@@ -102,7 +102,6 @@ private:
     struct Copy
     {
         dsp::Oscillator osc;
-        dsp::Oscillator subOsc;
         double ratio = 1.0;
         double ratioStep = 0.0;
         float gainL = 0.0f, gainR = 0.0f;
@@ -124,6 +123,8 @@ private:
         float bandLimit = 1.0f;
         float bandLimitTarget = 1.0f;
         float subLevel = 0.0f;
+        float subGain = 0.0f;       // smoothed towards subLevel
+        dsp::Oscillator sub;        // one centred sine an octave down, not per unison copy
         int count = 1;
         bool sync = false;
         bool running = false;

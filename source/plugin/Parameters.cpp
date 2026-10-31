@@ -30,8 +30,8 @@ juce::StringArray modDestNames()
              "Osc 1 pulse width", "Osc 2 pulse width", "Osc 3 pulse width",
              "Osc 1 level", "Osc 2 level", "Osc 3 level", "Noise level",
              "Filter cutoff", "Filter resonance", "Amp level", "Pan", "LFO 1 rate", "LFO 2 rate",
-             "Filter drive", "FM amount", "Distortion drive", "Osc 1 detune", "Osc 2 detune",
-             "Osc 3 detune", "Osc 2 sync", "Osc 3 sync" };
+             "Filter drive", "FM amount", "Shaper drive", "Osc 1 detune", "Osc 2 detune",
+             "Osc 3 detune", "Osc 2 sync", "Osc 3 sync", "Pitch (wide)" };
 }
 
 juce::StringArray fmTargetNames()      { return { "Osc 2", "Osc 3", "Both" }; }

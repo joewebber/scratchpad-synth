@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dsp/FastTanh.h"
+#include "dsp/FractionalRead.h"
 #include "dsp/LadderFilter.h"
 #include "dsp/SvfFilter.h"
 
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 namespace scratchpad::dsp
 {
 
@@ -35,7 +37,7 @@ public:
         ladder.setSampleRate (sr);
         svf.setSampleRate (sr);
         fadeLength = std::max (1, (int) (switchSeconds * sr));
-        combDelay.fill (0.0f);
+        combDelay.assign ((size_t) (sr / minCombHz) + 8, 0.0f); // long enough for a 20 Hz comb at any sample rate
         reset();
     }
 
@@ -43,8 +45,10 @@ public:
     {
         ladder.reset();
         svf.reset();
-        combDelay.fill (0.0f);
+        std::fill (combDelay.begin(), combDelay.end(), 0.0f);
         combIndex = 0;
+        combDcIn = combDcOut = 0.0f;
+        combCurrent = combTarget;
         fadeRemaining = 0;
         previousMode = mode;
     }
@@ -76,7 +80,8 @@ public:
         const float hz = std::clamp (cutoffHz, 20.0f, (float) (0.45 * sampleRate));
         ladder.setParams (hz, resonance, driveDb);
         svf.setParams (hz, resonance);
-        combLength = std::clamp ((int) (sampleRate / std::max (20.0f, hz)), 4, (int) combDelay.size() - 1);
+        if (! combDelay.empty())
+            combTarget = (float) std::clamp ((double) sampleRate / (double) std::max (minCombHz, hz), 2.0, (double) combDelay.size() - 4.0);
         combFeedback = 0.15f + 0.80f * std::clamp (resonance, 0.0f, 1.0f);
         if (! same (driveDb, lastDriveDb))
         {
@@ -114,13 +119,25 @@ public:
     }
 
 private:
+    /** A feedback comb tuned to the cutoff: a fractional delay (so it tracks pitch to a fraction of a cent and
+        sweeps without steps), the input DC-blocked (a feedback of 0.95 would otherwise ring 20x on DC), and the
+        output scaled by `1 - feedback` so the peaks keep unity gain however much resonance there is. */
     float processComb (float x) noexcept
     {
-        const size_t read = (combIndex + combDelay.size() - (size_t) combLength) % combDelay.size();
-        const float delayed = combDelay[read];
-        combDelay[combIndex] = x + delayed * combFeedback;
+        if (combDelay.empty())
+            return 0.0f;
+
+        const float blockedIn = x - combDcIn + 0.9985f * combDcOut;
+        combDcIn = x;
+        combDcOut = blockedIn;
+
+        combCurrent += (combTarget - combCurrent) * 0.02f;
+
+        const int size = (int) combDelay.size();
+        const float delayed = readCubic (combDelay.data(), size, (int) combIndex, combCurrent);
+        combDelay[combIndex] = blockedIn + delayed * combFeedback;
         combIndex = (combIndex + 1) % combDelay.size();
-        return delayed;
+        return delayed * (1.0f - combFeedback);
     }
 
     static float pick (FilterMode m, float ladderOut, const SvfFilter::Outputs& s, float combOut) noexcept
@@ -140,10 +157,12 @@ private:
     double sampleRate = 48000.0;
     LadderFilter ladder;
     SvfFilter svf;
-    std::array<float, 4096> combDelay {};
+    static constexpr float minCombHz = 20.0f;
+    std::vector<float> combDelay; // sized in prepare
     size_t combIndex = 0;
-    int combLength = 2400;
+    float combTarget = 100.0f, combCurrent = 100.0f;
     float combFeedback = 0.15f;
+    float combDcIn = 0.0f, combDcOut = 0.0f;
     FilterMode mode = FilterMode::lp24, previousMode = FilterMode::lp24;
     int fadeLength = 480, fadeRemaining = 0;
     float lastDriveDb = -1.0f, drive = 1.0f, driveMix = 0.0f, driveMakeup = 1.0f;

@@ -87,6 +87,7 @@ void OscSection::stopBank (size_t index) noexcept
     b.running = false;
     b.sync = false;
     b.fadeRemaining = 0;
+    b.subGain = 0.0f;
 
     for (auto& cp : b.copies)
         cp.active = false;
@@ -142,7 +143,8 @@ void OscSection::beginBank (size_t index, const BankSettings& s, int numSamples)
         b.fadeRemaining = 0;
         b.increment = s.increment;
         b.pulseWidth = s.pulseWidth;
-        b.subLevel = s.subLevel;
+        b.subGain = 0.0f;
+        b.sub.reset (s.phaseReset ? 0.0 : b.sub.getPhase());
         b.bandLimit = s.antiAlias ? 1.0f : 0.0f;
         b.running = true;
         for (auto& cp : b.copies)
@@ -154,6 +156,9 @@ void OscSection::beginBank (size_t index, const BankSettings& s, int numSamples)
         b.wave = s.wave;
         b.fadeRemaining = fadeTicks;
     }
+
+    if (! starting && s.subLevel > 0.0f && b.subGain <= 0.0f)
+        b.sub.jumpTo (0.5 * b.copies[0].osc.getPhase()); // fades in from silence, in step with the oscillator
 
     b.count = n;
     b.subLevel = s.subLevel;
@@ -184,7 +189,6 @@ void OscSection::beginBank (size_t index, const BankSettings& s, int numSamples)
             if (starting)
             {
                 cp.osc.reset (s.phaseReset ? (c == 0 ? 0.0 : random()) : cp.osc.getPhase());
-                cp.subOsc.reset (s.phaseReset ? (c == 0 ? 0.0 : random()) : cp.subOsc.getPhase());
             }
             else
                 cp.osc.jumpTo (random());
@@ -255,10 +259,8 @@ StereoSample OscSection::tickBank (Bank& b, const Bank* master, double phaseOffs
 
         cp.ratio += cp.ratioStep;
         cp.osc.setIncrement (b.increment * cp.ratio * rateScale);
-        cp.subOsc.setIncrement (b.increment * cp.ratio * rateScale * 0.5);
         cp.osc.setPulseWidth ((double) b.pulseWidth);
         cp.osc.setBandLimit (b.bandLimit);
-        cp.subOsc.setBandLimit (b.bandLimit);
         cp.osc.setPhaseOffset (phaseOffset);
 
         if (master != nullptr)
@@ -274,10 +276,9 @@ StereoSample OscSection::tickBank (Bank& b, const Bank* master, double phaseOffs
         }
 
         const float s = fading ? cp.osc.process (b.waveFrom, b.wave, fadeMix) : cp.osc.process (b.wave);
-        const float sub = b.subLevel * cp.subOsc.process (dsp::Wave::sine);
 
-        out.l += (s + sub) * cp.gainL;
-        out.r += (s + sub) * cp.gainR;
+        out.l += s * cp.gainL;
+        out.r += s * cp.gainR;
 
         if (cp.gainL != cp.targetL)
             cp.gainL = settle (cp.gainL, cp.targetL, gainCoef);
@@ -287,6 +288,25 @@ StereoSample OscSection::tickBank (Bank& b, const Bank* master, double phaseOffs
 
         if (cp.gainL == 0.0f && cp.gainR == 0.0f && cp.targetL == 0.0f && cp.targetR == 0.0f)
             cp.active = false;
+    }
+
+    // One centred sub an octave under the oscillator's own pitch (the unison detune does not apply). It costs nothing at level 0.
+    if (b.subLevel > 0.0f || b.subGain > 0.0f)
+    {
+        b.subGain += (b.subLevel - b.subGain) * gainCoef;
+
+        if (b.subLevel <= 0.0f && b.subGain < 1.0e-5f)
+        {
+            b.subGain = 0.0f;
+        }
+        else
+        {
+            b.sub.setIncrement (b.increment * 0.5 * rateScale);
+            b.sub.setBandLimit (b.bandLimit);
+            const float v = b.subGain * b.sub.process (dsp::Wave::sine);
+            out.l += v;
+            out.r += v;
+        }
     }
 
     return out;

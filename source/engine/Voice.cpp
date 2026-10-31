@@ -17,6 +17,7 @@ void Voice::prepare (double sr, std::uint32_t noiseSeed) noexcept
     filter.prepare (sr);
     filterR.prepare (sr);
     voiceShaper.prepare (sr);
+    dsp::WavetableBank::get(); // built here, never on the audio thread
     noise.seed (noiseSeed);
     for (size_t i = 0; i < lfos.size(); ++i)
     {
@@ -179,6 +180,9 @@ void Voice::init (const EngineParams& p) noexcept
 
     ampMix = p.ampEnv.enabled ? 1.0f : 0.0f;
     filterWet = p.filter.enabled ? 1.0f : 0.0f;
+    shaperWet = p.filter.shaperEnabled ? p.filter.shaperMix : 0.0f;
+    voiceShaper.reset();
+    shaperLive = false;
     velocityNow = velocityGain (p);
 
     filter.setMode (p.filter.mode);
@@ -263,12 +267,19 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 {
     const float invN = 1.0f / (float) n;
 
-    const double driftPhaseStart = age * 0.37 + (double) (startOrder % 1009u) * 0.17;
-    const double driftPhaseEnd = (age + (double) n / sampleRate) * 0.37 + (double) (startOrder % 1009u) * 0.17;
-    const double driftPitchStart = p.voicing.drift * 0.05 * std::sin (driftPhaseStart);
-    const double driftPitchEnd = p.voicing.drift * 0.05 * std::sin (driftPhaseEnd);
-    const double driftCutoffStart = p.voicing.drift * 0.03 * std::cos (driftPhaseStart * 0.73);
-    const double driftCutoffEnd = p.voicing.drift * 0.03 * std::cos (driftPhaseEnd * 0.73);
+    // Drift: three slow sines at incommensurate rates (0.06, 0.14 and 0.37 Hz for pitch; others for the cutoff), each
+    // voice at its own starting phases, so no voice settles into a repeating wobble. Peaks are 5 cents and 0.03 octave.
+    const double seed = (double) (startOrder % 1009u);
+    const auto wander = [&] (double t, double r1, double r2, double r3, double k, bool useCos)
+    {
+        const auto s = [&] (double x) { return useCos ? std::cos (x) : std::sin (x); };
+        return 0.6 * s (t * r1 + seed * k) + 0.3 * s (t * r2 + seed * k * 1.7) + 0.1 * s (t * r3 + seed * k * 2.9);
+    };
+    const double tStart = age, tEnd = age + (double) n / sampleRate;
+    const double driftPitchStart = p.voicing.drift * 0.05 * wander (tStart, 0.37, 0.91, 2.3, 0.17, false);
+    const double driftPitchEnd = p.voicing.drift * 0.05 * wander (tEnd, 0.37, 0.91, 2.3, 0.17, false);
+    const double driftCutoffStart = p.voicing.drift * 0.03 * wander (tStart, 0.27, 0.77, 1.9, 0.29, true);
+    const double driftCutoffEnd = p.voicing.drift * 0.03 * wander (tEnd, 0.27, 0.77, 1.9, 0.29, true);
 
     const double pitchStart = glidePitch + driftPitchStart;
     const double pitchEnd = advanceGlide (n) + driftPitchEnd;
@@ -305,7 +316,7 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
     const Ramp resonanceMod = rampOf (ModDest::resonance);
     const Ramp filterDriveMod = rampOf (ModDest::filterDrive);
     const Ramp fmAmountMod = rampOf (ModDest::fmAmount);
-    const Ramp distortionDriveMod = rampOf (ModDest::distortionDrive);
+    const Ramp shaperDriveMod = rampOf (ModDest::shaperDrive);
 
     const float tracking = p.filter.keyTracking / 12.0f;
     const Ramp cutoff {
@@ -332,9 +343,11 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
     if (ringOn)
         on[0] = on[1] = true;
 
+    const bool fmModActive = std::abs (fmAmountMod.start) > 1.0e-5f || std::abs (fmAmountMod.end) > 1.0e-5f;
+    const std::array<bool, 2> fmTargeted { p.fmTarget != FmTarget::osc3, p.fmTarget != FmTarget::osc2 };
     const std::array<bool, 2> fmOn {
-        (present (lv.fm[0]) || std::abs (fmAmountMod.start) > 1.0e-5f || std::abs (fmAmountMod.end) > 1.0e-5f) && on[1],
-        (present (lv.fm[1]) || std::abs (fmAmountMod.start) > 1.0e-5f || std::abs (fmAmountMod.end) > 1.0e-5f) && on[2]
+        (present (lv.fm[0]) || (fmModActive && fmTargeted[0])) && on[1],
+        (present (lv.fm[1]) || (fmModActive && fmTargeted[1])) && on[2]
     };
     const bool fmWanted = fmOn[0] || fmOn[1];
     if (fmWanted)
@@ -354,7 +367,8 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
             continue;
 
         const auto& op = p.osc[k];
-        const double pitchMod = (double) modPitchSemitones * (double) (modEnd[index (ModDest::pitchAll)] + modEnd[index (pitchDest (k))]);
+        const double pitchMod = (double) modPitchSemitones * (double) (modEnd[index (ModDest::pitchAll)] + modEnd[index (pitchDest (k))])
+                               + (double) modPitchWideSemitones * (double) modEnd[index (ModDest::pitchWide)];
 
         auto& s = banks[k];
         s.on = true;
@@ -420,6 +434,7 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
     filterR.setMode (p.filter.mode);
 
     const float wetTarget = p.filter.enabled ? 1.0f : 0.0f;
+    const float shaperTarget = p.filter.shaperEnabled ? p.filter.shaperMix : 0.0f;
     const float mixTargetAmp = p.ampEnv.enabled ? 1.0f : 0.0f;
     const float velocityTarget = velocityGain (p);
     bool filterParamsSet = false;
@@ -434,8 +449,8 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 
         oversampleMix += std::clamp (mixGoal - oversampleMix, -oversampleStep, oversampleStep);
 
-        const float fmTo2 = fmOn[0] ? std::clamp (lv.fm[0].at (t) + modFmAmount * fmAmountMod.at (t), 0.0f, 1.0f) : 0.0f;
-        const float fmTo3 = fmOn[1] ? std::clamp (lv.fm[1].at (t) + modFmAmount * fmAmountMod.at (t), 0.0f, 1.0f) : 0.0f;
+        const float fmTo2 = fmOn[0] ? std::clamp (lv.fm[0].at (t) + (fmTargeted[0] ? modFmAmount * fmAmountMod.at (t) : 0.0f), 0.0f, 1.0f) : 0.0f;
+        const float fmTo3 = fmOn[1] ? std::clamp (lv.fm[1].at (t) + (fmTargeted[1] ? modFmAmount * fmAmountMod.at (t) : 0.0f), 0.0f, 1.0f) : 0.0f;
         StereoOscs y, over;
 
         if (sectionLive[0])
@@ -537,15 +552,29 @@ void Voice::renderPlayed (float* left, float* right, int n, const EngineParams& 
 
         if (taps.afterFilter != nullptr)
             taps.afterFilter[i] += stereo ? 0.5f * (sumL + sumR) : sumL;
-        if (p.filter.shaperEnabled || std::abs (distortionDriveMod.start) > 1.0e-5f || std::abs (distortionDriveMod.end) > 1.0e-5f)
+
+        // The per-voice shaper fades in and out like the filter (and its mix moves the same way), so toggling it never clicks.
+        // Its drive is modulated only while it is on.
+        if (shaperWet < shaperTarget)
+            shaperWet = std::min (shaperTarget, shaperWet + filterWetStep);
+        else if (shaperWet > shaperTarget)
+            shaperWet = std::max (shaperTarget, shaperWet - filterWetStep);
+
+        if (shaperWet > 0.0f)
         {
-            const float shaperDrive = std::clamp (p.filter.shaperDriveDb + modDistortionDriveDb * distortionDriveMod.at (t), 0.0f, 40.0f);
-            voiceShaper.setParams (shaperDrive, 0.5f, p.filter.shaperEnabled ? p.filter.shaperMix : 1.0f,
-                                   p.filter.shaperMode, p.filter.shaperBias, false);
-            float shaped[2] { sumL, sumR };
-            voiceShaper.process (shaped, shaped + 1, 1);
-            sumL = shaped[0];
-            sumR = stereo ? shaped[1] : shaped[0];
+            const float shaperDrive = std::clamp (p.filter.shaperDriveDb + modShaperDriveDb * shaperDriveMod.at (t), 0.0f, 40.0f);
+            voiceShaper.setTarget (shaperDrive, p.filter.shaperBias, p.filter.shaperMode);
+
+            float shapedL = sumL, shapedR = sumR;
+            voiceShaper.process (shapedL, shapedR, stereo);
+            sumL += (shapedL - sumL) * shaperWet;
+            sumR = stereo ? sumR + (shapedR - sumR) * shaperWet : sumL;
+            shaperLive = true;
+        }
+        else if (shaperLive)
+        {
+            voiceShaper.reset();
+            shaperLive = false;
         }
 
         velocityNow += std::clamp (velocityTarget - velocityNow, -velocityStep, velocityStep);

@@ -57,11 +57,23 @@ crossfade does not start with a gap.
 Per voice: up to three oscillators and a noise source are summed, then the filter, optional per-voice shaper, and amp stage. `EngineParams` (plain values in the engine's units) is built once per
 block by the processor from cached parameter pointers.
 
-- **Saturation.** The ladder applies `tanh` at each stage when driven. The drive makeup is intentionally lighter than the original
-  `1/sqrt(drive)` compensation, so resonance grows instead of being normalized away. The optional post-filter voice shaper reuses
-  the distortion's 2x oversampling and supports tanh, hard clip, wavefolder, DC bias, DC blocking and wet/dry mix.
-- **Filter modes.** LP 24, LP 12, HP 12 and BP 12 are retained; notch uses the SVF notch output and comb uses a short feedback delay
-  whose length follows cutoff. Both are per-voice and crossfade with the existing filter mode transition.
+- **Saturation.** The ladder applies `tanh` at each stage when driven, with a lighter drive makeup than the original `1/sqrt(drive)`.
+- **Per-voice shaper.** `dsp::VoiceShaper`: tanh, hard clip or wavefolder at 2x, one sample at a time, through a two-path all-pass
+  IIR half-band (pass-band flat to 0.4 of the base Nyquist, stop-band better than 68 dB, a few samples of delay, so the dry path is
+  not delayed and a mix below 100% does not comb). No tone filter (open), a 7 Hz DC blocker, drive and bias glide over ~4 ms. It fades
+  in and out like the filter bypass (10 ms, the same ramp carries its mix), so toggling it does not click, and it costs nothing while
+  off. The "Shaper drive" modulation destination only acts while the shaper is on. Cost: about 1 point of one core for 8 voices
+  (JUCE's oversampler on one-sample blocks cost 15).
+- **Filter modes.** LP 24, LP 12, HP 12 and BP 12 are retained. Notch is the SVF notch output. Comb is a feedback comb with a cubic
+  fractional delay (`FractionalRead.h`), so it is in tune with the cutoff (no whole-sample steps) and sweeps smoothly; its input is
+  DC-blocked and its output scaled by `1 - feedback`, so peaks stay at unity at any resonance. The delay line is allocated in
+  `prepare` at `sampleRate / 20 Hz` samples (a 20 Hz comb fits at any rate), which keeps `Voice`, and so `SynthEngine`, small.
+- **Sub-oscillator.** One sine an octave under each oscillator's un-detuned pitch, centred, not one per unison copy. It is skipped
+  entirely at its minimum level, and rides the oscillator's level and the same 16-sample delay.
+- **Wavetables.** Three tables (Sweep, Vowel, Hollow) of 8 frames each, built once from real harmonic recipes of up to 64 partials
+  in `prepare`, stored at 7 band-limits. A read picks the richest one that stays under Nyquist for the increment, then interpolates
+  two frames, so they cost about the same as a saw. The oscillator's pulse-width control is the morph (and its modulation destinations
+  are the morph destinations); its knob is captioned "Morph" on a table.
 - **Smoothing.** The engine owns one 20 ms smoother per patch-wide value (oscillator
   and noise gains, cutoff in log2, resonance, drive, filter-envelope amount, output
   volume) so every voice follows the same curve. It hands each voice the value at
@@ -127,14 +139,15 @@ Eight fixed connection slots, `modN.source`, `modN.dest` (non-automatable choice
 
   | Destination | +100% means |
   | --- | --- |
-  | Pitch (all, or one oscillator) | 24 semitones |
+  | Pitch (all, or one oscillator) | 2 semitones (unchanged since the first release: saved patches keep their depth) |
+  | Pitch (wide) | 24 semitones, all oscillators; appended after the others, so old patches are untouched |
   | Pulse width | 0.45 of the cycle (the knob's own 5-95% limits still hold) |
   | Osc level, noise level | gain x (1 + sum), limited to 0..2: -100% is silence, +100% is +6 dB |
   | Filter cutoff | 6 octaves, the same scale as the filter envelope's amount |
   | Resonance | the whole 0..1 range |
   | Filter drive | 24 dB |
   | FM amount | the full FM amount range |
-  | Distortion drive | 40 dB on the per-voice shaper |
+  | Shaper drive | 40 dB on the per-voice shaper, while it is on |
   | Unison detune | 100 cents |
   | Sync | positive modulation above 50% enables hard sync |
   | Amp level | gain x (1 + sum), limited to 0..1: modulation can only turn it down |

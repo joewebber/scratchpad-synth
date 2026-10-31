@@ -413,7 +413,9 @@ void OscillatorCard::lookAndFeelChanged()
 void OscillatorCard::setWave (int newWave)
 {
     wave = juce::jlimit (0, dsp::numWaves - 1, newWave);
-    pulseWidth.setVisible (wave == (int) Wave::pulse);
+    const bool tableWave = wave >= (int) Wave::wavetableA;
+    pulseWidth.setVisible (wave == (int) Wave::pulse || tableWave);
+    pulseWidth.setCaption (tableWave ? "Morph" : "Pulse");
     repaint();
 }
 

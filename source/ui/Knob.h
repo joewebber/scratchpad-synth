@@ -91,6 +91,12 @@ public:
         }
     }
 
+    void setCaption (const juce::String& newCaption)
+    {
+        caption = newCaption;
+        repaint();
+    }
+
     void setFamilyColour (juce::Colour c)
     {
         slider.setColour (juce::Slider::rotarySliderFillColourId, c);

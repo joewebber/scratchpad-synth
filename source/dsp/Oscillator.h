@@ -2,6 +2,7 @@
 
 #include "dsp/FastFloor.h"
 #include "dsp/BlepTable.h"
+#include "dsp/Wavetable.h"
 
 #include <algorithm>
 #include <array>
@@ -27,7 +28,13 @@ enum class Wave
 
 inline constexpr int numWaves = 7;
 
-/** The naive (not band-limited) wave at phase `p` (0 .. 1). */
+/** The morph (0 .. 1) a wavetable wave takes from the pulse-width control (5% .. 95%): the same knob, the same modulation. */
+inline double morphFromPulseWidth (double pulseWidth) noexcept
+{
+    return std::clamp ((pulseWidth - 0.05) / 0.9, 0.0, 1.0);
+}
+
+/** The naive (not band-limited) wave at phase `p` (0 .. 1). Wavetables read their richest band-limit. */
 inline double naiveWave (Wave wave, double p, double pulseWidth) noexcept
 {
     switch (wave)
@@ -36,12 +43,10 @@ inline double naiveWave (Wave wave, double p, double pulseWidth) noexcept
         case Wave::triangle:   return p < 0.5 ? 4.0 * p - 1.0 : 3.0 - 4.0 * p;
         case Wave::saw:        return 2.0 * p - 1.0;
         case Wave::pulse:      return p < pulseWidth ? 1.0 : -1.0;
-        case Wave::wavetableA: return (std::sin (2.0 * std::numbers::pi * p) + 0.45 * std::sin (4.0 * std::numbers::pi * p)
-                                      + 0.20 * std::sin (6.0 * std::numbers::pi * p)) / 1.65;
-        case Wave::wavetableB: return (std::sin (2.0 * std::numbers::pi * p) + 0.60 * std::sin (6.0 * std::numbers::pi * p)
-                                      + 0.30 * std::sin (10.0 * std::numbers::pi * p)) / 1.90;
-        case Wave::wavetableC: return (std::sin (2.0 * std::numbers::pi * p) + 0.55 * std::sin (8.0 * std::numbers::pi * p)
-                                      + 0.25 * std::sin (14.0 * std::numbers::pi * p)) / 1.80;
+        case Wave::wavetableA:
+        case Wave::wavetableB:
+        case Wave::wavetableC:
+            return (double) WavetableBank::get().read ((int) wave - (int) Wave::wavetableA, p, (float) morphFromPulseWidth (pulseWidth), 0.0);
     }
     return 0.0;
 }
@@ -399,7 +404,14 @@ private:
         }
 
         if ((int) wave >= (int) Wave::wavetableA)
-            return (float) naiveWave (wave, p, pulseWidth);
+        {
+            // Tables are band-limited by construction (a mip level for the increment), so there is no correction to wait for;
+            // the sample is still held back `latencySamples` so it lines up with the oscillators that are.
+            const auto table = (size_t) ((int) wave - (int) Wave::wavetableA);
+            const float v = WavetableBank::get().read ((int) table, p, (float) morphFromPulseWidth (pulseWidth), bandLimit > 0.0f ? dt : 0.0);
+            tableRing[table][tablePos & 31u] = v;
+            return tableRing[table][(tablePos - (size_t) latencySamples) & 31u];
+        }
 
         const size_t index = wave == Wave::triangle ? 0 : wave == Wave::saw ? 1 : wave == Wave::pulse ? 2 : 3;
         auto& shape = shapes[index];
@@ -423,6 +435,7 @@ private:
                 active[i] = false;
 
         fresh = false;
+        ++tablePos;
         lastOffset = offset;
         phase += dt;
         if (phase >= 1.0)
@@ -436,6 +449,8 @@ private:
     };
     std::array<bool, numShapes> active {};
     std::array<bool, numShapes> used {};
+    std::array<std::array<float, 32>, 3> tableRing {};
+    size_t tablePos = 0;
 
     double phase = 0.0;
     double dt = 0.0;

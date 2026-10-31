@@ -37,6 +37,7 @@ public:
     void prepare (double newSampleRate)
     {
         sampleRate = newSampleRate;
+        dcPole = 1.0f - 2.0f * std::numbers::pi_v<float> * 7.0f / (float) newSampleRate; // corner at 7 Hz
 
         oversampler = std::make_unique<juce::dsp::Oversampling<float>> (
             2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true);
@@ -189,7 +190,7 @@ private:
                 state[0] += toneCoefficient * (channels[c][i] - state[0]);
                 state[1] += toneCoefficient * (state[0] - state[1]);
 
-                const float blocked = state[1] - dcInput[c] + 0.995f * dcOutput[c];
+                const float blocked = state[1] - dcInput[c] + dcPole * dcOutput[c];
                 dcInput[c] = state[1];
                 dcOutput[c] = blocked;
                 channels[c][i] = dry[c][(size_t) i] * (1.0f - m) + blocked * m;
@@ -208,6 +209,7 @@ private:
     juce::SmoothedValue<float> driveDb { 12.0f }, tone { 0.5f }, mix { 1.0f }, bias {};
     ShapeMode mode = ShapeMode::tanh;
     std::array<float, 2> dcInput {}, dcOutput {};
+    float dcPole = 0.999f;
     std::array<std::array<float, 2>, 2> toneState {};
     float toneCoefficient = 0.5f;
 
