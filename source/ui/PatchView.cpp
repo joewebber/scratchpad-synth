@@ -115,15 +115,16 @@ namespace
 //==============================================================================
 juce::Rectangle<int> PatchView::local (const layout::Box& box) const noexcept
 {
-    return L::grown (box, grow).rect().translated (-L::patchView.x, -L::patchView.y);
+    const int shift = box.y >= L::modulationHeading.y ? 2 * extraGap : box.y >= L::effectsHeading.y ? extraGap : 0;
+    return box.rect().translated (-L::patchView.x, -L::patchView.y + shift);
 }
 
-void PatchView::setGrow (const layout::Grow& g)
+void PatchView::setExtraGap (int pixels)
 {
-    if (g.zone == grow.zone && g.zoneTop == grow.zoneTop && g.effects == grow.effects && g.modulation == grow.modulation)
+    if (pixels == extraGap)
         return;
 
-    grow = g;
+    extraGap = pixels;
     resized();
     repaint();
 }

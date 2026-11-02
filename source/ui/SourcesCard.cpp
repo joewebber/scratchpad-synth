@@ -420,9 +420,9 @@ void OscillatorCard::setWave (int newWave)
 void OscillatorCard::resized()
 {
     constexpr int bodyEnd = bodyX + layout::table::waveWidth + cellGap + 5 * layout::table::cell + 4 * cellGap;
-    layoutChrome (getHeight(), bodyEnd + columnGap);
+    layoutChrome (rowHeight, bodyEnd + columnGap);
 
-    const int top = 1 + (getHeight() - 1 - knobHeight) / 2;
+    const int top = 1 + (rowHeight - 1 - knobHeight) / 2;
     waveChooser.setBounds (bodyX, top, layout::table::waveWidth, layout::table::waveHeight);
 
     int x = bodyX + layout::table::waveWidth + cellGap;
@@ -476,7 +476,6 @@ void NoiseCard::lookAndFeelChanged()
 void NoiseCard::resized()
 {
     constexpr int moreX = columnWidth - layout::header::buttonWidth;
-    const int rowHeight = getHeight();
     layoutChrome (rowHeight, moreX);
 
     constexpr int bodyRight = moreX - columnGap;
@@ -603,25 +602,14 @@ juce::Rectangle<int> SourcesCard::rowArea (int row) const
 {
     using namespace layout;
 
-    // The four rows share the extra height equally; any remainder pixels go to the top rows.
-    const int extra = juce::jmax (0, getHeight() - sources.h);
-    const auto heightOf = [extra] (int r) { return (r < 3 ? table::rowHeight : NoiseCard::rowHeight) + extra / 4 + (r < extra % 4 ? 1 : 0); };
-
-    int y = tableTop;
-
-    for (int r = 0; r < row; ++r)
-        y += heightOf (r);
-
-    return { padding::sources, y, getWidth() - 2 * padding::sources, heightOf (row) };
+    const int y = tableTop + row * table::rowHeight;
+    return { padding::sources, y, sources.w - 2 * padding::sources, row < 3 ? table::rowHeight : NoiseCard::rowHeight };
 }
 
 juce::Rectangle<int> SourcesCard::slotArea (int row) const
 {
     constexpr int slotHeight = 40;
-    const auto area = rowArea (row);
-    const int extra = area.getHeight() - (row < 3 ? layout::table::rowHeight : NoiseCard::rowHeight);
-
-    return area.withTrimmedTop (1).withSizeKeepingCentre (area.getWidth(), slotHeight + extra);
+    return rowArea (row).withTrimmedTop (1).withSizeKeepingCentre (rowArea (row).getWidth(), slotHeight);
 }
 
 void SourcesCard::resized()

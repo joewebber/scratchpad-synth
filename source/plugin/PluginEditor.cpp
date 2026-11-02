@@ -154,8 +154,8 @@ void ScratchpadEditor::layoutStage()
     const int extraWidth = stageSize.x - base.x, extraHeight = stageSize.y - base.y;
     const bool folded = explainPanel.isCollapsed();
 
-    // The extra height goes into the cards (`layout::grown`); the gaps between them stay as they are.
-    const auto grow = layout::Grow::forExtra (extraHeight);
+    // The extra height goes into the three gaps between the sections; what does not divide goes to the panel only.
+    const int gap = extraHeight / 3;
 
     // Expanded, the Explain panel takes the extra width. Folded, nothing can, so the column and the rail sit in the
     // middle of the window.
@@ -165,11 +165,11 @@ void ScratchpadEditor::layoutStage()
 
     auto chain = layout::patchView.rect();
     chain.translate (columnShift, 0);
-    chain.setHeight (chain.getHeight() + grow.zone + grow.effects + grow.modulation);
-    patchView.setGrow (grow);
+    chain.setHeight (chain.getHeight() + 2 * gap);
+    patchView.setExtraGap (gap);
     patchView.setBounds (chain);
 
-    performanceBar.setBounds (layout::grown (layout::voicingKeyboard, grow).rect().translated (columnShift, 0));
+    performanceBar.setBounds (layout::voicingKeyboard.rect().translated (columnShift, 3 * gap));
 
     const int panelWidth = folded ? ui::ExplainPanel::railWidth : ui::ExplainPanel::width + extraWidth;
     const int right = folded ? stageSize.x - layout::margin - extraWidth / 2 : stageSize.x - layout::margin;

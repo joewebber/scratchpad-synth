@@ -520,20 +520,18 @@ void EffectCard::resized()
 
     placeHeader (headerRow, headerHandleWidth);
 
-    const int extra = juce::jmax (0, getHeight() - layout::fx[0].h);
     const int bodyY = headerRow.getBottom() + rowGap;
-    const int knobY = bodyY + extra / 2;
-    display.setBounds (pad::fx, bodyY, wellWidth, wellHeight + extra);
+    display.setBounds (pad::fx, bodyY, wellWidth, wellHeight);
 
     int x = pad::fx + wellWidth + bodyGap;
     for (auto* k : row)
     {
-        k->setBoundsAt (x, knobY);
+        k->setBoundsAt (x, bodyY);
         x += layout::knobs::effect.cell + bodyGap;
     }
 
     if (alternateKnob != nullptr)
-        alternateKnob->setBoundsAt (row.front()->getX(), knobY);
+        alternateKnob->setBoundsAt (row.front()->getX(), bodyY);
 }
 
 void EffectCard::paint (juce::Graphics& g)

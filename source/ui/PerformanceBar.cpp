@@ -277,7 +277,6 @@ void PerformanceBar::resized()
 {
     // The design's flex row, resolved to pixels at 100%: each group is centred on the card's height.
     const int h = getHeight();
-    const int extra = juce::jmax (0, h - layout::voicingKeyboard.h);
     const auto centred = [h] (int x, int width, int height) { return juce::Rectangle<int> (x, (h - height) / 2, width, height); };
 
     voicing.setBounds (centred (layout::padding::voicing + 4, VoicingCard::width, VoicingCard::height));
@@ -285,7 +284,7 @@ void PerformanceBar::resized()
     divider = centred (voicing.getRight() + 16, 1, 56);
 
     // Bend and mod wheels: a 16 x 50 slot each, 22 px wide thumb, the caption under.
-    const auto wheels = centred (divider.getRight() + 19, 60, 50 + extra + 4 + 13);
+    const auto wheels = centred (divider.getRight() + 19, 60, 50 + 4 + 13);
     auto bendArea = wheels.withWidth (26), modArea = wheels.withTrimmedLeft (34);
     bendCaptionArea = bendArea.removeFromBottom (13);
     modCaptionArea = modArea.removeFromBottom (13);
@@ -302,7 +301,7 @@ void PerformanceBar::resized()
     summary.setBounds (octaveBlock);
 
     keyboard.setKeyWidth ((float) whiteKeyWidth);
-    keyboard.setBounds (centred (getWidth() - layout::padding::voicing - 4 - whiteKeysShown * whiteKeyWidth, whiteKeysShown * whiteKeyWidth, keyboardHeight + extra));
+    keyboard.setBounds (centred (getWidth() - layout::padding::voicing - 4 - whiteKeysShown * whiteKeyWidth, whiteKeysShown * whiteKeyWidth, keyboardHeight));
     for (auto* child : keyboard.getChildren())
         if (dynamic_cast<juce::Button*> (child) != nullptr)
             child->setAccessible (false);

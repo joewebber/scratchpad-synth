@@ -198,7 +198,7 @@ public:
     void resized() override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
-    static constexpr int designRows = 3;
+    static constexpr int visibleRows = 3;
 
 private:
     class List;
@@ -215,7 +215,6 @@ private:
     int firstRow = 0;
     float wheelRemainder = 0.0f;
     juce::Rectangle<int> captionRow, listArea;
-    int visibleRows = designRows;
 };
 
 } // namespace scratchpad::ui
