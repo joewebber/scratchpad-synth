@@ -28,15 +28,27 @@ FilterCard::FilterCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
       cutoff (p.apvts, params::filterCutoff, "Cutoff", p.undoManager, "Filter cutoff", layout::knobs::cutoff),
       resonance (p.apvts, params::filterResonance, "Res", p.undoManager, "Filter resonance", layout::knobs::standard),
       keyTrack (p.apvts, params::filterKeyTrack, "Key", p.undoManager, "Filter key tracking", layout::knobs::standard),
-      drive (p.apvts, params::filterDrive, "Drive", p.undoManager, "Filter drive", layout::knobs::standard)
+      drive (p.apvts, params::filterDrive, "Drive", p.undoManager, "Filter drive", layout::knobs::standard),
+      shape ({ "Off", "Tanh", "Hard clip", "Wavefold" }, params::voiceShaperEnabled, "Per-voice shaper", p.undoManager, &Palette::flt),
+      shaperDrive (p.apvts, params::voiceShaperDrive, "Shape", p.undoManager, "Per-voice shaper drive", layout::knobs::standard),
+      shaperBias (p.apvts, params::voiceShaperBias, "Bias", p.undoManager, "Per-voice shaper bias", layout::knobs::standard),
+      shaperMix (p.apvts, params::voiceShaperMix, "Mix", p.undoManager, "Per-voice shaper mix", layout::knobs::standard),
+      shaperEnabled (*p.apvts.getParameter (params::voiceShaperEnabled)),
+      shaperMode (*p.apvts.getParameter (params::voiceShaperMode)),
+      shaperEnabledWatcher (shaperEnabled, [this] (float) { followShaper(); }),
+      shaperModeWatcher (shaperMode, [this] (float) { followShaper(); })
 {
     setTitle ("Filter");
     makeControllable (p, "filter", false);
 
-    // The shaper's on/off and its shape are two parameters, shown as one row of segments with "Off" first.
+    // The shaper's on/off and its shape are two parameters, shown as one row of segments with "Off" first. While the
+    // card is full they are on the card, not here.
     makeMore ("Filter", &Palette::flt,
-              [&p] (MorePopover& popover)
+              [this, &p] (MorePopover& popover)
               {
+                  if (full)
+                      return;
+
                   popover.addOffChoice (p, params::voiceShaperEnabled, params::voiceShaperMode, "Shape", "Per-voice shaper", 4,
                                         { "Off", "Tanh", "Hard clip", "Wavefold" });
                   popover.addKnobs (p, "Shaper",
@@ -48,6 +60,29 @@ FilterCard::FilterCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
 
     mode.setDisplayLabels ({ "LP24", "LP12", "HP12", "BP12", "Notch", "Comb" });
 
+    // One pick is one undo step: Off turns the shaper off, a shape turns it on with that shape.
+    shape.setColumns (2);
+    shape.onPick = [&p] (int i)
+    {
+        auto& enabled = *p.apvts.getParameter (params::voiceShaperEnabled);
+        auto& shapeMode = *p.apvts.getParameter (params::voiceShaperMode);
+
+        p.undoManager.beginNewTransaction (juce::String ("Per-voice shaper ")
+                                           + (i == 0 ? juce::String ("off") : shapeMode.getText (shapeMode.convertTo0to1 ((float) (i - 1)), 0)));
+
+        const auto set = [] (juce::RangedAudioParameter& param, float value)
+        {
+            param.beginChangeGesture();
+            param.setValueNotifyingHost (param.convertTo0to1 (value));
+            param.endChangeGesture();
+        };
+
+        set (enabled, i > 0 ? 1.0f : 0.0f);
+
+        if (i > 0)
+            set (shapeMode, (float) (i - 1));
+    };
+
     // The filter envelope's own amount is a connection too, so it shows as an arc on the cutoff.
     cutoff.setModulation (model, { engine::ModDest::cutoff }, p.apvts.getParameter (params::filterEnvAmount));
     resonance.setModulation (model, { engine::ModDest::resonance });
@@ -55,15 +90,27 @@ FilterCard::FilterCard (plugin::ScratchpadProcessor& p, ModulationModel& model)
     for (auto* c : std::initializer_list<juce::Component*> { &curve, &mode, &cutoff, &resonance, &keyTrack, &drive })
         addAndMakeVisible (c);
 
+    // The shaper's controls are on the card only in the full layout (`resized` shows them).
+    for (auto* c : std::initializer_list<juce::Component*> { &shape, &shaperDrive, &shaperBias, &shaperMix })
+        addChildComponent (c);
+
     applyColours();
-    setFocusOrder ({ &mode, &cutoff, &resonance, &keyTrack, &drive, &curve });
+    followShaper();
+    setFocusOrder ({ &mode, &cutoff, &resonance, &keyTrack, &drive, &shape, &shaperDrive, &shaperBias, &shaperMix, &curve });
+}
+
+void FilterCard::followShaper()
+{
+    const bool on = shaperEnabled.convertFrom0to1 (shaperEnabled.getValue()) > 0.5f;
+
+    shape.setSelectedIndex (on ? 1 + (int) std::lround (shaperMode.convertFrom0to1 (shaperMode.getValue())) : 0);
 }
 
 void FilterCard::applyColours()
 {
     const auto ink = paletteOf (*this).fltInk;
 
-    for (auto* k : { &cutoff, &resonance, &keyTrack, &drive })
+    for (auto* k : { &cutoff, &resonance, &keyTrack, &drive, &shaperDrive, &shaperBias, &shaperMix })
         k->setFamilyColour (ink);
 }
 
@@ -74,25 +121,52 @@ void FilterCard::lookAndFeelChanged()
 
 void FilterCard::resized()
 {
-    constexpr int margin = layout::padding::filter, modeHeight = 24;
+    constexpr int margin = layout::padding::filter, modeHeight = 24, shaperGap = 8, knobPitch = 6;
     const int innerWidth = getWidth() - 2 * margin;
+
+    // The box picks the layout: the shaper is on the card (and gone from More) from the full size up.
+    const bool wasFull = full;
+    full = getWidth() >= layout::full::filterWidth && getHeight() >= layout::full::filterHeight;
+
+    if (full != wasFull && isMoreOpen())
+        toggleMore(); // its rows were chosen for the other layout
+
+    for (auto* c : std::initializer_list<juce::Component*> { &shape, &shaperDrive, &shaperBias, &shaperMix })
+        c->setVisible (full);
 
     headerRow = { margin, margin, innerWidth, headerHeight };
     placeHeader (headerRow);
 
-    const int knobsY = getHeight() - margin - cutoff.height();
+    // Bottom up: the shaper row (full only), the Cutoff row, the mode, then the curve takes what is left.
+    const int shaperY = getHeight() - margin - shaperDrive.height();
+    const int knobsY = (full ? shaperY : getHeight() - margin) - cutoff.height();
     const int modeY = knobsY - bodyGap - modeHeight;
     const int curveY = headerRow.getBottom() + bodyGap;
 
-    curve.setBounds (margin, curveY, innerWidth, modeY - bodyGap - curveY);
-    mode.setBounds (margin, modeY, layout::segments::filterMode, modeHeight);
+    curve.setBounds (margin, curveY, innerWidth, juce::jmax (0, modeY - bodyGap - curveY));
+    mode.setBounds (margin, modeY, innerWidth, modeHeight);
 
     int x = margin;
 
     for (auto* k : { &cutoff, &resonance, &keyTrack, &drive })
     {
         k->setBoundsAt (x, knobsY);
-        x += k->getSize().cell + 6;
+        x += k->getSize().cell + knobPitch;
+    }
+
+    if (! full)
+        return;
+
+    // Shape, Bias and Mix sit against the right edge; the Shape segments (2 x 2) take the width before them.
+    const int cell = layout::knobs::standard.cell;
+    int knobX = getWidth() - margin - 3 * cell - 2 * knobPitch;
+
+    shape.setBounds (margin, shaperY, juce::jmax (0, knobX - shaperGap - margin), shaperDrive.height());
+
+    for (auto* k : { &shaperDrive, &shaperBias, &shaperMix })
+    {
+        k->setBoundsAt (knobX, shaperY);
+        knobX += cell + knobPitch;
     }
 }
 
@@ -153,21 +227,29 @@ void EnvelopeCard::lookAndFeelChanged()
 
 void EnvelopeCard::resized()
 {
-    constexpr int margin = layout::padding::env, wellWidth = 50, wellHeight = 44, knobGap = 3;
+    constexpr int margin = layout::padding::env, compactWellWidth = 50, wellHeight = 44, knobGap = 3;
+    constexpr int knobsWidth = 5 * layout::knobs::envelope.cell + 4 * knobGap;
+    constexpr int rightInset = layout::filterEnv.w - margin - compactWellWidth - knobGap - knobsWidth; // the compact design's
 
     headerRow = { margin, margin, getWidth() - 2 * margin, headerHeight };
     placeHeader (headerRow, layout::header::handle);
     handle.setBounds (juce::Rectangle<int> (layout::header::handle, layout::header::handle).withCentre (
         { headerRow.getX() + layout::header::handle / 2, headerRow.getCentreY() }));
 
+    // The knobs keep their size and their distance from the right and bottom edges; the display well takes the extra
+    // width and height.
     const int bodyY = headerRow.getBottom() + bodyGap;
-    display.setBounds (margin, bodyY, wellWidth, wellHeight);
+    const int growth = juce::jmax (0, getHeight() - layout::filterEnv.h);
+    const int knobsY = bodyY + growth;
+    const int knobsX = getWidth() - rightInset - knobsWidth;
 
-    int x = margin + wellWidth + knobGap;
+    display.setBounds (margin, bodyY, juce::jmax (0, knobsX - knobGap - margin), wellHeight + growth);
+
+    int x = knobsX;
 
     for (auto* k : { &attack, &decay, &sustain, &release, &extra })
     {
-        k->setBoundsAt (x, bodyY);
+        k->setBoundsAt (x, knobsY);
         x += k->getSize().cell + knobGap;
     }
 }
@@ -345,10 +427,11 @@ void OutputCard::resized()
 {
     constexpr int marginX = 9, marginY = 7, limiterWidth = 44, meterWidth = 16, meterHeight = 40, knobGap = 10;
     const int bodyY = marginY + headerHeight + 5;
+    const int extra = juce::jmax (0, getHeight() - layout::out.h); // the meter takes the extra height; the rest keeps its place
 
     limiter.setBounds (getWidth() - marginX - limiterWidth, marginY, limiterWidth, headerHeight);
     volume.setBoundsAt (marginX, bodyY);
-    meter.setBounds (marginX + layout::knobs::out.cell + knobGap, bodyY, meterWidth, meterHeight);
+    meter.setBounds (marginX + layout::knobs::out.cell + knobGap, bodyY, meterWidth, meterHeight + extra);
 }
 
 void OutputCard::paint (juce::Graphics& g)

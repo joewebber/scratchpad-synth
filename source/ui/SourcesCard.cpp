@@ -35,6 +35,16 @@ namespace
     constexpr int chromeHeight = 16 + 5 + 18; // name line, gap, the B and S row
 
     constexpr int tableTop = layout::padding::sources + layout::table::headingHeight + layout::table::headingMargin;
+
+    // An oscillator row, right to left: More, then the five knob columns, then the Wave well takes what is left.
+    constexpr int knobsWidth = 5 * layout::table::cell + 4 * cellGap;
+    constexpr int oscillatorMoreInset = SourceRow::columnWidth - (bodyX + layout::table::waveWidth + cellGap + knobsWidth + SourceRow::columnGap);
+
+    /** The Wave column's width in a row `rowWidth` wide: 52 at the compact width. */
+    constexpr int waveColumnWidth (int rowWidth) noexcept
+    {
+        return rowWidth - oscillatorMoreInset - SourceRow::columnGap - knobsWidth - cellGap - bodyX;
+    }
 }
 
 //==============================================================================
@@ -73,7 +83,9 @@ void WaveChooser::setHovered (bool shouldBeHovered)
 void WaveChooser::paint (juce::Graphics& g)
 {
     const auto& p = paletteOf (*this);
-    const auto well = juce::Rectangle<float> ((float) layout::table::waveWidth, (float) layout::table::waveWellHeight);
+    // The well takes the chooser's height less the name line under it (14 px), and all of its width.
+    const float wellHeight = (float) (getHeight() - (layout::table::waveHeight - layout::table::waveWellHeight));
+    const auto well = juce::Rectangle<float> ((float) getWidth(), wellHeight);
 
     drawInset (g, well, 9.0f, p, p.well);
 
@@ -92,7 +104,7 @@ void WaveChooser::paint (juce::Graphics& g)
 
     g.setColour (p.ink2);
     g.setFont (uiFont (11.0f));
-    g.drawText (cellWaveName (wave), juce::Rectangle<float> (0.0f, (float) layout::table::waveWellHeight + 2.0f, (float) getWidth(), 12.0f),
+    g.drawText (cellWaveName (wave), juce::Rectangle<float> (0.0f, wellHeight + 2.0f, (float) getWidth(), 12.0f),
                 juce::Justification::centred, false);
 
     if (hasKeyboardFocus (false))
@@ -419,13 +431,17 @@ void OscillatorCard::setWave (int newWave)
 
 void OscillatorCard::resized()
 {
-    constexpr int bodyEnd = bodyX + layout::table::waveWidth + cellGap + 5 * layout::table::cell + 4 * cellGap;
-    layoutChrome (rowHeight, bodyEnd + columnGap);
+    const int rowHeight = getHeight(), extra = juce::jmax (0, rowHeight - OscillatorCard::rowHeight);
+
+    // The five knob columns keep their size and stay against More; the wave well takes the extra width and height.
+    const int moreX = getWidth() - oscillatorMoreInset;
+    layoutChrome (rowHeight, moreX);
 
     const int top = 1 + (rowHeight - 1 - knobHeight) / 2;
-    waveChooser.setBounds (bodyX, top, layout::table::waveWidth, layout::table::waveHeight);
+    const int knobsX = moreX - columnGap - knobsWidth;
+    waveChooser.setBounds (bodyX, top - extra / 2, knobsX - cellGap - bodyX, layout::table::waveHeight + extra);
 
-    int x = bodyX + layout::table::waveWidth + cellGap;
+    int x = knobsX;
 
     for (auto* k : { &octave, &semitone, &fine, &level, &morph })
     {
@@ -475,11 +491,13 @@ void NoiseCard::lookAndFeelChanged()
 
 void NoiseCard::resized()
 {
-    constexpr int moreX = columnWidth - layout::header::buttonWidth;
+    const int rowHeight = getHeight();
+    const int moreX = getWidth() - layout::header::buttonWidth;
     layoutChrome (rowHeight, moreX);
 
-    constexpr int bodyRight = moreX - columnGap;
-    constexpr int levelX = bodyRight - layout::knobs::noiseLevel.cell;
+    // The colour segments and the level knob keep their size; Level stays against More, the sentence takes the rest.
+    const int bodyRight = moreX - columnGap;
+    const int levelX = bodyRight - layout::knobs::noiseLevel.cell;
     constexpr int segmentsHeight = 24;
 
     colour.setBounds (bodyX, 1 + (rowHeight - 1 - segmentsHeight) / 2, layout::segments::noiseColour, segmentsHeight);
@@ -602,14 +620,25 @@ juce::Rectangle<int> SourcesCard::rowArea (int row) const
 {
     using namespace layout;
 
-    const int y = tableTop + row * table::rowHeight;
-    return { padding::sources, y, sources.w - 2 * padding::sources, row < 3 ? table::rowHeight : NoiseCard::rowHeight };
+    // The four rows share the extra height equally; any remainder pixels go to the top rows.
+    const int extra = juce::jmax (0, getHeight() - sources.h);
+    const auto heightOf = [extra] (int r) { return (r < 3 ? table::rowHeight : NoiseCard::rowHeight) + extra / 4 + (r < extra % 4 ? 1 : 0); };
+
+    int y = tableTop;
+
+    for (int r = 0; r < row; ++r)
+        y += heightOf (r);
+
+    return { padding::sources, y, getWidth() - 2 * padding::sources, heightOf (row) };
 }
 
 juce::Rectangle<int> SourcesCard::slotArea (int row) const
 {
     constexpr int slotHeight = 40;
-    return rowArea (row).withTrimmedTop (1).withSizeKeepingCentre (rowArea (row).getWidth(), slotHeight);
+    const auto area = rowArea (row);
+    const int extra = area.getHeight() - (row < 3 ? layout::table::rowHeight : NoiseCard::rowHeight);
+
+    return area.withTrimmedTop (1).withSizeKeepingCentre (area.getWidth(), slotHeight + extra);
 }
 
 void SourcesCard::resized()
@@ -636,9 +665,11 @@ void SourcesCard::paint (juce::Graphics& g)
     const float h = (float) table::headingHeight;
     drawCaption (g, "Sources", { (float) padding::sources, y, (float) table::nameColumn + 14.0f, h }, p.ink2);
 
+    // The Wave column takes the extra width, so the other headings sit over their knobs, right-aligned with the rows.
+    const int waveWidth = waveColumnWidth (getWidth() - 2 * padding::sources);
     float x = (float) (padding::sources + table::nameColumn + 6);
-    drawCaption (g, "Wave", { x, y, (float) table::waveWidth, h }, p.mute, juce::Justification::centred, 0.06f);
-    x += (float) (table::waveWidth + 2);
+    drawCaption (g, "Wave", { x, y, (float) waveWidth, h }, p.mute, juce::Justification::centred, 0.06f);
+    x += (float) (waveWidth + 2);
 
     for (const char* heading : { "Oct", "Semi", "Fine", "Level", "Morph" })
     {

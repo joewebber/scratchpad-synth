@@ -45,7 +45,7 @@ TEST_CASE ("A missing settings file reads as the defaults", "[view][settings]")
     CHECK (s.getTheme() == ViewSettings::Theme::dark);
     CHECK_FALSE (s.getReducedMotion());
     CHECK_FALSE (s.getExplainCollapsedChoice().has_value());
-    CHECK_THAT (s.getEditorScale(), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (s.getUiScale(), WithinAbs (1.0, 1.0e-9));
     CHECK_FALSE (temp.file().exists()); // reading creates nothing
 }
 
@@ -58,7 +58,7 @@ TEST_CASE ("Every setting survives being written and read back by a new object",
         s.setTheme (ViewSettings::Theme::light);
         s.setReducedMotion (true);
         s.setExplainCollapsed (false);
-        s.setEditorScale (0.9);
+        s.setUiScale (0.9);
     }
 
     ViewSettings again (temp.file());
@@ -66,7 +66,7 @@ TEST_CASE ("Every setting survives being written and read back by a new object",
     CHECK (again.getReducedMotion());
     REQUIRE (again.getExplainCollapsedChoice().has_value());
     CHECK_FALSE (*again.getExplainCollapsedChoice());
-    CHECK_THAT (again.getEditorScale(), WithinAbs (0.9, 1.0e-6));
+    CHECK_THAT (again.getUiScale(), WithinAbs (0.9, 1.0e-6));
 }
 
 TEST_CASE ("The file uses the documented keys", "[view][settings]")
@@ -78,7 +78,7 @@ TEST_CASE ("The file uses the documented keys", "[view][settings]")
         s.setTheme (ViewSettings::Theme::light);
         s.setReducedMotion (true);
         s.setExplainCollapsed (true);
-        s.setEditorScale (0.8);
+        s.setUiScale (0.8);
     }
 
     const auto xml = juce::XmlDocument::parse (temp.file());
@@ -91,7 +91,7 @@ TEST_CASE ("The file uses the documented keys", "[view][settings]")
     CHECK (found["theme"] == "light");
     CHECK (found["reducedMotion"] == "true");
     CHECK (found["explainCollapsed"] == "true");
-    CHECK (found["editorScale"].getDoubleValue() == 0.8);
+    CHECK (found["uiScale"].getDoubleValue() == 0.8);
 }
 
 TEST_CASE ("Two objects on one file do not undo each other's changes", "[view][settings]")
@@ -138,14 +138,14 @@ TEST_CASE ("A corrupt settings file reads as the defaults and can be written ove
     CHECK (s.getTheme() == ViewSettings::Theme::dark);
     CHECK_FALSE (s.getReducedMotion());
     CHECK_FALSE (s.getExplainCollapsedChoice().has_value());
-    CHECK_THAT (s.getEditorScale(), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (s.getUiScale(), WithinAbs (1.0, 1.0e-9));
 
     s.setTheme (ViewSettings::Theme::light);
-    s.setEditorScale (0.9);
+    s.setUiScale (0.9);
 
     ViewSettings again (temp.file());
     CHECK (again.getTheme() == ViewSettings::Theme::light);
-    CHECK_THAT (again.getEditorScale(), WithinAbs (0.9, 1.0e-6));
+    CHECK_THAT (again.getUiScale(), WithinAbs (0.9, 1.0e-6));
 }
 
 TEST_CASE ("Values that make no sense read as the defaults or are pulled into range", "[view][settings]")
@@ -154,19 +154,20 @@ TEST_CASE ("Values that make no sense read as the defaults or are pulled into ra
 
     const auto scaleFor = [&temp] (const char* text)
     {
-        temp.writeText (xmlWithValue ("editorScale", text));
-        return ViewSettings (temp.file()).getEditorScale();
+        temp.writeText (xmlWithValue ("uiScale", text));
+        return ViewSettings (temp.file()).getUiScale();
     };
 
     CHECK_THAT (scaleFor ("0.9"), WithinAbs (0.9, 1.0e-9));
     CHECK_THAT (scaleFor ("0.75"), WithinAbs (0.75, 1.0e-9));
-    CHECK_THAT (scaleFor ("2"), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (scaleFor ("1.5"), WithinAbs (1.5, 1.0e-9));
+    CHECK_THAT (scaleFor ("2"), WithinAbs (2.0, 1.0e-9));
 
     // Out of range: the nearest scale the window allows.
     CHECK_THAT (scaleFor ("0.1"), WithinAbs (0.75, 1.0e-9));
     CHECK_THAT (scaleFor ("-3"), WithinAbs (0.75, 1.0e-9));
-    CHECK_THAT (scaleFor ("9"), WithinAbs (1.0, 1.0e-9));
-    CHECK_THAT (scaleFor ("1e9"), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (scaleFor ("9"), WithinAbs (2.0, 1.0e-9));
+    CHECK_THAT (scaleFor ("1e9"), WithinAbs (2.0, 1.0e-9));
 
     // Not a number at all: the default, not "0 clamped up to the minimum".
     CHECK_THAT (scaleFor ("big"), WithinAbs (1.0, 1.0e-9));
@@ -188,13 +189,34 @@ TEST_CASE ("Scales written are clamped to the window's limits", "[view][settings
     TempSettings temp;
     ViewSettings s (temp.file());
 
-    s.setEditorScale (50.0); // the stage is never scaled up
-    CHECK_THAT (s.getEditorScale(), WithinAbs (1.0, 1.0e-9));
+    s.setUiScale (50.0);
+    CHECK_THAT (s.getUiScale(), WithinAbs (2.0, 1.0e-9));
 
-    s.setEditorScale (0.0);
-    CHECK_THAT (s.getEditorScale(), WithinAbs (0.75, 1.0e-9));
+    s.setUiScale (0.0);
+    CHECK_THAT (s.getUiScale(), WithinAbs (0.75, 1.0e-9));
 
     CHECK_THAT (ViewSettings::clampScale (std::numeric_limits<double>::infinity()), WithinAbs (1.0, 1.0e-9));
+}
+
+TEST_CASE ("The standalone's window size is kept, and nonsense reads as none", "[view][settings]")
+{
+    TempSettings temp;
+    ViewSettings s (temp.file());
+    CHECK_FALSE (s.getWindowSize().has_value());
+
+    s.setWindowSize (1440, 900);
+    REQUIRE (ViewSettings (temp.file()).getWindowSize().has_value());
+    CHECK (*ViewSettings (temp.file()).getWindowSize() == juce::Point<int> (1440, 900));
+
+    // Written sizes are held to the window's limits.
+    s.setWindowSize (50000, 10);
+    CHECK (*s.getWindowSize() == juce::Point<int> (ViewSettings::maxWindowWidth, ViewSettings::minWindowHeight));
+
+    // A hand-edited file with a size outside them, or not a number, reads as none.
+    temp.writeText ("<PROPERTIES><VALUE name=\"windowWidth\" val=\"100\"/><VALUE name=\"windowHeight\" val=\"900\"/></PROPERTIES>");
+    CHECK_FALSE (ViewSettings (temp.file()).getWindowSize().has_value());
+    temp.writeText ("<PROPERTIES><VALUE name=\"windowWidth\" val=\"wide\"/><VALUE name=\"windowHeight\" val=\"900\"/></PROPERTIES>");
+    CHECK_FALSE (ViewSettings (temp.file()).getWindowSize().has_value());
 }
 
 TEST_CASE ("The Explain panel starts folded until the user chooses", "[view][settings]")

@@ -20,6 +20,14 @@ namespace
         return words;
     }
 
+    /** The shape strip's segments, short enough for 29 px each. */
+    const juce::StringArray& shapeStripWords()
+    {
+        static const juce::StringArray words { "Sine", "Tri", juce::String (juce::CharPointer_UTF8 ("Saw\xe2\x86\x91")),
+                                               juce::String (juce::CharPointer_UTF8 ("Saw\xe2\x86\x93")), "Sq", "S&H" };
+        return words;
+    }
+
     /** What the picture of an LFO shows at `x` (0 to 1 across two cycles). Sample and hold is four steps. */
     float shapeAt (dsp::LfoShape shape, double x)
     {
@@ -197,9 +205,9 @@ bool SourceHandle::keyPressed (const juce::KeyPress& key)
 }
 
 //==============================================================================
-SyncPill::SyncPill (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
-                    const juce::String& accessibleName, juce::UndoManager& undoToUse)
-    : juce::Button ("Sync"), undo (undoToUse)
+TogglePill::TogglePill (juce::AudioProcessorValueTreeState& state, const juce::String& paramID, const juce::String& labelText,
+                        const juce::String& accessibleName, juce::UndoManager& undoToUse)
+    : juce::Button (labelText), label (labelText), undo (undoToUse)
 {
     auto* param = state.getParameter (paramID);
     jassert (param != nullptr);
@@ -218,7 +226,7 @@ SyncPill::SyncPill (juce::AudioProcessorValueTreeState& state, const juce::Strin
     onClick = [this] { undo.setCurrentTransactionName (getTitle() + (getToggleState() ? " on" : " off")); };
 }
 
-void SyncPill::paintButton (juce::Graphics& g, bool highlighted, bool)
+void TogglePill::paintButton (juce::Graphics& g, bool highlighted, bool)
 {
     const auto& p = paletteOf (*this);
     const auto bounds = getLocalBounds().toFloat();
@@ -237,7 +245,7 @@ void SyncPill::paintButton (juce::Graphics& g, bool highlighted, bool)
 
     g.setColour (on ? p.onAccent : highlighted ? p.ink : p.mute);
     g.setFont (uiFont (11.0f));
-    g.drawText ("Sync", bounds, juce::Justification::centred, false);
+    g.drawText (label, bounds, juce::Justification::centred, false);
 
     if (hasKeyboardFocus (false))
         ScratchpadLookAndFeel::drawFocusRing (g, bounds, bounds.getHeight() * 0.5f - 2.5f, p.ink);
@@ -272,10 +280,12 @@ LfoCard::LfoCard (plugin::ScratchpadProcessor& p, ModulationModel& m, int lfoInd
     : model (m),
       index (lfoIndex),
       handle (m, engine::lfoSource ((size_t) lfoIndex)),
-      sync (p.apvts, params::lfo[(size_t) lfoIndex].sync, "LFO " + juce::String (lfoIndex + 1) + " tempo sync", p.undoManager),
+      sync (p.apvts, params::lfo[(size_t) lfoIndex].sync, "Sync", "LFO " + juce::String (lfoIndex + 1) + " tempo sync", p.undoManager),
       rate (p.apvts, params::lfo[(size_t) lfoIndex].rate, "Rate", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " rate", layout::knobs::lfo),
       division (p.apvts, params::lfo[(size_t) lfoIndex].division, "Beat", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " note length", layout::knobs::lfo),
       fade (p.apvts, params::lfo[(size_t) lfoIndex].fade, "Fade", p.undoManager, "LFO " + juce::String (lfoIndex + 1) + " fade-in", layout::knobs::lfo),
+      shapeStrip (p.apvts, params::lfo[(size_t) lfoIndex].shape, "LFO " + juce::String (lfoIndex + 1) + " shape", p.undoManager, &Palette::mod),
+      retrigger (p.apvts, params::lfo[(size_t) lfoIndex].retrigger, "Retrig", "LFO " + juce::String (lfoIndex + 1) + " retrigger on note", p.undoManager),
       shapeWatcher (*p.apvts.getParameter (params::lfo[(size_t) lfoIndex].shape),
                     [this] (float v)
                     {
@@ -293,8 +303,12 @@ LfoCard::LfoCard (plugin::ScratchpadProcessor& p, ModulationModel& m, int lfoInd
               {
                   auto& processor = model.getProcessor();
                   const auto& lfo = params::lfo[(size_t) index];
-                  popover.addSegments (processor, lfo.shape, "Shape", name + " shape", 3, shapeWords());
-                  popover.addSwitch (processor, lfo.retrigger, "Retrigger on each note", name + " retrigger on note");
+                  // The shape and retrigger are on the card while it is full; More only has them while it is compact.
+                  if (! isFull())
+                  {
+                      popover.addSegments (processor, lfo.shape, "Shape", name + " shape", 3, shapeWords());
+                      popover.addSwitch (processor, lfo.retrigger, "Retrigger on each note", name + " retrigger on note");
+                  }
               },
               "Remove " + name, "Remove " + name,
               [&p, index = index] { p.removeModule (index == 0 ? plugin::Module::lfo1 : plugin::Module::lfo2); });
@@ -304,10 +318,14 @@ LfoCard::LfoCard (plugin::ScratchpadProcessor& p, ModulationModel& m, int lfoInd
     well = std::make_unique<ShapeWell> (*this, ids.shape);
     well->onClick = [this] { toggleMore(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &handle, &sync, well.get(), &rate, &division, &fade })
+    shapeStrip.setColumns (3);
+    shapeStrip.setDisplayLabels (shapeStripWords());
+
+    for (auto* c : std::initializer_list<juce::Component*> { &handle, &sync, well.get(), &rate, &division, &fade, &shapeStrip, &retrigger })
         addAndMakeVisible (c);
 
-    setFocusOrder ({ &handle, &sync, well.get(), &rate, &division, &fade });
+    // Left to right: the well, the knobs, then the shape strip and Retrig (which only a full card shows).
+    setFocusOrder ({ &handle, &sync, well.get(), &rate, &division, &fade, &shapeStrip, &retrigger });
 
     model.addListener (this);
     applyColours();
@@ -353,7 +371,7 @@ void LfoCard::describeWell()
     const auto hz = a11y::spokenValue (apvts.getParameter (params::lfo[(size_t) index].rate)->getCurrentValueAsText());
     const auto noteLength = apvts.getParameter (params::lfo[(size_t) index].division)->getCurrentValueAsText();
 
-    well->setTitle (getTitle() + " shape, " + shapeName + ". Choose a shape");
+    well->setTitle (getTitle() + " shape, " + shapeName + (isFull() ? "" : ". Choose a shape"));
     well->setDescription (params::lfoShapeNames()[shapeIndex] + " wave, "
                           + (synced ? "one cycle every " + noteLength + " note, following the tempo" : "repeating at " + hz) + ".");
     well->repaint();
@@ -363,24 +381,47 @@ void LfoCard::resized()
 {
     namespace pad = layout::padding;
     constexpr int wellHeight = 40, rowGap = 6, bodyGap = 6;
+    constexpr int stripWidth = 96, stripHeight = 40, retrigWidth = 42, retrigHeight = 24;
+
+    const bool full = isFull();
 
     headerRow = { pad::lfo + 1, pad::lfo, getWidth() - 2 * (pad::lfo + 1), layout::header::lfoHeight };
     handle.setBounds (headerRow.withWidth (SourceHandle::diameter));
     placeHeader (headerRow, layout::header::handle);
 
     const int buttonsWidth = 2 * (layout::header::buttonWidth + layout::header::buttonGap);
-    sync.setBounds (headerRow.getRight() - buttonsWidth - SyncPill::width, headerRow.getCentreY() - SyncPill::height / 2,
-                    SyncPill::width, SyncPill::height);
+    sync.setBounds (headerRow.getRight() - buttonsWidth - TogglePill::width, headerRow.getCentreY() - TogglePill::height / 2,
+                    TogglePill::width, TogglePill::height);
 
+    // The well takes whatever width and height the box has over the compact design; the knobs, the strip and Retrig
+    // keep their size and stay against the bottom and the right edge.
+    const int extra = juce::jmax (0, getHeight() - layout::lfo1.h);
     const int bodyY = headerRow.getBottom() + rowGap;
     const int knobsWidth = 2 * layout::knobs::lfo.cell + bodyGap;
-    wellBounds = { headerRow.getX(), bodyY, headerRow.getWidth() - knobsWidth - bodyGap, wellHeight };
+    const int stripArea = full ? stripWidth + retrigWidth + 2 * bodyGap : 0;
+    wellBounds = { headerRow.getX(), bodyY, headerRow.getWidth() - knobsWidth - bodyGap - stripArea, wellHeight + extra };
     well->setBounds (wellBounds);
 
     const int knobX = wellBounds.getRight() + bodyGap;
-    rate.setBoundsAt (knobX, bodyY);
-    division.setBoundsAt (knobX, bodyY);
-    fade.setBoundsAt (knobX + layout::knobs::lfo.cell + bodyGap, bodyY);
+    rate.setBoundsAt (knobX, bodyY + extra);
+    division.setBoundsAt (knobX, bodyY + extra);
+    fade.setBoundsAt (knobX + layout::knobs::lfo.cell + bodyGap, bodyY + extra);
+
+    // Full: the shape picker is on the card, so the well only shows the wave and is not a way to More.
+    shapeStrip.setVisible (full);
+    retrigger.setVisible (full);
+    well->setWantsKeyboardFocus (! full);
+    well->setInterceptsMouseClicks (! full, false);
+    well->setAccessible (! full);
+
+    if (full)
+    {
+        const int stripX = headerRow.getRight() - retrigWidth - bodyGap - stripWidth;
+        shapeStrip.setBounds (stripX, bodyY + extra, stripWidth, stripHeight);
+        retrigger.setBounds (headerRow.getRight() - retrigWidth, shapeStrip.getBounds().getCentreY() - retrigHeight / 2, retrigWidth, retrigHeight);
+    }
+
+    describeWell();
 }
 
 void LfoCard::liveUpdated()
@@ -439,10 +480,13 @@ void LfoCard::paintWell (juce::Graphics& g, juce::Rectangle<float> bounds) const
         g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ dotX, dotY }));
     }
 
+    if (isFull())
+        return;
+
     g.setColour (p.ink2);
     g.setFont (uiFont (11.0f));
     g.drawText (shapeWords()[shapeIndex], bounds.withTrimmedLeft (6.0f).withTrimmedTop (3.0f).withHeight (15.0f),
-                juce::Justification::centredLeft, false);
+                juce::Justification::centredLeft, true);
 }
 
 void LfoCard::paint (juce::Graphics& g)
@@ -515,6 +559,15 @@ ConnectionRow::ConnectionRow (ModulationModel& m, int slotIndex)
 bool ConnectionRow::isFilled() const
 {
     return model.getConnections()[(size_t) slot].active();
+}
+
+void ConnectionRow::setShowsEmpty (bool shouldShow)
+{
+    if (showsEmpty != shouldShow)
+    {
+        showsEmpty = shouldShow;
+        repaint();
+    }
 }
 
 void ConnectionRow::focusGained (FocusChangeType)
@@ -603,7 +656,24 @@ void ConnectionRow::paint (juce::Graphics& g)
     const auto& c = model.getConnections()[(size_t) slot];
 
     if (! c.active())
+    {
+        if (showsEmpty)
+        {
+            juce::Path outline;
+            outline.addRoundedRectangle (bounds.reduced (0.75f), 6.0f);
+            juce::Path dashed;
+            const float dashes[] = { 4.0f, 3.0f };
+            juce::PathStrokeType (1.0f).createDashedStroke (dashed, outline, dashes, 2);
+            g.setColour (p.dash);
+            g.fillPath (dashed);
+
+            g.setColour (p.mute);
+            g.setFont (uiFont (11.0f));
+            g.drawText ("Empty slot", bounds.withTrimmedLeft (8.0f), juce::Justification::centredLeft, true);
+        }
+
         return;
+    }
 
     constexpr float chipWidth = 22.0f, chipHeight = 16.0f, destWidth = 76.0f, amountWidth = 30.0f, gap = 7.0f, barHeight = 6.0f;
 
@@ -819,7 +889,7 @@ bool ConnectionRow::keyPressed (const juce::KeyPress& key)
 }
 
 //==============================================================================
-/** Clips the rows to the three that are in view. */
+/** Clips the rows to the window of the list that is in view. */
 class ConnectionsPanel::List final : public juce::Component
 {
 public:
@@ -834,7 +904,7 @@ private:
 
 namespace
 {
-    constexpr int rowPitch = ConnectionRow::height + 2;
+    constexpr int rowPitch = ConnectionRow::height + 2, columnGap = 12;
 }
 
 ConnectionsPanel::ConnectionsPanel (ModulationModel& m)
@@ -875,28 +945,73 @@ void ConnectionsPanel::modulationChanged()
     repaint();
 }
 
-// Only the filled slots are rows, in slot order; `firstRow` is the one at the top of the list.
+// What the list holds, in the order it shows it: the filled slots in slot order, then (with columns) the empty ones.
+int ConnectionsPanel::positionCount() const
+{
+    return columns > 1 ? engine::numModSlots : filledCount();
+}
+
+int ConnectionsPanel::maxFirstRow() const
+{
+    return juce::jmax (0, positionCount() - rowsPerColumn * columns);
+}
+
+// The list fills down a column and then the next one (the order the accessibility tree, and Tab, visit it in).
+// `firstRow` is the position at the top of the first column; scrolling moves the whole sequence on by one. A row
+// outside the window stays a (clipped) child, just off the list's edge, so Tab can still land on it and bring it in.
 void ConnectionsPanel::layoutRows()
 {
-    firstRow = juce::jlimit (0, juce::jmax (0, filledCount() - visibleRows), firstRow);
-
-    int shown = 0;
+    std::array<ConnectionRow*, engine::numModSlots> order {};
+    int count = 0;
 
     for (auto& r : rows)
+        if (r->isFilled())
+            order[(size_t) count++] = r.get();
+
+    if (columns > 1)
+        for (auto& r : rows)
+            if (! r->isFilled())
+                order[(size_t) count++] = r.get();
+
+    for (auto& r : rows)
+        if (std::find (order.begin(), order.begin() + count, r.get()) == order.begin() + count)
+            r->setVisible (false); // an empty slot in the short list
+
+    firstRow = juce::jlimit (0, maxFirstRow(), firstRow);
+
+    const int capacity = rowsPerColumn * columns;
+    const int columnWidth = (list->getWidth() - columnGap * (columns - 1)) / columns;
+
+    for (int position = 0; position < count; ++position)
     {
-        const bool filled = r->isFilled();
-        r->setVisible (filled);
+        auto& r = *order[(size_t) position];
+        const int slotInView = position - firstRow;
 
-        if (filled)
-            r->setBounds (0, (shown - firstRow) * rowPitch, list->getWidth(), ConnectionRow::height);
+        r.setShowsEmpty (columns > 1);
+        r.setExplicitFocusOrder (position + 1);
+        r.setVisible (true);
 
-        shown += filled ? 1 : 0;
+        if (slotInView >= 0 && slotInView < capacity)
+            r.setBounds ((slotInView / rowsPerColumn) * (columnWidth + columnGap), (slotInView % rowsPerColumn) * rowPitch,
+                         columnWidth, ConnectionRow::height);
+        else
+            r.setBounds (slotInView < 0 ? -columnWidth - columnGap : list->getWidth() + columnGap, 0, columnWidth, ConnectionRow::height);
     }
+
+    // Children in the order they read, so a screen reader goes down the first column and then the next.
+    bool inOrder = true;
+
+    for (int position = 1; position < count && inOrder; ++position)
+        inOrder = list->getIndexOfChildComponent (order[(size_t) position - 1]) < list->getIndexOfChildComponent (order[(size_t) position]);
+
+    if (! inOrder)
+        for (int position = 0; position < count; ++position)
+            order[(size_t) position]->toFront (false);
 }
 
 void ConnectionsPanel::scrollTo (int row)
 {
-    const int clamped = juce::jlimit (0, juce::jmax (0, filledCount() - visibleRows), row);
+    const int clamped = juce::jlimit (0, maxFirstRow(), row);
 
     if (clamped != firstRow)
     {
@@ -919,13 +1034,13 @@ void ConnectionsPanel::reveal (ConnectionRow& row)
 
     if (position < firstRow)
         scrollTo (position);
-    else if (position >= firstRow + visibleRows)
-        scrollTo (position - visibleRows + 1);
+    else if (position >= firstRow + rowsPerColumn * columns)
+        scrollTo (position - rowsPerColumn * columns + 1);
 }
 
 void ConnectionsPanel::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
 {
-    if (filledCount() <= visibleRows)
+    if (maxFirstRow() == 0)
         return;
 
     // A notch is about 0.1 of a row's worth of delta on most systems; smooth-scrolling pads send many small ones.
@@ -942,11 +1057,20 @@ void ConnectionsPanel::mouseWheelMove (const juce::MouseEvent&, const juce::Mous
 void ConnectionsPanel::resized()
 {
     namespace pad = layout::padding;
-    constexpr int captionHeight = 14, captionGap = 1;
+    constexpr int captionHeight = 14, captionGap = 1, bottomPadding = 6;
 
     const int inner = getWidth() - 2 * (pad::playing + 2);
     captionRow = { pad::playing + 2, pad::playing - 1, inner, captionHeight };
-    listArea = { captionRow.getX(), captionRow.getBottom() + captionGap + 2, inner, (visibleRows - 1) * rowPitch + ConnectionRow::height };
+
+    // Rows are the compact design's three at the least, and as many more as the box is tall enough for. At
+    // `layout::full::connectionsTallHeight` that is four, so two columns hold all eight slots.
+    columns = getWidth() >= layout::full::connectionsColumnsWidth ? 2 : 1;
+    const int top = captionRow.getBottom() + captionGap + 2;
+    const int available = getHeight() - top - bottomPadding;
+    rowsPerColumn = juce::jlimit (designRows, (engine::numModSlots + columns - 1) / columns,
+                                  (available - ConnectionRow::height) / rowPitch + 1);
+
+    listArea = { captionRow.getX(), top, inner, (rowsPerColumn - 1) * rowPitch + ConnectionRow::height };
     list->setBounds (listArea);
     layoutRows();
 }
@@ -962,7 +1086,8 @@ void ConnectionsPanel::paint (juce::Graphics& g)
     g.drawText (juce::String (model.countConnections()) + " of " + juce::String (engine::numModSlots),
                 captionRow, juce::Justification::centredRight, false);
 
-    if (model.countConnections() == 0)
+    // With the list in columns the empty slots are drawn as placeholders (and say so); the hint is for the short list.
+    if (model.countConnections() == 0 && columns == 1)
     {
         g.setFont (uiFont (12.0f));
         g.drawText ("Drag a coloured handle onto any knob.", listArea.withHeight (ConnectionRow::height), juce::Justification::centredLeft, true);

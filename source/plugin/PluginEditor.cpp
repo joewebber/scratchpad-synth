@@ -15,13 +15,17 @@ namespace
     }
 }
 
-void ScratchpadEditor::ScaleSaver::flush()
+void ScratchpadEditor::SizeSaver::flush()
 {
     stopTimer();
-    const double wanted = ui::ViewSettings::clampScale (owner.scale);
 
-    if (std::abs (wanted - owner.settings.getEditorScale()) > 0.0005)
-        owner.settings.setEditorScale (wanted);
+    if (! owner.isStandalone() || owner.getWidth() <= 0 || owner.getHeight() <= 0)
+        return;
+
+    const auto saved = owner.settings.getWindowSize();
+
+    if (! saved || saved->x != owner.getWidth() || saved->y != owner.getHeight())
+        owner.settings.setWindowSize (owner.getWidth(), owner.getHeight());
 }
 
 ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
@@ -43,7 +47,8 @@ ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
 
     theme = settings.getTheme();
     ui::motion::setReduced (settings.getReducedMotion());
-    scale = settings.getEditorScale();
+    uiScale = settings.getUiScale();
+    scale = uiScale;
 
     explainPanel.setCollapsed (settings.isExplainCollapsed());
     explainPanel.onToggleRequested = [this] { setExplainCollapsed (! explainPanel.isCollapsed()); };
@@ -58,17 +63,18 @@ ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
     if (processor.wrapperType == juce::AudioProcessor::wrapperType_Standalone)
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
 
-    // Not smaller than 75% of the design, as big as the screen allows, any shape. Set before the size so the first
-    // size is already checked.
+    // Not smaller than 75% of the smallest layout, as big as the limits allow, any shape. Set before the size so the
+    // first size is already checked.
     updateConstrainer();
     setConstrainer (&constrainer);
 
     // The window of the standalone app has its own frame to drag; a plugin's window gets a corner grip.
-    setResizable (true, processor.wrapperType != juce::AudioProcessor::wrapperType_Standalone);
+    setResizable (true, ! isStandalone());
 
-    layoutStage();
-    const auto baseSize = getBaseSize();
-    setSize (juce::roundToInt ((double) baseSize.x * scale), juce::roundToInt ((double) baseSize.y * scale));
+    // The standalone app opens as it was left; a plugin opens at Small, the layout of 1200 x 760 at the UI scale.
+    const auto saved = isStandalone() ? settings.getWindowSize() : std::nullopt;
+    const auto size = saved ? *saved : windowSizeFor ({ ui::layout::minLayoutWidth, ui::layout::minLayoutHeight });
+    setSize (size.x, size.y);
 
     juce::Desktop::getInstance().addFocusChangeListener (this);
 }
@@ -76,7 +82,7 @@ ScratchpadEditor::ScratchpadEditor (ScratchpadProcessor& p)
 ScratchpadEditor::~ScratchpadEditor()
 {
     juce::Desktop::getInstance().removeFocusChangeListener (this);
-    scaleSaver.flush();
+    sizeSaver.flush();
     if (&juce::LookAndFeel::getDefaultLookAndFeel() == &lookAndFeel)
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 
@@ -112,82 +118,62 @@ void ScratchpadEditor::paint (juce::Graphics& g)
     g.fillAll (ui::paletteOf (*this).bg);
 }
 
-juce::Point<int> ScratchpadEditor::getBaseSize() const noexcept
-{
-    return { explainPanel.isCollapsed() ? foldedWidth : baseWidth, baseHeight };
-}
-
-juce::Point<int> ScratchpadEditor::getStageSize() const noexcept
-{
-    const auto base = getBaseSize();
-
-    if (getWidth() <= 0 || getHeight() <= 0)
-        return base;
-
-    return { juce::jmax (base.x, juce::roundToInt (std::ceil ((double) getWidth() / scale))),
-             juce::jmax (base.y, juce::roundToInt (std::ceil ((double) getHeight() / scale))) };
-}
-
 void ScratchpadEditor::resized()
 {
     if (getWidth() <= 0 || getHeight() <= 0)
         return;
 
-    // Scale down to fit when the window is smaller than the design; never up. A bigger window is more room.
-    const auto base = getBaseSize();
-    scale = juce::jlimit (minScale, maxScale, juce::jmin ((double) getWidth() / (double) base.x, (double) getHeight() / (double) base.y));
+    namespace layout = ui::layout;
 
-    const auto stageSize = getStageSize();
-    stage.setBounds (0, 0, stageSize.x, stageSize.y);
+    // The layout size is the window's size over the UI scale. Under the smallest layout nothing rearranges: the whole
+    // stage shrinks to fit (and the constrainer keeps that to 75% on the screen).
+    const double minWidth = (double) layout::Plan::minWidthFor (explainPanel.isCollapsed());
+    const double shrink = juce::jmin (1.0, ((double) getWidth() / uiScale) / minWidth, ((double) getHeight() / uiScale) / (double) layout::minLayoutHeight);
+    scale = uiScale * shrink;
+
+    const int stageWidth = juce::roundToInt (std::ceil ((double) getWidth() / scale));
+    const int stageHeight = juce::roundToInt (std::ceil ((double) getHeight() / scale));
+
+    plan = layout::Plan::make (stageWidth, stageHeight, explainPanel.isCollapsed());
+    stage.setBounds (0, 0, stageWidth, stageHeight);
     stage.setTransform (juce::AffineTransform::scale ((float) scale));
 
     layoutStage();
-    scaleSaver.schedule();
+    sizeSaver.schedule();
 }
 
 void ScratchpadEditor::layoutStage()
 {
-    namespace layout = ui::layout;
+    topBar.setBounds (plan.topBar);
+    patchView.setPlan (plan);
+    patchView.setBounds (plan.patchView);
+    performanceBar.setBounds (plan.voicingKeyboard);
+    explainPanel.setBounds (plan.explain);
+}
 
-    const auto base = getBaseSize();
-    const auto stageSize = getStageSize();
-    const int extraWidth = stageSize.x - base.x, extraHeight = stageSize.y - base.y;
-    const bool folded = explainPanel.isCollapsed();
+juce::Point<int> ScratchpadEditor::windowSizeFor (juce::Point<int> layoutSize) const noexcept
+{
+    using S = ui::ViewSettings;
 
-    // The extra height goes into the three gaps between the sections; what does not divide goes to the panel only.
-    const int gap = extraHeight / 3;
-
-    // Expanded, the Explain panel takes the extra width. Folded, nothing can, so the column and the rail sit in the
-    // middle of the window.
-    const int columnShift = folded ? extraWidth / 2 : 0;
-
-    topBar.setBounds (layout::topBar.rect().withWidth (stageSize.x - 2 * layout::margin));
-
-    auto chain = layout::patchView.rect();
-    chain.translate (columnShift, 0);
-    chain.setHeight (chain.getHeight() + 2 * gap);
-    patchView.setExtraGap (gap);
-    patchView.setBounds (chain);
-
-    performanceBar.setBounds (layout::voicingKeyboard.rect().translated (columnShift, 3 * gap));
-
-    const int panelWidth = folded ? ui::ExplainPanel::railWidth : ui::ExplainPanel::width + extraWidth;
-    const int right = folded ? stageSize.x - layout::margin - extraWidth / 2 : stageSize.x - layout::margin;
-    explainPanel.setBounds (right - panelWidth, layout::explain.y, panelWidth, layout::explain.h + extraHeight);
+    return { juce::jlimit (S::minWindowWidth, S::maxWindowWidth, juce::roundToInt ((double) layoutSize.x * uiScale)),
+             juce::jlimit (S::minWindowHeight, S::maxWindowHeight, juce::roundToInt ((double) layoutSize.y * uiScale)) };
 }
 
 void ScratchpadEditor::updateConstrainer()
 {
-    // The design's size is the least it shrinks to (75%); there is no most, and no fixed shape.
-    const auto base = getBaseSize();
-    constrainer.setSizeLimits (juce::roundToInt (minScale * base.x), juce::roundToInt (minScale * base.y), 8192, 8192);
+    // 75% of the smallest layout is the least (900 x 570, 744 x 570 with the panel folded); there is no fixed shape.
+    namespace layout = ui::layout;
+    using S = ui::ViewSettings;
+
+    constrainer.setSizeLimits (juce::roundToInt (minScale * layout::Plan::minWidthFor (explainPanel.isCollapsed())),
+                               juce::roundToInt (minScale * layout::minLayoutHeight), S::maxWindowWidth, S::maxWindowHeight);
     constrainer.setFixedAspectRatio (0.0);
 }
 
 //==============================================================================
 ui::ViewState ScratchpadEditor::getViewState() const
 {
-    return { theme, ui::motion::isReduced(), ! explainPanel.isCollapsed() };
+    return { theme, ui::motion::isReduced(), ! explainPanel.isCollapsed(), uiScale };
 }
 
 void ScratchpadEditor::applyPalette()
@@ -231,6 +217,35 @@ void ScratchpadEditor::setExplainCollapsed (bool collapsed)
         explainPanel.focusToggleButton();
 }
 
+void ScratchpadEditor::setUiScale (double newScale)
+{
+    const double wanted = ui::ViewSettings::clampScale (newScale);
+    settings.setUiScale (wanted);
+
+    if (std::abs (wanted - uiScale) < 1.0e-6)
+        return;
+
+    // The window follows by the same ratio, so the layout (and what is on show) stays the same.
+    const double ratio = wanted / uiScale;
+    uiScale = wanted;
+
+    using S = ui::ViewSettings;
+    setSize (juce::jlimit (S::minWindowWidth, S::maxWindowWidth, juce::roundToInt ((double) getWidth() * ratio)),
+             juce::jlimit (S::minWindowHeight, S::maxWindowHeight, juce::roundToInt ((double) getHeight() * ratio)));
+    resized(); // also when the host kept the old size
+}
+
+void ScratchpadEditor::setWindowPreset (ui::ViewChoice choice)
+{
+    const auto layoutSize = ui::windowLayoutSizeOf (choice);
+
+    if (layoutSize.x > 0)
+    {
+        const auto size = windowSizeFor (layoutSize);
+        setSize (size.x, size.y);
+    }
+}
+
 void ScratchpadEditor::showViewMenu()
 {
     juce::Component::SafePointer<ScratchpadEditor> safe (this);
@@ -253,6 +268,17 @@ void ScratchpadEditor::applyViewChoice (ui::ViewChoice choice)
         case ui::ViewChoice::reducedMotion:  setReducedMotion (! ui::motion::isReduced()); break;
         case ui::ViewChoice::explainPanel:   setExplainCollapsed (! explainPanel.isCollapsed()); break;
         case ui::ViewChoice::none:           break;
+
+        case ui::ViewChoice::uiScale75:
+        case ui::ViewChoice::uiScale100:
+        case ui::ViewChoice::uiScale125:
+        case ui::ViewChoice::uiScale150:
+        case ui::ViewChoice::uiScale175:
+        case ui::ViewChoice::uiScale200:     setUiScale (ui::uiScaleOf (choice)); break;
+
+        case ui::ViewChoice::windowSmall:
+        case ui::ViewChoice::windowMedium:
+        case ui::ViewChoice::windowLarge:    setWindowPreset (choice); break;
     }
 }
 

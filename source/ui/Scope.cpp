@@ -200,7 +200,7 @@ void Scope::resized()
     area.removeFromTop (7);
     tapButtons.setBounds (area.removeFromTop (24));
     area.removeFromTop (7);
-    display = area.removeFromTop (92);
+    display = area.removeFromTop (92 + std::max (0, getHeight() - height)); // the well takes whatever height is beyond the design's
     area.removeFromTop (7);
     captionArea = area;
 }

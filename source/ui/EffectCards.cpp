@@ -1,5 +1,6 @@
 #include "ui/EffectCards.h"
 
+#include "content/Content.h"
 #include "plugin/Parameters.h"
 
 #include <algorithm>
@@ -179,6 +180,10 @@ void EffectDisplay::paintDistortion (juce::Graphics& g, juce::Rectangle<float> a
     g.setColour (p.fxInk);
     g.strokePath (curve, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
+    // A full card has the mode on its own pill.
+    if (getParentWidth() >= layout::full::effectWidth)
+        return;
+
     static const char* const modeWords[] = { "Tanh", "Hard clip", "Wavefold" };
     g.setColour (p.ink2);
     g.setFont (uiFont (11.0f));
@@ -262,7 +267,9 @@ void EffectDisplay::paintDelay (juce::Graphics& g, juce::Rectangle<float> area, 
         g.drawText (text, area.expanded (2.0f, 3.0f), juce::Justification::bottomRight, false);
     };
 
-    tag (synced ? processor.apvts.getParameter (params::delayDivision)->getCurrentValueAsText() : params::timeText (ms / 1000.0f));
+    // The compact well (56 wide) holds the label; a narrower one (the delay beside its pills) would let it overlap the bars.
+    if (getWidth() >= 56)
+        tag (synced ? processor.apvts.getParameter (params::delayDivision)->getCurrentValueAsText() : params::timeText (ms / 1000.0f));
 }
 
 // Level in dB against time over ten seconds: a straight fall to -60 dB at the decay time, steeper at the
@@ -309,6 +316,160 @@ void EffectDisplay::paintReverb (juce::Graphics& g, juce::Rectangle<float> area,
 }
 
 //==============================================================================
+namespace
+{
+/** The look of a small effect pill: filled with the family colour while lit, an outline otherwise. */
+void paintEffectPill (juce::Graphics& g, const juce::Component& c, const juce::String& text, bool lit, bool highlighted)
+{
+    const auto& p = paletteOf (c);
+    const auto bounds = c.getLocalBounds().toFloat();
+
+    if (lit)
+    {
+        g.setColour (p.fx);
+        g.fillRoundedRectangle (bounds, bounds.getHeight() * 0.5f);
+    }
+    else
+    {
+        g.setColour (p.track);
+        g.drawRoundedRectangle (bounds.reduced (0.5f), bounds.getHeight() * 0.5f - 0.5f, 1.0f);
+    }
+
+    g.setColour (lit ? p.onAccent : highlighted ? p.ink : p.ink2);
+    g.setFont (uiFont (11.0f));
+    g.drawText (text, bounds.reduced (4.0f, 0.0f), juce::Justification::centred, true);
+
+    if (c.hasKeyboardFocus (false))
+        ScratchpadLookAndFeel::drawFocusRing (g, bounds, bounds.getHeight() * 0.5f - 2.5f, p.ink);
+}
+} // namespace
+
+//==============================================================================
+EffectSwitch::EffectSwitch (juce::AudioProcessorValueTreeState& state, const juce::String& paramID, const juce::String& label,
+                            const juce::String& accessibleName, juce::UndoManager& undoToUse)
+    : juce::Button (label), text (label), undo (undoToUse)
+{
+    auto* param = state.getParameter (paramID);
+    jassert (param != nullptr);
+
+    setTitle (accessibleName);
+
+    if (const auto* entry = content::Content::get().param (paramID))
+        setDescription (entry->what);
+
+    getProperties().set ("explainId", paramID);
+    setPaintingIsUnclipped (true);
+    setClickingTogglesState (true);
+    attachment = std::make_unique<juce::ButtonParameterAttachment> (*param, *this, &undo);
+
+    // Runs after the attachment has written the value.
+    onClick = [this] { undo.setCurrentTransactionName (getTitle() + (getToggleState() ? " on" : " off")); };
+}
+
+void EffectSwitch::paintButton (juce::Graphics& g, bool highlighted, bool)
+{
+    paintEffectPill (g, *this, text, getToggleState(), highlighted);
+}
+
+//==============================================================================
+EffectModePicker::EffectModePicker (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
+                                    const juce::String& accessibleName, juce::UndoManager& undoToUse, const juce::StringArray& choiceWords)
+    : juce::Button (accessibleName), paramId (paramID), undo (undoToUse), words (choiceWords)
+{
+    auto* param = state.getParameter (paramID);
+    jassert (param != nullptr);
+
+    setTitle (accessibleName);
+    getProperties().set ("explainId", paramID);
+    setPaintingIsUnclipped (true);
+    setClickingTogglesState (false);
+    onClick = [this] { showMenu(); };
+
+    attachment = std::make_unique<juce::ParameterAttachment> (*param, [this] (float v) { setSelected ((int) std::round (v)); }, &undo);
+    attachment->sendInitialUpdate();
+}
+
+void EffectModePicker::paintButton (juce::Graphics& g, bool highlighted, bool)
+{
+    paintEffectPill (g, *this, words[selected], false, highlighted);
+}
+
+bool EffectModePicker::keyPressed (const juce::KeyPress& key)
+{
+    if (! key.getModifiers().isAnyModifierKeyDown())
+    {
+        const int code = key.getKeyCode();
+
+        if (code == juce::KeyPress::leftKey || code == juce::KeyPress::upKey)
+        {
+            pick (selected - 1);
+            return true;
+        }
+
+        if (code == juce::KeyPress::rightKey || code == juce::KeyPress::downKey)
+        {
+            pick (selected + 1);
+            return true;
+        }
+    }
+
+    return juce::Button::keyPressed (key);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> EffectModePicker::createAccessibilityHandler()
+{
+    return a11y::makeSelectorHandler (
+        *this, [this] { return words[selected]; },
+        [this] (const juce::String& choice)
+        {
+            const int found = words.indexOf (choice.trim(), true);
+            if (found >= 0)
+                pick (found);
+        },
+        [this]
+        {
+            const auto* entry = content::Content::get().param (paramId);
+            return entry != nullptr ? entry->what : juce::String();
+        });
+}
+
+void EffectModePicker::setSelected (int i)
+{
+    const int before = selected;
+    selected = juce::jlimit (0, juce::jmax (0, words.size() - 1), i);
+    repaint();
+
+    if (selected != before)
+        if (auto* handler = getAccessibilityHandler())
+            handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+}
+
+void EffectModePicker::pick (int i)
+{
+    i = juce::jlimit (0, words.size() - 1, i);
+
+    if (i == selected)
+        return;
+
+    const auto old = words[selected];
+    attachment->setValueAsCompleteGesture ((float) i);
+    undo.setCurrentTransactionName (getTitle() + " " + old + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 ")) + words[i]);
+}
+
+void EffectModePicker::showMenu()
+{
+    juce::PopupMenu menu;
+    for (int i = 0; i < words.size(); ++i)
+        menu.addItem (i + 1, words[i], true, i == selected);
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                        [safe = juce::Component::SafePointer<EffectModePicker> (this)] (int result)
+                        {
+                            if (safe != nullptr && result > 0)
+                                safe->pick (result - 1);
+                        });
+}
+
 EffectGrip::EffectGrip (const juce::String& effectName)
     : juce::Button ("Reorder " + effectName)
 {
@@ -398,6 +559,8 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
             addKnob (params::distortionDrive, "Drive", "drive");
             addKnob (params::distortionTone, "Tone", "tone");
             addKnob (params::distortionMix, "Mix", "mix");
+            extraKnob = addKnob (params::distortionBias, "Bias", "bias");
+            extraKnob->setBipolar (true);
             break;
 
         case engine::EffectKind::chorus:
@@ -423,16 +586,40 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
             addKnob (params::reverbSize, "Size", "size");
             addKnob (params::reverbDecay, "Decay", "decay");
             addKnob (params::reverbMix, "Mix", "mix");
+            extraKnob = addKnob (params::reverbDamping, "Damp", "damping");
             break;
     }
 
     addAndMakeVisible (grip);
     addAndMakeVisible (display);
+
+    if (extraKnob != nullptr)
+        extraKnob->setVisible (false); // only while full
+
+    if (kind == engine::EffectKind::distortion)
+    {
+        modePicker = std::make_unique<EffectModePicker> (p.apvts, params::distortionMode, name + " mode", p.undoManager,
+                                                          juce::StringArray { "Tanh", "Hard clip", "Wavefold" });
+        addChildComponent (*modePicker);
+    }
+    else if (kind == engine::EffectKind::delay)
+    {
+        syncSwitch = std::make_unique<EffectSwitch> (p.apvts, params::delaySync, "Sync", name + " tempo sync", p.undoManager);
+        pingPongSwitch = std::make_unique<EffectSwitch> (p.apvts, params::delayPingPong, "Ping-pong", name + " ping-pong", p.undoManager);
+        addChildComponent (*syncSwitch);
+        addChildComponent (*pingPongSwitch);
+    }
+
     applyColours();
 
-    // Tab order: the grip, then the knobs left to right (the delay's note length takes its time knob's place), then
-    // the picture. A newly added effect offers its first knob.
+    // Tab order: the grip, then the controls left to right (the delay's note length takes its time knob's place), then
+    // the picture. Controls that the current size does not show are hidden and so skipped. A newly added effect
+    // offers its first knob.
     std::vector<juce::Component*> order { &grip };
+
+    if (modePicker != nullptr)
+        order.push_back (modePicker.get());
+
     for (auto* knob : row)
     {
         order.push_back (knob);
@@ -440,6 +627,13 @@ EffectCard::EffectCard (plugin::ScratchpadProcessor& p, engine::EffectKind effec
         if (knob == row.front() && alternateKnob != nullptr)
             order.push_back (alternateKnob);
     }
+
+    if (syncSwitch != nullptr)
+    {
+        order.push_back (syncSwitch.get());
+        order.push_back (pingPongSwitch.get());
+    }
+
     order.push_back (&display);
     setFocusOrder (order, row.front());
 }
@@ -459,6 +653,10 @@ Knob* EffectCard::addKnob (const char* id, const char* caption, const juce::Stri
 
 void EffectCard::fillMore (MorePopover& popover) const
 {
+    // On a full card these controls are on the card itself; More keeps only Remove.
+    if (isFull())
+        return;
+
     switch (kind)
     {
         case engine::EffectKind::distortion:
@@ -513,25 +711,58 @@ void EffectCard::lookAndFeelChanged()
 void EffectCard::resized()
 {
     namespace pad = layout::padding;
-    constexpr int wellWidth = 56, wellHeight = 40, bodyGap = 4, rowGap = 5, gripWidth = 10;
+    constexpr int wellHeight = 40, bodyGap = 4, rowGap = 5, gripWidth = 10;
+    constexpr int pillWidth = 62, pillHeight = 19, pillGap = 2;
+    constexpr int pickerWidth = 58, pickerInset = 4;
+
+    const bool full = isFull();
 
     headerRow = { pad::fx, pad::fx, getWidth() - 2 * pad::fx, layout::header::height };
     grip.setBounds (headerRow.withWidth (gripWidth));
 
     placeHeader (headerRow, headerHandleWidth);
 
+    // The knobs (and the delay's pills) keep their size and sit at the right edge; the picture has the rest.
+    const int extra = juce::jmax (0, getHeight() - layout::fx[0].h);
     const int bodyY = headerRow.getBottom() + rowGap;
-    display.setBounds (pad::fx, bodyY, wellWidth, wellHeight);
+    const int knobY = bodyY + extra / 2;
+    const int cell = layout::knobs::effect.cell;
 
-    int x = pad::fx + wellWidth + bodyGap;
-    for (auto* k : row)
+    const int knobCount = (int) row.size() - (extraKnob != nullptr && ! full ? 1 : 0);
+    const bool pills = full && syncSwitch != nullptr;
+    const int blockWidth = knobCount * cell + (knobCount - 1) * bodyGap + (pills ? bodyGap + pillWidth : 0);
+    const int blockLeft = getWidth() - pad::fx - blockWidth;
+
+    const int wellWidth = juce::jmax (0, blockLeft - bodyGap - pad::fx);
+    display.setBounds (pad::fx, bodyY, wellWidth, wellHeight + extra);
+
+    int x = blockLeft;
+    for (int i = 0; i < knobCount; ++i)
     {
-        k->setBoundsAt (x, bodyY);
-        x += layout::knobs::effect.cell + bodyGap;
+        row[(size_t) i]->setBoundsAt (x, knobY);
+        x += cell + bodyGap;
     }
 
     if (alternateKnob != nullptr)
-        alternateKnob->setBoundsAt (row.front()->getX(), bodyY);
+        alternateKnob->setBoundsAt (row.front()->getX(), knobY);
+
+    if (extraKnob != nullptr)
+        extraKnob->setVisible (full);
+
+    if (modePicker != nullptr)
+    {
+        modePicker->setBounds (pad::fx + pickerInset, bodyY + pickerInset, juce::jmin (pickerWidth, juce::jmax (0, wellWidth - 2 * pickerInset)), pillHeight);
+        modePicker->setVisible (full);
+    }
+
+    if (syncSwitch != nullptr)
+    {
+        const int pillX = getWidth() - pad::fx - pillWidth;
+        syncSwitch->setBounds (pillX, knobY, pillWidth, pillHeight);
+        pingPongSwitch->setBounds (pillX, knobY + pillHeight + pillGap, pillWidth, pillHeight);
+        syncSwitch->setVisible (full);
+        pingPongSwitch->setVisible (full);
+    }
 }
 
 void EffectCard::paint (juce::Graphics& g)

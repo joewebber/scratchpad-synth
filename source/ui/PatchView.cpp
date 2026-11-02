@@ -15,9 +15,6 @@ namespace
 {
     namespace L = layout;
 
-    // The effects row: four places 192 px apart (184 wide and 8 between).
-    constexpr int effectStride = L::fx[1].x - L::fx[0].x;
-
     juce::Font headingFont()
     {
         auto font = uiFont (12.0f, Weight::medium);
@@ -115,16 +112,12 @@ namespace
 //==============================================================================
 juce::Rectangle<int> PatchView::local (const layout::Box& box) const noexcept
 {
-    const int shift = box.y >= L::modulationHeading.y ? 2 * extraGap : box.y >= L::effectsHeading.y ? extraGap : 0;
-    return box.rect().translated (-L::patchView.x, -L::patchView.y + shift);
+    return box.rect().translated (-plan.patchView.x, -plan.patchView.y);
 }
 
-void PatchView::setExtraGap (int pixels)
+void PatchView::setPlan (const layout::Plan& newPlan)
 {
-    if (pixels == extraGap)
-        return;
-
-    extraGap = pixels;
+    plan = newPlan;
     resized();
     repaint();
 }
@@ -541,12 +534,12 @@ PatchView::EffectSlots PatchView::effectSlots() const
 
 juce::Rectangle<int> PatchView::effectPlace (int index) const
 {
-    return local (L::fx[index]);
+    return local (plan.fx[index]);
 }
 
 int PatchView::effectIndexAt (int x) const
 {
-    return juce::jlimit (0, engine::numEffects - 1, (x - local (L::fx[0]).getX()) / effectStride);
+    return juce::jlimit (0, engine::numEffects - 1, (x - local (plan.fx[0]).getX()) / (plan.fx[1].x - plan.fx[0].x));
 }
 
 void PatchView::beginEffectDrag (engine::EffectKind kind, const juce::MouseEvent& e)
@@ -641,13 +634,13 @@ void PatchView::paint (juce::Graphics& g)
 
     // Signal chain heading: the title, the Listen-for pill, and (a button) + Add module.
     {
-        const auto heading = local (L::signalChainHeading);
+        const auto heading = local (plan.signalChainHeading);
         const auto font = headingFont();
         g.setFont (font);
         g.setColour (p.ink);
         g.drawText ("SIGNAL CHAIN", heading.toFloat().reduced ((float) L::headingTextInset, 0.0f), juce::Justification::centredLeft, false);
 
-        const auto pill = local (L::listenPill).toFloat();
+        const auto pill = local (plan.listenPill).toFloat();
         const bool hasStatus = model.getStatus().isNotEmpty();
         g.setColour (hasStatus ? p.accent.withAlpha (0.9f) : p.accentSoft);
         g.fillRoundedRectangle (pill, 11.0f);
@@ -669,11 +662,11 @@ void PatchView::paint (juce::Graphics& g)
 
     // The zone the per-voice modules sit in: a flat tint, with its caption running up the left strip.
     {
-        const auto zone = local (L::perVoiceZone);
+        const auto zone = local (plan.perVoiceZone);
         g.setColour (p.zone);
         g.fillRoundedRectangle (zone.toFloat(), 16.0f);
 
-        const auto strip = local (L::perVoiceCaption);
+        const auto strip = local (plan.perVoiceCaption);
         auto captionFont = uiFont (11.0f);
         captionFont.setExtraKerningFactor (0.14f);
 
@@ -688,15 +681,15 @@ void PatchView::paint (juce::Graphics& g)
         g.restoreState();
     }
 
-    drawChevron (g, p, local (L::sourcesArrow));
-    drawChevron (g, p, local (L::filterAmpArrow));
+    drawChevron (g, p, local (plan.sourcesArrow));
+    drawChevron (g, p, local (plan.filterAmpArrow));
 
     // Effects: the heading, the sum disc where the voices are added together, and where a dragged effect would land.
-    drawSectionHeading (g, p, local (L::effectsHeading), "Effects",
+    drawSectionHeading (g, p, local (plan.effectsHeading), "Effects",
                         "Whole mix: the voices are added together, then pass through these from left to right. Drag to reorder.");
 
     {
-        const auto sum = local (L::sum);
+        const auto sum = local (plan.sum);
         const auto disc = juce::Rectangle<float> (26.0f, 26.0f).withCentre (sum.toFloat().getCentre());
         drawRaised (g, disc, 13.0f, p, Elevation::small, p.surface);
         g.setColour (p.ink2);
@@ -704,7 +697,7 @@ void PatchView::paint (juce::Graphics& g)
         g.drawText (juce::String (juce::CharPointer_UTF8 ("\xce\xa3")), disc, juce::Justification::centred, false);
     }
 
-    drawSectionHeading (g, p, local (L::modulationHeading), "Modulation",
+    drawSectionHeading (g, p, local (plan.modulationHeading), "Modulation",
                         "Drag a coloured handle onto any knob. The arc shows the range; the dot shows the live value.");
 
     if (effectDrag.active && effectDrag.to != effectDrag.from)
@@ -719,26 +712,26 @@ void PatchView::paint (juce::Graphics& g)
 
 juce::Rectangle<int> PatchView::effectsRow() const
 {
-    return local (L::fx[0]).getUnion (local (L::fx[L::numFx - 1]));
+    return local (plan.fx[0]).getUnion (local (plan.fx[L::numFx - 1]));
 }
 
 void PatchView::resized()
 {
     overlay.setBounds (getLocalBounds());
 
-    addButton.setBounds (local (L::addModuleButton));
-    listenRegion.setBounds (local (L::listenPill));
-    perVoiceRegion.setBounds (local (L::perVoiceZone));
-    effectsRegion.setBounds (local (L::effectsHeading));
+    addButton.setBounds (local (plan.addModuleButton));
+    listenRegion.setBounds (local (plan.listenPill));
+    perVoiceRegion.setBounds (local (plan.perVoiceZone));
+    effectsRegion.setBounds (local (plan.effectsHeading));
 
-    sourcesCard.setBounds (local (L::sources));
+    sourcesCard.setBounds (local (plan.sources));
 
-    const auto filterRect = local (L::filter), filterEnvRect = local (L::filterEnv), ampEnvRect = local (L::ampEnv);
+    const auto filterRect = local (plan.filter), filterEnvRect = local (plan.filterEnv), ampEnvRect = local (plan.ampEnv);
     filterCard.setBounds (filterRect);
     filterSlot.setBounds (filterRect);
     filterEnvCard.setBounds (filterEnvRect);
     filterEnvSlot.setBounds (filterEnvRect);
-    ampCard.setBounds (local (L::amp));
+    ampCard.setBounds (local (plan.amp));
     ampEnvCard.setBounds (ampEnvRect);
     ampEnvSlot.setBounds (ampEnvRect);
 
@@ -754,14 +747,14 @@ void PatchView::resized()
     for (int i = 0; i < slots.numAbsent; ++i)
         effectSlot (slots.absent[(size_t) i]).setBounds (effectPlace (slots.numPresent + i));
 
-    outputCard.setBounds (local (L::out));
+    outputCard.setBounds (local (plan.out));
 
-    lfo1Card.setBounds (local (L::lfo1));
-    lfo1Slot.setBounds (local (L::lfo1));
-    lfo2Card.setBounds (local (L::lfo2));
-    lfo2Slot.setBounds (local (L::lfo2));
-    playingCard.setBounds (local (L::playing));
-    connectionsPanel.setBounds (local (L::connections));
+    lfo1Card.setBounds (local (plan.lfo1));
+    lfo1Slot.setBounds (local (plan.lfo1));
+    lfo2Card.setBounds (local (plan.lfo2));
+    lfo2Slot.setBounds (local (plan.lfo2));
+    playingCard.setBounds (local (plan.playing));
+    connectionsPanel.setBounds (local (plan.connections));
 }
 
 } // namespace scratchpad::ui

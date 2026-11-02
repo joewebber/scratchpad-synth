@@ -59,14 +59,18 @@ protected:
     bool keyChangeIsGesture() const override { return false; }
 };
 
-/** The card along the bottom (`layout::voicingKeyboard`, 904 x 100): the voicing controls, then the pitch bend and
-    mod wheels, the octave shift with the velocity, and a two-octave on-screen keyboard (14 white keys, 27 px each).
+/** The card along the bottom (`layout::voicingKeyboard`, 904 x 100 at the smallest layout, wider and up to 50 px
+    taller in bigger ones): the voicing controls, then the pitch bend and mod wheels, the octave shift with the
+    velocity, and the on-screen keyboard (white keys 27 px wide). The keyboard starts at the same distance from the
+    card's left edge at every size and shows as many whole octaves as fit before the right padding, never fewer than
+    two (2 at 904 wide, 3 at 1108, 4 at 1388); the octave buttons' range, the summary and the description follow
+    that count. The card's extra height goes to the keys and the wheels' slots; everything else keeps its size and
+    is centred on the card's height. If a resize changes the octave count the held notes are released.
     The computer-keyboard mapping is A to K white keys, W E T Y U black keys, Z/X octave down/up, C/V velocity down/up.
 
     Everything leaves through the processor's lock-free UI queue. The editor
     forwards its key events to `handleKeyPressed` and `handleKeyStateChanged`
     so notes play whichever child has focus.
-
     The on-screen keys are played with those computer keys, which work from anywhere in the window except while a
     value is being typed, so the keys themselves are not a Tab stop. Tab visits the octave buttons, then the pitch
     wheel and the mod wheel (Up and Down arrows move them). To a screen reader the bar is a group; its octave and
@@ -99,6 +103,9 @@ private:
     void handleNoteOff (juce::MidiKeyboardState*, int channel, int note, float vel) override;
 
     void setOctave (int newOctave, bool announceIt = true);
+    void applyKeyboardRange();
+    int maxOctave() const noexcept;
+    juce::String octavesDescription() const;
     void setVelocity (float newVelocity);
     void timerCallback() override;
     void sendBend (float value);
@@ -117,9 +124,10 @@ private:
     a11y::Region summary;
     VoicingCard voicing { processor };
 
-    juce::Rectangle<int> octaveLabelArea, velocityLabelArea, bendCaptionArea, modCaptionArea, divider;
+    juce::Rectangle<int> octaveLabelArea, velocityLabelArea, octavesLabelArea, bendCaptionArea, modCaptionArea, divider;
 
     int octave = 4; // JUCE octave numbering: the A key plays note 12 * octave
+    int octavesShown = 2; // whole octaves the keyboard shows; follows the card's width
     float velocity = 0.8f;
     float lastBend = 0.0f, lastMod = 0.0f; // what the processor last reported, so only a change moves a wheel
 };

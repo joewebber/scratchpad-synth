@@ -22,9 +22,10 @@
 namespace scratchpad::ui
 {
 
-/** The WAVE cell of an oscillator row: a 52 x 30 well drawing the wave, its name under it. It is the wave picker:
-    a click, Space or Enter opens a menu of the seven waves, and the arrow keys step through them. To a screen
-    reader it is one selector named for the oscillator ("Oscillator 1 wave"), whose value is the wave. */
+/** The WAVE cell of an oscillator row: a well drawing the wave, its name (14 px) under it. At the compact size the well
+    is 52 x 30; it takes whatever width and height its row gives it. It is the wave picker: a click, Space or Enter
+    opens a menu of the seven waves, and the arrow keys step through them. To a screen reader it is one selector named
+    for the oscillator ("Oscillator 1 wave"), whose value is the wave. */
 class WaveChooser final : public juce::Component
 {
 public:
@@ -81,9 +82,11 @@ private:
 };
 
 /** Oscillator 1, 2 or 3: wave, Oct, Semi, Fine, Level and Morph cells (Morph only for the pulse and wavetable
-    waves). More holds phase reset, unison and sub level, anti-aliasing, hard sync (Osc 2 and 3) or what Osc 1
-    does to the others (ring, FM, FM target), and Remove for Osc 2 and 3. Ring and FM act on Osc 2 or 3, so they
-    dim (and say why in a line at the bottom) while those oscillators are not in the patch. */
+    waves). The row lays itself out from its own box: the five knob columns keep their size and stay against the More
+    button at the right, and the wave well takes all the extra width and height. More holds phase reset, unison and
+    sub level, anti-aliasing, hard sync (Osc 2 and 3) or what Osc 1 does to the others (ring, FM, FM target), and
+    Remove for Osc 2 and 3, at every size. Ring and FM act on Osc 2 or 3, so they dim (and say why in a line at the
+    bottom) while those oscillators are not in the patch. */
 class OscillatorCard final : public SourceRow
 {
 public:
@@ -111,7 +114,8 @@ private:
     bool aliasingOff = false;
 };
 
-/** The noise row: colour, a sentence about it, level; More holds Remove. */
+/** The noise row: colour, a sentence about it, level; More holds Remove. The colour segments and the Level knob keep
+    their size (Level stays against More); the sentence takes the extra width. */
 class NoiseCard final : public SourceRow
 {
 public:
@@ -121,7 +125,8 @@ public:
     void resized() override;
     void lookAndFeelChanged() override;
 
-    /** What is left of the card under the three oscillator rows. */
+    /** What is left of the card under the three oscillator rows at the compact size; each row is this much taller
+        for its share of any extra height. */
     static constexpr int rowHeight = layout::sources.h - 2 * layout::padding::sources - layout::table::headingHeight
                                      - layout::table::headingMargin - 3 * layout::table::rowHeight;
 
@@ -137,9 +142,10 @@ private:
     juce::Rectangle<int> textArea;
 };
 
-/** The Sources card (`layout::sources`): the oscillator table, then noise. Absent Osc 2, Osc 3 and noise show a
-    dashed "+ Osc 2" slot in their row's place (rows keep their height). The card owns presence: `PatchView` calls
-    `refreshPresence` when modules come and go, and sets `onAddModule` for the slots.
+/** The Sources card: the oscillator table, then noise. It lays itself out from its own box (at least
+    `layout::sources`): the four rows share the extra height, and the oscillators' wave wells take the extra width.
+    Absent Osc 2, Osc 3 and noise show a dashed "+ Osc 2" slot in their row's place (rows keep their height). The card
+    owns presence: `PatchView` calls `refreshPresence` when modules come and go, and sets `onAddModule` for the slots.
 
     To a screen reader it is a group named "Sources". */
 class SourcesCard final : public juce::Component

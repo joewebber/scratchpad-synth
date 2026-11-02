@@ -524,7 +524,8 @@ void ExplainPanel::resized()
     headerRow.removeFromRight (6);
     glossaryButton.setBounds (headerRow.removeFromRight (84));
 
-    scopeArea = area.removeFromBottom (scopeHeight);
+    // The scope is the flexible part: the height beyond the compact panel's goes to its well; the width goes to it and to the text.
+    scopeArea = area.removeFromBottom (scopeHeight + std::max (0, getHeight() - layout::explain.h));
     scope.setBounds (scopeArea);
     patchArea = area.removeFromBottom (patchHeight);
     area.removeFromBottom (10);

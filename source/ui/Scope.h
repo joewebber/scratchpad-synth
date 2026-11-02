@@ -38,8 +38,9 @@ public:
 
     enum class Mode { wave, spectrum };
 
-    /** The block's fixed height: a rule and 10 px, the heading row with the Wave / Spectrum selector, the tap
-        selector, the 92 px well and a two-line caption, 7 px apart. */
+    /** The block's height at the smallest size: a rule and 10 px, the heading row with the Wave / Spectrum selector,
+        the tap selector, the 92 px well and a two-line caption, 7 px apart. A taller block gives its extra height to
+        the well, a wider one to the well's width. */
     static constexpr int height = 1 + 10 + 24 + 7 + 24 + 7 + 92 + 7 + 32;
 
     static constexpr int fftOrder = 11, fftSize = 1 << fftOrder, historySize = engine::scopeFifoSize;

@@ -8,9 +8,12 @@ namespace scratchpad::ui
 namespace
 {
     constexpr int minOctave = 1;
-    constexpr int maxOctave = 7;
-    constexpr int keyboardKeys = 23; // two octaves, C to B
-    constexpr int whiteKeysShown = 14, whiteKeyWidth = 27, keyboardHeight = 70;
+    constexpr int maxOctaveCap = 7; // the highest octave the buttons reach when the keyboard is short enough
+    constexpr int compactOctaves = 2, maxOctavesShown = 9; // 9 octaves (12 * 9 - 1 keys from C1) still ends inside the MIDI range
+    constexpr int whiteKeysPerOctave = 7, whiteKeyWidth = 27, keyboardHeight = 70;
+
+    /** The last key's offset from the first: C to B of `octaves` octaves. */
+    constexpr int keyboardKeys (int octaves) { return 12 * octaves - 1; }
 
     struct KeyMap { char key; int semitone; };
     constexpr KeyMap keyMap[] = {
@@ -30,7 +33,7 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
     keyboard.setTitle ("On-screen keyboard");
     keyboard.describe = [this]
     {
-        return "Two octaves from C" + juce::String (octave - 1) + ". Play it with the A to K keys on your computer keyboard: "
+        return octavesDescription() + " Play it with the A to K keys on your computer keyboard: "
                "A S D F G H J K are the white keys and W E T Y U the black ones. Z and X change octave, C and V change velocity.";
     };
     keyboard.setScrollButtonsVisible (false);
@@ -135,7 +138,8 @@ PerformanceBar::PerformanceBar (plugin::ScratchpadProcessor& p)
 
 juce::String PerformanceBar::summaryText() const
 {
-    return "Octave " + juce::String (octave - 1) + ", velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + " percent";
+    return "Octave " + juce::String (octave - 1) + ", velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + " percent, "
+           + juce::String (octavesShown) + " octaves";
 }
 
 void PerformanceBar::timerCallback()
@@ -203,19 +207,38 @@ void PerformanceBar::releaseAllNotes()
     keyState.allNotesOff (1);
 }
 
-void PerformanceBar::setOctave (int newOctave, bool announceIt)
+int PerformanceBar::maxOctave() const noexcept
 {
-    octave = juce::jlimit (minOctave, maxOctave, newOctave);
+    // The highest octave whose last key (12 * octave + 12 * octavesShown - 1) is still a MIDI note.
+    return juce::jlimit (minOctave, maxOctaveCap, (127 + 1 - 12 * octavesShown) / 12);
+}
 
+juce::String PerformanceBar::octavesDescription() const
+{
+    static const char* const words[] = { "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten" };
+    const auto count = octavesShown < (int) std::size (words) ? juce::String (words[octavesShown]) : juce::String (octavesShown);
+    return count + " octaves from C" + juce::String (octave - 1) + ".";
+}
+
+void PerformanceBar::applyKeyboardRange()
+{
+    // Whatever is held is let go through the key state, so the processor gets its note-offs before the keys move.
     releaseAllNotes();
     keyboard.setKeyPressBaseOctave (octave);
-    keyboard.setAvailableRange (octave * 12, octave * 12 + keyboardKeys);
+    keyboard.setAvailableRange (octave * 12, octave * 12 + keyboardKeys (octavesShown));
     keyboard.setLowestVisibleKey (octave * 12);
 
     octaveDown.setEnabled (octave > minOctave);
-    octaveUp.setEnabled (octave < maxOctave);
+    octaveUp.setEnabled (octave < maxOctave());
     summary.setText (summaryText());
     repaint (octaveLabelArea);
+    repaint (octavesLabelArea);
+}
+
+void PerformanceBar::setOctave (int newOctave, bool announceIt)
+{
+    octave = juce::jlimit (minOctave, maxOctave(), newOctave);
+    applyKeyboardRange();
 
     if (announceIt)
         a11y::announce ("Octave " + juce::String (octave - 1));
@@ -268,6 +291,7 @@ void PerformanceBar::paint (juce::Graphics& g)
     g.setColour (p.mute);
     g.setFont (uiFont (11.0f));
     g.drawText ("Velocity " + juce::String (juce::roundToInt (velocity * 100.0f)) + "%", velocityLabelArea, juce::Justification::centred, false);
+    g.drawText (juce::String (octavesShown) + " octaves", octavesLabelArea, juce::Justification::centred, false);
 
     drawCaption (g, "Bend", bendCaptionArea.toFloat().expanded (10.0f, 0.0f), p.mute, juce::Justification::centred);
     drawCaption (g, "Mod", modCaptionArea.toFloat().expanded (10.0f, 0.0f), p.mute, juce::Justification::centred);
@@ -275,8 +299,10 @@ void PerformanceBar::paint (juce::Graphics& g)
 
 void PerformanceBar::resized()
 {
-    // The design's flex row, resolved to pixels at 100%: each group is centred on the card's height.
+    // The design's flex row, resolved to pixels at 100%: each group is centred on the card's height. The extra height
+    // over the compact card goes to the keys and the wheels' slots.
     const int h = getHeight();
+    const int extraHeight = juce::jmax (0, h - layout::voicingKeyboard.h);
     const auto centred = [h] (int x, int width, int height) { return juce::Rectangle<int> (x, (h - height) / 2, width, height); };
 
     voicing.setBounds (centred (layout::padding::voicing + 4, VoicingCard::width, VoicingCard::height));
@@ -284,7 +310,7 @@ void PerformanceBar::resized()
     divider = centred (voicing.getRight() + 16, 1, 56);
 
     // Bend and mod wheels: a 16 x 50 slot each, 22 px wide thumb, the caption under.
-    const auto wheels = centred (divider.getRight() + 19, 60, 50 + 4 + 13);
+    const auto wheels = centred (divider.getRight() + 19, 60, 50 + extraHeight + 4 + 13);
     auto bendArea = wheels.withWidth (26), modArea = wheels.withTrimmedLeft (34);
     bendCaptionArea = bendArea.removeFromBottom (13);
     modCaptionArea = modArea.removeFromBottom (13);
@@ -292,19 +318,33 @@ void PerformanceBar::resized()
     modWheel.setBounds (modArea.withTrimmedBottom (4));
 
     // Octave: [-] C3 [+] over the velocity.
-    const auto octaveBlock = centred (wheels.getRight() + 20, 74, 22 + 5 + 13);
+    const auto octaveBlock = centred (wheels.getRight() + 20, 74, 22 + 5 + 13 + 3 + 13);
     auto row = octaveBlock.withHeight (22);
     octaveDown.setBounds (row.removeFromLeft (22));
     octaveUp.setBounds (row.removeFromRight (22));
     octaveLabelArea = row;
-    velocityLabelArea = octaveBlock.withTrimmedTop (27);
+    velocityLabelArea = octaveBlock.withTrimmedTop (27).withHeight (13);
+    octavesLabelArea = octaveBlock.withTrimmedTop (43).withHeight (13);
     summary.setBounds (octaveBlock);
 
+    // The keyboard starts where it does in the compact card and takes the whole octaves that fit before the right padding.
+    const int rightInset = layout::padding::voicing + 4;
+    const int keyboardX = layout::voicingKeyboard.w - rightInset - compactOctaves * whiteKeysPerOctave * whiteKeyWidth;
+    const int fitting = (getWidth() - rightInset - keyboardX) / (whiteKeysPerOctave * whiteKeyWidth);
+    const int newOctaves = juce::jlimit (compactOctaves, maxOctavesShown, fitting);
+
     keyboard.setKeyWidth ((float) whiteKeyWidth);
-    keyboard.setBounds (centred (getWidth() - layout::padding::voicing - 4 - whiteKeysShown * whiteKeyWidth, whiteKeysShown * whiteKeyWidth, keyboardHeight));
+    keyboard.setBounds (centred (keyboardX, newOctaves * whiteKeysPerOctave * whiteKeyWidth, keyboardHeight + extraHeight));
     for (auto* child : keyboard.getChildren())
         if (dynamic_cast<juce::Button*> (child) != nullptr)
             child->setAccessible (false);
+
+    if (newOctaves != octavesShown)
+    {
+        octavesShown = newOctaves;
+        octave = juce::jlimit (minOctave, maxOctave(), octave); // setOctave announces nothing here
+        applyKeyboardRange();
+    }
 }
 
 } // namespace scratchpad::ui

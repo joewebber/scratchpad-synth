@@ -59,10 +59,9 @@ public:
     void resized() override;
     void visibilityChanged() override;
 
-    /** How much room a taller window adds above the Effects heading's section and again above the Modulation's
-        (`PatchView` is that much taller than `layout::patchView`; the keyboard card, which is not part of it,
-        moves down by three times as much). The cards keep their sizes; only the gaps between the sections grow. */
-    void setExtraGap (int pixels);
+    /** The layout of the whole stage for the window's size (`layout::Plan`): every card is handed its box from it and
+        lays itself out from that box; the view's own children are placed relative to `plan.patchView`. */
+    void setPlan (const layout::Plan&);
 
     /** Puts down a handle that is being held, if one is. True if there was one. */
     bool cancelConnecting();
@@ -96,8 +95,8 @@ private:
     juce::String listenHint() const;
     bool present (plugin::Module m) const { return processor.isModulePresent (m); }
     plugin::Presence presence() const;
-    void statusChanged() override { repaint (local (layout::listenPill)); updateListenRegion(); }
-    void modulationChanged() override { repaint (local (layout::listenPill)); updateListenRegion(); }
+    void statusChanged() override { repaint (local (plan.listenPill)); updateListenRegion(); }
+    void modulationChanged() override { repaint (local (plan.listenPill)); updateListenRegion(); }
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
     EffectSlots effectSlots() const;
@@ -145,10 +144,10 @@ private:
 
     EffectDrag effectDrag;
 
-    /** `box` (in stage pixels) as this view's own coordinates, moved down by the extra gap for each section above it. */
+    /** `box` (a region of the plan, in stage pixels) as this view's own coordinates. */
     juce::Rectangle<int> local (const layout::Box& box) const noexcept;
 
-    int extraGap = 0;
+    layout::Plan plan = layout::Plan::make (layout::minLayoutWidth, layout::minLayoutHeight, false);
 };
 
 } // namespace scratchpad::ui

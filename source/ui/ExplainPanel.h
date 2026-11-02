@@ -29,6 +29,11 @@ namespace scratchpad::ui
     title. Whether it is folded is the window's decision (it follows the window size and the user's choice,
     see ViewSettings): this class draws either state and asks for a change through `onToggleRequested`.
 
+    Size: the panel lays itself out from its own box, `width` x `layout::explain.h` (264 x 680) at the least, wider
+    and as tall as the window otherwise. The header, text and patch sentence keep their design; extra width goes to
+    the text's wrapping and the scope, and every bit of extra height goes to the scope's well. The rail works at any
+    height.
+
     Keyboard and screen reader: the panel is a group. Tab visits the Glossary button, the fold button, the text
     being shown (a reading area that Up, Down, Page Up, Page Down, Home and End scroll, and that a screen reader reads
     whole), then every glossary link in it (Enter opens one; each is a real button, which the painted chips are
@@ -82,6 +87,7 @@ public:
     /** Everything a screen reader is given for what is shown: title, text and the words it links to. */
     juce::String getReadableText() const;
 
+    /** The compact (smallest) width, `layout::explain.w`; the panel is given a wider box in bigger windows. */
     static constexpr int width = layout::explain.w;
     static constexpr int railWidth = 56;
 

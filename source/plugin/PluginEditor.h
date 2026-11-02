@@ -14,41 +14,31 @@
 namespace scratchpad::plugin
 {
 
-/** One window. Everything inside is laid out on a stage in logical pixels, and the stage is scaled by a transform so
-    no control has to know the window's size. The design is 1200 x 760 px with the Explain panel showing (992 x 760
-    folded to its rail); the sizes of the cards are in `ui/Layout.h` and nothing sizes itself from its content.
+/** One window. Everything inside is laid out on a stage in layout pixels, and one scale transform sits over the stage.
 
-    The window never scales the stage up: at or above 100% the stage is the size of the window and the extra room is
-    used. The Explain panel (or, folded, the space round the column) takes the extra width; the extra height goes
-    into the gaps between the signal chain, the effects, the modulation and the keyboard, and into the Explain panel.
-    Below 100% the whole stage is scaled down to fit, to a minimum of 75%. So a bigger window means more room, not
-    bigger controls.
+    Two separate things decide what you see. The UI scale (a setting, 75% to 200%, in the View menu) says how big a
+    knob, a line of text and a button are; dragging the window never changes it. The window's size, divided by the UI
+    scale, is the layout size, and `ui::layout::Plan` turns that into every card's box (more of each card, more
+    octaves, more connection slots, a taller scope: see `ui/Layout.h` for where extra width and height go). A layout
+    smaller than 1200 x 760 (992 x 760 with the Explain panel folded) is not rearranged: the whole stage is scaled down
+    to fit, to no less than 75% on the screen. Above 2400 x 1400 the layout stops growing and sits in the middle.
 
-    The window is resizable (a corner grip in a plugin host, the frame in the standalone app) with no fixed shape. A
-    host that sets a size under the minimum gets the stage scaled to fit regardless. The scale below 100% is
-    remembered between sessions.
+    The window is resizable with no fixed shape, from 900 x 570 to 3200 x 2000 screen pixels (a corner grip in a plugin
+    host, the frame in the standalone app), and the View menu's Window size offers Small, Medium and Large (the three
+    layouts' sizes at the current UI scale) for hosts that handle resizing badly. The standalone app remembers its
+    size; a plugin opens at Small.
 
-    The Explain panel starts folded to a rail. Folding or unfolding it is remembered.
+    The Explain panel starts folded to a rail. Folding or unfolding it is remembered, and frees width: the chain can
+    reach a bigger layout in a smaller window.
 
-    How the window looks (theme, reduced motion, panel folded, scale) is the user's preference and lives in
-    `ViewSettings`, never in the patch or the host session. */
+    How the window looks (theme, reduced motion, panel folded, UI scale, the standalone's size) is the user's preference
+    and lives in `ViewSettings`, never in the patch or the host session. */
 class ScratchpadEditor final : public juce::AudioProcessorEditor,
                                private juce::FocusChangeListener
 {
 public:
-    /** The design's stage size with the Explain panel showing and with it folded to its rail. */
-    static constexpr int baseWidth = ui::layout::stageWidth;
-    static constexpr int baseHeight = ui::layout::stageHeight;
-    static constexpr int foldedWidth = baseWidth - (ui::ExplainPanel::width - ui::ExplainPanel::railWidth);
-
-    /** The smallest scale the stage is shrunk to; it is never scaled up. */
-    static constexpr double minScale = 0.75, maxScale = 1.0;
-
-    /** The design size now: `foldedWidth` x `baseHeight` while the panel is folded. */
-    juce::Point<int> getBaseSize() const noexcept;
-
-    /** The stage's size in its own pixels: the window's size divided by the scale, never less than `getBaseSize()`. */
-    juce::Point<int> getStageSize() const noexcept;
+    /** Smallest window in screen pixels: the smallest layout at 75%. With the panel folded the layout is narrower. */
+    static constexpr double minScale = ui::ViewSettings::minScale;
 
     explicit ScratchpadEditor (ScratchpadProcessor&);
     ~ScratchpadEditor() override;
@@ -60,36 +50,51 @@ public:
 
     ui::ViewSettings& getViewSettings() noexcept { return settings; }
 
-    /** The stage's scale: 1.0 is 1500 x 900 on screen. */
+    /** The user's UI scale setting (0.75 to 2.0). */
+    double getUiScale() const noexcept { return uiScale; }
+
+    /** The scale the stage is drawn at: the UI scale, less the shrink that fits a layout under its minimum. */
     double getScale() const noexcept { return scale; }
+
+    /** The layout the stage is in now. */
+    const ui::layout::Plan& getPlan() const noexcept { return plan; }
 
     ui::ViewSettings::Theme getTheme() const noexcept { return theme; }
     bool isExplainCollapsed() const noexcept { return explainPanel.isCollapsed(); }
     ui::ViewState getViewState() const;
 
-    /** The three View-menu choices, remembered. */
+    /** The View-menu choices, remembered. */
     void setTheme (ui::ViewSettings::Theme);
     void setReducedMotion (bool);
     void setExplainCollapsed (bool);
+
+    /** Sets the UI scale. The window changes size by the same ratio, so the layout (and what is shown) stays. */
+    void setUiScale (double);
+
+    /** Resizes the window to a preset's layout size times the UI scale (limits applied). */
+    void setWindowPreset (ui::ViewChoice);
 
     /** Shows the View menu under its button; a choice is applied with `applyViewChoice`. */
     void showViewMenu();
     void applyViewChoice (ui::ViewChoice);
 
+    /** The window size a layout of `layoutSize` takes at the UI scale, in screen pixels, within the limits. */
+    juce::Point<int> windowSizeFor (juce::Point<int> layoutSize) const noexcept;
+
 private:
-    /** What the window is laid out on: `getStageSize()`, scaled by a transform. */
+    /** What the window is laid out on: the layout size, scaled by a transform. */
     class Stage final : public juce::Component
     {
     public:
         Stage() { setTitle ("Controls"); setInterceptsMouseClicks (false, true); }
     };
 
-    /** Writes the scale to the settings a moment after the last resize, not on every pixel of a drag. */
-    class ScaleSaver final : private juce::Timer
+    /** Writes the standalone's window size to the settings a moment after the last resize, not on every pixel of a drag. */
+    class SizeSaver final : private juce::Timer
     {
     public:
-        explicit ScaleSaver (ScratchpadEditor& o) : owner (o) {}
-        ~ScaleSaver() override { stopTimer(); }
+        explicit SizeSaver (ScratchpadEditor& o) : owner (o) {}
+        ~SizeSaver() override { stopTimer(); }
         void schedule() { startTimer (400); }
         void flush();
 
@@ -102,12 +107,14 @@ private:
     void layoutStage();
     void updateConstrainer();
     void applyPalette();
+    bool isStandalone() const noexcept { return processor.wrapperType == juce::AudioProcessor::wrapperType_Standalone; }
 
     ScratchpadProcessor& processor;
 
     ui::ViewSettings settings;
     ui::ViewSettings::Theme theme = ui::ViewSettings::Theme::dark;
-    double scale = 1.0;
+    double uiScale = 1.0, scale = 1.0;
+    ui::layout::Plan plan;
 
     ui::ScratchpadLookAndFeel lookAndFeel { ui::darkPalette() };
     juce::ComponentBoundsConstrainer constrainer;
@@ -118,7 +125,7 @@ private:
     ui::PerformanceBar performanceBar;
     ui::ExplainPanel explainPanel;
 
-    ScaleSaver scaleSaver { *this };
+    SizeSaver sizeSaver { *this };
 };
 
 } // namespace scratchpad::plugin

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_data_structures/juce_data_structures.h>
+#include <juce_graphics/juce_graphics.h>
 
 #include <memory>
 #include <optional>
@@ -12,7 +13,8 @@ namespace scratchpad::ui
     carry any of it. Stored in a small properties file in the user's settings folder.
 
     Keys:  `theme` ("dark" or "light"), `reducedMotion` (true or false), `explainCollapsed` (true or false; absent
-    means folded) and `editorScale` (0.75 to 1.0: how far the stage is shrunk to fit a window smaller than the design; it is never scaled up).
+    means folded), `uiScale` (0.75 to 2.0: how big a knob, a line of text and a button are; the window's size never
+    changes it) and `windowWidth` / `windowHeight` (the standalone app's window in screen pixels, remembered).
 
     A missing, unreadable or half-written file, and values that make no sense, all read as the defaults.
     Every write goes to disk straight away, after re-reading the file so that a second instance in the same
@@ -22,8 +24,10 @@ class ViewSettings
 public:
     enum class Theme { dark, light };
 
-    static constexpr double minScale = 0.75, maxScale = 1.0, defaultScale = 1.0;
+    static constexpr double minScale = 0.75, maxScale = 2.0, defaultScale = 1.0;
 
+    /** The window's limits in screen pixels: 900 x 570 is the smallest layout (1200 x 760) at 75%. */
+    static constexpr int minWindowWidth = 900, minWindowHeight = 570, maxWindowWidth = 3200, maxWindowHeight = 2000;
 
     /** The user's settings file ("Scratchpad Synth.view" next to the standalone's own settings), unless
         `setDefaultFileOverride` has pointed somewhere else. */
@@ -53,10 +57,16 @@ public:
     /** Whether the panel is folded: the user's choice, else folded (it starts closed). */
     bool isExplainCollapsed() const;
 
-    double getEditorScale() const;
-    void setEditorScale (double);
+    /** The UI scale: 1.0 is the OS's own scale (JUCE's logical pixels already follow Windows' display scaling, so
+        100% is right on a display set to 150%). Clamped to `minScale` .. `maxScale`; anything unreadable is 1.0. */
+    double getUiScale() const;
+    void setUiScale (double);
 
     static double clampScale (double scale) noexcept;
+
+    /** The standalone window's last size, if one was saved and is sensible. */
+    std::optional<juce::Point<int>> getWindowSize() const;
+    void setWindowSize (int width, int height);
 
 private:
     juce::String read (const char* key) const;

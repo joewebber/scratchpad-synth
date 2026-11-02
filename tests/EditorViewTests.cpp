@@ -69,9 +69,10 @@ namespace
         return *all<juce::Button> (root).front();
     }
 
+    /** A window of `percent` of the smallest layout's size, in screen pixels. */
     void setSizeFor (ScratchpadEditor& e, int percent)
     {
-        e.setSize (ScratchpadEditor::baseWidth * percent / 100, ScratchpadEditor::baseHeight * percent / 100);
+        e.setSize (ui::layout::minLayoutWidth * percent / 100, ui::layout::minLayoutHeight * percent / 100);
     }
 
     /** The ticked state of the menu item with this text, looking inside sub-menus. */
@@ -106,21 +107,22 @@ namespace
     }
 }
 
-TEST_CASE ("The editor opens at 100% with the Explain panel folded", "[view][editor]")
+TEST_CASE ("The editor opens at the smallest layout, 100%, with the Explain panel folded", "[view][editor]")
 {
     CleanPreferences clean;
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
 
-    CHECK (e.getWidth() == ScratchpadEditor::foldedWidth);
-    CHECK (e.getHeight() == ScratchpadEditor::baseHeight);
+    CHECK (e.getWidth() == 1200);
+    CHECK (e.getHeight() == 760);
+    CHECK_THAT (e.getUiScale(), WithinAbs (1.0, 1.0e-9));
     CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
     CHECK (e.isExplainCollapsed());
     CHECK (e.getTheme() == ViewSettings::Theme::dark);
     CHECK_FALSE (ui::motion::isReduced());
 }
 
-TEST_CASE ("The window shrinks the stage down to 75% and is never scaled up", "[view][editor]")
+TEST_CASE ("Dragging the window changes the layout, never the size of a control", "[view][editor]")
 {
     CleanPreferences clean;
     showPanel();
@@ -132,6 +134,8 @@ TEST_CASE ("The window shrinks the stage down to 75% and is never scaled up", "[
     REQUIRE (constrainer != nullptr);
     CHECK (constrainer->getMinimumWidth() == 900);
     CHECK (constrainer->getMinimumHeight() == 570);
+    CHECK (constrainer->getMaximumWidth() == 3200);
+    CHECK (constrainer->getMaximumHeight() == 2000);
     CHECK_THAT (constrainer->getFixedAspectRatio(), WithinAbs (0.0, 1.0e-9)); // any shape
 
     const auto asked = [&e] (juce::Rectangle<int> bounds)
@@ -148,20 +152,33 @@ TEST_CASE ("The window shrinks the stage down to 75% and is never scaled up", "[
         CHECK_THAT (e.getScale(), WithinAbs (0.75, 1.0e-9));
     }
 
-    SECTION ("between 75% and 100% the whole stage shrinks to fit")
+    SECTION ("under the smallest layout the whole stage shrinks and nothing rearranges")
     {
+        const auto before = e.getPlan();
         asked ({ 0, 0, 1000, 700 });
-        CHECK_THAT (e.getScale(), WithinAbs (1000.0 / ScratchpadEditor::baseWidth, 1.0e-9));
-        CHECK (e.getStageSize().x >= ScratchpadEditor::baseWidth);
+        CHECK_THAT (e.getScale(), WithinAbs (1000.0 / 1200.0, 1.0e-9));
+        CHECK (e.getPlan().filter.w == before.filter.w);
+        CHECK (e.getPlan().columnWidth == before.columnWidth);
+        CHECK (e.getPlan().width >= ui::layout::minLayoutWidth);
     }
 
-    SECTION ("bigger is more room, not bigger controls")
+    SECTION ("bigger is more layout, not bigger controls")
     {
-        const auto b = asked ({ 0, 0, 1800, 1000 });
-        CHECK (b.getWidth() == 1800);
+        const auto b = asked ({ 0, 0, 1760, 1000 });
+        CHECK (b.getWidth() == 1760);
         CHECK (b.getHeight() == 1000);
         CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
-        CHECK (e.getStageSize() == juce::Point<int> (1800, 1000));
+        CHECK (e.getPlan().width == 1760);
+        CHECK (e.getPlan().height == 1000);
+        CHECK (e.getPlan().filter.w == 400);
+        CHECK (only<ui::PatchView> (e).getWidth() == e.getPlan().columnWidth);
+    }
+
+    SECTION ("past 3200 x 2000 the host's window is held")
+    {
+        const auto b = asked ({ 0, 0, 5000, 4000 });
+        CHECK (b.getWidth() == 3200);
+        CHECK (b.getHeight() == 2000);
     }
 }
 
@@ -276,7 +293,7 @@ TEST_CASE ("A module's ? button unfolds a folded Explain panel and pins the modu
     CHECK (panel.getShownId() == "filter");
 }
 
-TEST_CASE ("Folding the Explain panel leaves the chain's cards alone", "[view][editor]")
+TEST_CASE ("Folding the Explain panel frees its width for the chain", "[view][editor]")
 {
     CleanPreferences clean;
     showPanel();
@@ -284,23 +301,25 @@ TEST_CASE ("Folding the Explain panel leaves the chain's cards alone", "[view][e
     p.addModule (plugin::Module::filter);
     p.addModule (plugin::Module::lfo1);
     ScratchpadEditor e (p);
+    e.setSize (1300, 760);
     auto& view = only<ui::PatchView> (e);
     auto& panel = only<ui::ExplainPanel> (e);
 
     const auto chain = view.getBounds();
     const auto size = e.getBounds();
-    CHECK (panel.getRight() == ScratchpadEditor::baseWidth - 12);
+    const auto filterBefore = e.getPlan().filter.w;
+    CHECK (panel.getRight() == e.getPlan().width - 12);
 
     e.setExplainCollapsed (true);
 
-    // The window stays as it is. The chain's boxes do not change size; with the panel folded the extra width has
-    // nowhere to go, so the column and the rail sit in the middle.
+    // The window stays as it is. The panel is a rail, and the chain takes what it left, so its cards are wider.
     CHECK (e.getBounds() == size);
-    CHECK (view.getWidth() == chain.getWidth());
-    CHECK (view.getX() == chain.getX() + (ScratchpadEditor::baseWidth - ScratchpadEditor::foldedWidth) / 2);
     CHECK (panel.getWidth() == ui::ExplainPanel::railWidth);
+    CHECK (view.getX() == chain.getX());
+    CHECK (view.getWidth() == chain.getWidth() + (ui::layout::explainWidthCompact - ui::layout::railWidth));
+    CHECK (e.getPlan().filter.w > filterBefore);
     CHECK (view.getRight() < panel.getX());
-    CHECK (panel.getRight() <= e.getStageSize().x - 12);
+    CHECK (panel.getRight() == e.getPlan().width - 12);
 
     for (auto* child : view.getChildren())
         if (child->isVisible())
@@ -311,7 +330,7 @@ TEST_CASE ("Folding the Explain panel leaves the chain's cards alone", "[view][e
 
     e.setExplainCollapsed (false);
     CHECK (view.getBounds() == chain);
-    CHECK (panel.getRight() == ScratchpadEditor::baseWidth - 12);
+    CHECK (panel.getRight() == e.getPlan().width - 12);
 }
 
 TEST_CASE ("Controls are where the eye sees them at every scale", "[view][editor]")
@@ -351,7 +370,7 @@ TEST_CASE ("Controls are where the eye sees them at every scale", "[view][editor
     }
 }
 
-TEST_CASE ("A window of any shape gets a stage that fills it", "[view][editor]")
+TEST_CASE ("The layout follows the window's width and height separately", "[view][editor]")
 {
     CleanPreferences clean;
     showPanel();
@@ -361,34 +380,116 @@ TEST_CASE ("A window of any shape gets a stage that fills it", "[view][editor]")
     auto& panel = only<ui::ExplainPanel> (e);
     auto& keys = only<ui::PerformanceBar> (e);
 
-    SECTION ("wider: the Explain panel takes the width")
+    SECTION ("wider: the chain takes the width first, then the panel")
     {
-        e.setSize (ScratchpadEditor::baseWidth + 500, ScratchpadEditor::baseHeight);
+        e.setSize (1300, 760);
         CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
         CHECK (e.getLocalArea (&top, top.getLocalBounds()).getRight() == e.getWidth() - 12);
-        CHECK (panel.getWidth() == ui::ExplainPanel::width + 500);
+        CHECK (panel.getWidth() == ui::ExplainPanel::width);
+        CHECK (only<ui::PatchView> (e).getWidth() == 1300 - 32 - ui::ExplainPanel::width);
         CHECK (panel.getRight() == e.getWidth() - 12);
+
+        e.setSize (1440, 760);
+        CHECK (panel.getWidth() == 300);
     }
 
-    SECTION ("taller: the gaps between the sections and the panel take the height")
+    SECTION ("taller: the extra goes to the cards and the panel, not the gaps")
     {
-        e.setSize (ScratchpadEditor::baseWidth, ScratchpadEditor::baseHeight + 300);
+        e.setSize (1200, 1060);
         CHECK_THAT (e.getScale(), WithinAbs (1.0, 1.0e-9));
         CHECK (panel.getHeight() == ui::layout::explain.h + 300);
-        CHECK (keys.getY() == ui::layout::voicingKeyboard.y + 300);
-        CHECK (keys.getHeight() == ui::layout::voicingKeyboard.h);
-        CHECK (keys.getBottom() <= e.getHeight() - 12);
+        CHECK (keys.getHeight() == ui::layout::voicingKeyboard.h + ui::layout::maxKeyHeightGrowth);
+        CHECK (keys.getBottom() == e.getHeight() - 12);
     }
 
-    SECTION ("smaller than the design: everything is scaled down to fit")
+    SECTION ("a wide, short window gets the width and keeps the minimum height")
     {
-        e.setSize (800, 700);
+        e.setSize (1600, 760);
+        CHECK (keys.getHeight() == ui::layout::voicingKeyboard.h);
+        CHECK (e.getPlan().filter.h == ui::layout::filter.h);
+        CHECK (e.getPlan().filter.w > ui::layout::filter.w);
+    }
+
+    SECTION ("smaller than the smallest layout: everything is scaled down to fit")
+    {
+        e.setSize (900, 700);
         CHECK_THAT (e.getScale(), WithinAbs (0.75, 1.0e-9)); // never below 75%; the host's window clips what is left
         CHECK (e.getLocalArea (&top, top.getLocalBounds()).getX() >= 0);
     }
+
+    SECTION ("past 2400 x 1400 the layout is centred, and the window's background shows round it")
+    {
+        e.setSize (3000, 1800);
+        CHECK (e.getPlan().originX == 300);
+        CHECK (e.getLocalArea (&top, top.getLocalBounds()).getX() == 300 + 12);
+        CHECK (panel.getRight() == 3000 - 300 - 12);
+    }
 }
 
-TEST_CASE ("The scale is remembered between sessions", "[view][editor]")
+TEST_CASE ("The UI scale is a setting: it sizes the controls, the window does not", "[view][editor]")
+{
+    CleanPreferences clean;
+    plugin::ScratchpadProcessor p;
+
+    {
+        ScratchpadEditor e (p);
+        e.setSize (1440, 900);
+        const auto plan = e.getPlan();
+
+        e.setUiScale (1.5);
+        CHECK_THAT (e.getUiScale(), WithinAbs (1.5, 1.0e-9));
+        CHECK_THAT (e.getScale(), WithinAbs (1.5, 1.0e-9));
+        CHECK (e.getWidth() == 2160); // the window follows, so the layout is what it was
+        CHECK (e.getHeight() == 1350);
+        CHECK (e.getPlan().columnWidth == plan.columnWidth);
+        CHECK (e.getPlan().filter.w == plan.filter.w);
+
+        // Dragging the window changes the layout, not the scale.
+        e.setSize (2640, 1500);
+        CHECK_THAT (e.getScale(), WithinAbs (1.5, 1.0e-9));
+        CHECK (e.getPlan().width == 1760);
+        CHECK (e.getPlan().height == 1000);
+
+        e.applyViewChoice (ui::ViewChoice::uiScale200);
+        CHECK_THAT (e.getUiScale(), WithinAbs (2.0, 1.0e-9));
+    }
+
+    ScratchpadEditor again (p); // a later session
+    CHECK_THAT (again.getUiScale(), WithinAbs (2.0, 1.0e-9));
+    CHECK_THAT (again.getScale(), WithinAbs (2.0, 1.0e-9));
+    CHECK (again.getWidth() == 2400);
+    CHECK (again.getHeight() == 1520);
+}
+
+TEST_CASE ("The window size presets open the three layouts at the UI scale", "[view][editor]")
+{
+    CleanPreferences clean;
+    plugin::ScratchpadProcessor p;
+    ScratchpadEditor e (p);
+
+    e.applyViewChoice (ui::ViewChoice::windowLarge);
+    CHECK (e.getBounds().getWidth() == 1760);
+    CHECK (e.getBounds().getHeight() == 1000);
+
+    e.applyViewChoice (ui::ViewChoice::windowMedium);
+    CHECK (e.getBounds().getWidth() == 1440);
+    CHECK (e.getBounds().getHeight() == 900);
+
+    e.setUiScale (1.25);
+    e.applyViewChoice (ui::ViewChoice::windowSmall);
+    CHECK (e.getBounds().getWidth() == 1500);
+    CHECK (e.getBounds().getHeight() == 950);
+    CHECK (e.getPlan().width == 1200);
+    CHECK (e.getPlan().height == 760);
+
+    // A preset that does not fit the limits is held to them.
+    e.setUiScale (2.0);
+    e.applyViewChoice (ui::ViewChoice::windowLarge);
+    CHECK (e.getBounds().getWidth() == ViewSettings::maxWindowWidth);
+    CHECK (e.getBounds().getHeight() == 2000);
+}
+
+TEST_CASE ("A plugin opens at the smallest layout whatever size it was left at", "[view][editor]")
 {
     CleanPreferences clean;
     showPanel();
@@ -397,20 +498,12 @@ TEST_CASE ("The scale is remembered between sessions", "[view][editor]")
     {
         ScratchpadEditor e (p);
         setSizeFor (e, 80);
-    } // the scale is written when the editor closes at the latest
-
-    {
-        ScratchpadEditor again (p);
-        CHECK (again.getWidth() == 960);
-        CHECK (again.getHeight() == 608);
-        CHECK_THAT (again.getScale(), WithinAbs (0.8, 1.0e-9));
-        setSizeFor (again, 75);
     }
 
-    ScratchpadEditor third (p);
-    CHECK (third.getWidth() == 900);
-    CHECK (third.getHeight() == 570);
-    CHECK_FALSE (third.isExplainCollapsed());
+    ScratchpadEditor again (p); // only the standalone app opens at the size it was left
+    CHECK (again.getWidth() == 1200);
+    CHECK (again.getHeight() == 760);
+    CHECK_FALSE (again.isExplainCollapsed()); // the panel's own choice is remembered
 }
 
 TEST_CASE ("A damaged preferences file still opens the editor at the defaults", "[view][editor]")
@@ -418,11 +511,12 @@ TEST_CASE ("A damaged preferences file still opens the editor at the defaults", 
     CleanPreferences clean;
     const auto file = ViewSettings().getFile();
     file.getParentDirectory().createDirectory();
-    REQUIRE (file.replaceWithText ("<PROPERTIES><VALUE name=\"editorScale\" val=\"banana\"/><VALUE name=\"theme\" val=\"neon"));
+    REQUIRE (file.replaceWithText ("<PROPERTIES><VALUE name=\"uiScale\" val=\"banana\"/><VALUE name=\"theme\" val=\"neon"));
 
     plugin::ScratchpadProcessor p;
     ScratchpadEditor e (p);
-    CHECK (e.getWidth() == ScratchpadEditor::foldedWidth);
+    CHECK (e.getWidth() == 1200);
+    CHECK_THAT (e.getUiScale(), WithinAbs (1.0, 1.0e-9));
     CHECK (e.getTheme() == ViewSettings::Theme::dark);
 }
 
@@ -601,12 +695,14 @@ TEST_CASE ("Each theme paints its own background, across the whole window", "[vi
 TEST_CASE ("A More pop-over opened in a hosted editor is drawn with the editor's look", "[view][popover]")
 {
     CleanPreferences clean;
-    plugin::ScratchpadProcessor p;
+    // A dismissed call-out box is deleted on the message thread, which a test never runs, so its content (whose rows
+    // listen to the processor's parameters) lives until JUCE shuts down. The processor must outlive it.
+    static plugin::ScratchpadProcessor p;
     p.addModule (plugin::Module::filter);
 
     // The standalone app and plugin hosts put the editor inside a window of their own, with their own look and feel.
     juce::Component window, holder;
-    window.setSize (ScratchpadEditor::foldedWidth, ScratchpadEditor::baseHeight);
+    window.setSize (1200, 760);
     window.addAndMakeVisible (holder);
     holder.setBounds (window.getLocalBounds());
     ScratchpadEditor e (p);

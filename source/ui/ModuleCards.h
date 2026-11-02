@@ -24,12 +24,19 @@
 namespace scratchpad::ui
 {
 
-/** `layout::filter`: response curve with its readout, mode, and Cutoff, Res, Key and Drive. More holds the
-    per-voice shaper (on or off, shape, drive, bias and mix) and Remove. */
+/** `layout::filter`: response curve with its readout, mode, and Cutoff, Res, Key and Drive. It lays itself out from
+    its own box, in one of two whole layouts (`isFull`): compact, and full from `layout::full::filterWidth` x
+    `filterHeight`, which adds under the knob row the per-voice shaper (a Shape segmented control, Off - Tanh - Hard
+    clip - Wavefold, and its Shape (drive), Bias and Mix knobs). The curve takes the extra width and height; the knobs
+    keep their size and their distance from the card's edges. More holds Remove, and (compact only) the shaper:
+    those controls move between the card and More as the layout changes, they are never in both. */
 class FilterCard final : public ModuleCard
 {
 public:
     FilterCard (plugin::ScratchpadProcessor&, ModulationModel&);
+
+    /** True while the card's box is big enough for the full layout (the shaper is on the card, not in More). */
+    bool isFull() const noexcept { return full; }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -37,16 +44,23 @@ public:
 
 private:
     void applyColours();
+    void followShaper();
 
     FilterCurve curve;
     ChoiceSegments mode;
     Knob cutoff, resonance, keyTrack, drive;
+    ChoiceSegments shape;
+    Knob shaperDrive, shaperBias, shaperMix;
+    juce::RangedAudioParameter &shaperEnabled, &shaperMode;
+    juce::ParameterAttachment shaperEnabledWatcher, shaperModeWatcher;
     juce::Rectangle<int> headerRow;
+    bool full = false;
 };
 
 /** `layout::filterEnv` or `layout::ampEnv`: an ADSR plus one more knob (velocity sensitivity for the amp envelope,
     amount for the filter envelope). The header carries the envelope's drag handle (a modulation source) in the
-    place of the family dot. More holds Remove. */
+    place of the family dot. More holds Remove. The display well takes the card's extra width and height; the five
+    knobs keep their size and their distance from the right and bottom edges. */
 class EnvelopeCard final : public ModuleCard
 {
 public:
@@ -89,7 +103,8 @@ private:
 };
 
 /** `layout::amp`: the voices that are sounding, and the fixed Level and Pan dials that show what modulation does
-    to them. No More button: there is nothing behind it. */
+    to them. No More button: there is nothing behind it. The voice well takes the card's extra width and height; the
+    knobs keep their size and place (bottom left). */
 class AmpCard final : public ModuleCard
 {
 public:
@@ -104,7 +119,8 @@ private:
     juce::Rectangle<int> headerRow;
 };
 
-/** `layout::out`: Volume, the vertical output meter and the safety limiter's light (`control.limiter`). */
+/** `layout::out`: Volume, the vertical output meter and the safety limiter's light (`control.limiter`). The meter
+    takes the extra height; the knob, meter width and limiter light keep their size and place. */
 class OutputCard final : public ModuleCard
 {
 public:

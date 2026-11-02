@@ -11,7 +11,20 @@ namespace
     constexpr const char* themeKey = "theme";
     constexpr const char* reducedMotionKey = "reducedMotion";
     constexpr const char* explainCollapsedKey = "explainCollapsed";
-    constexpr const char* editorScaleKey = "editorScale";
+    constexpr const char* uiScaleKey = "uiScale";
+    constexpr const char* windowWidthKey = "windowWidth";
+    constexpr const char* windowHeightKey = "windowHeight";
+
+    /** A whole number of pixels written by this class, or nothing for anything else. */
+    std::optional<int> readInt (const juce::String& text)
+    {
+        const auto t = text.trim();
+
+        if (t.isEmpty() || ! t.containsOnly ("0123456789"))
+            return std::nullopt;
+
+        return t.getIntValue();
+    }
 
     juce::File& defaultFileOverride()
     {
@@ -131,9 +144,9 @@ double ViewSettings::clampScale (double scale) noexcept
     return std::isfinite (scale) ? std::clamp (scale, minScale, maxScale) : defaultScale;
 }
 
-double ViewSettings::getEditorScale() const
+double ViewSettings::getUiScale() const
 {
-    const auto text = read (editorScaleKey).trim();
+    const auto text = read (uiScaleKey).trim();
 
     // getDoubleValue reads rubbish as 0, which would pass for a real (too small) scale.
     if (! text.containsOnly ("0123456789.+-eE") || ! text.containsAnyOf ("0123456789"))
@@ -142,9 +155,25 @@ double ViewSettings::getEditorScale() const
     return clampScale (text.getDoubleValue());
 }
 
-void ViewSettings::setEditorScale (double scale)
+void ViewSettings::setUiScale (double scale)
 {
-    write (editorScaleKey, juce::String (clampScale (scale), 4));
+    write (uiScaleKey, juce::String (clampScale (scale), 4));
+}
+
+std::optional<juce::Point<int>> ViewSettings::getWindowSize() const
+{
+    const auto w = readInt (read (windowWidthKey)), h = readInt (read (windowHeightKey));
+
+    if (! w || ! h || *w < minWindowWidth || *w > maxWindowWidth || *h < minWindowHeight || *h > maxWindowHeight)
+        return std::nullopt;
+
+    return juce::Point<int> { *w, *h };
+}
+
+void ViewSettings::setWindowSize (int width, int height)
+{
+    write (windowWidthKey, juce::String (std::clamp (width, minWindowWidth, maxWindowWidth)));
+    write (windowHeightKey, juce::String (std::clamp (height, minWindowHeight, maxWindowHeight)));
 }
 
 } // namespace scratchpad::ui
