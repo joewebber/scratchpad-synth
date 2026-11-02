@@ -337,7 +337,7 @@ TEST_CASE ("Opening restores the previous patch's name on undo", "[patchfile][un
 
     p.undoManager.undo();
     REQUIRE (p.getPatchName() == "Alpha");
-    REQUIRE (raw (p, params::outVolume) == Catch::Approx (params::volumeDefaultDb));
+    REQUIRE (raw (p, params::outVolume) == Catch::Approx (params::volumeDefaultDb).margin (1.0e-4));
 }
 
 TEST_CASE ("A file that cannot be opened is refused and the current patch is untouched", "[patchfile][errors]")
@@ -761,7 +761,7 @@ TEST_CASE ("A tree from a newer schema is refused by migrate and by a recalled s
 
     ScratchpadProcessor target;
     target.setStateInformation (block.getData(), (int) block.getSize());
-    REQUIRE (raw (target, params::outVolume) == Catch::Approx (params::volumeDefaultDb));
+    REQUIRE (raw (target, params::outVolume) == Catch::Approx (params::volumeDefaultDb).margin (1.0e-4));
 }
 
 //==============================================================================

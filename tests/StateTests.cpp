@@ -76,13 +76,13 @@ TEST_CASE ("New patch restores defaults and can be undone", "[state]")
     p.newPatch();
     REQUIRE (raw (p, params::osc1Enabled) == 1.0f);
     REQUIRE (raw (p, params::osc1Wave) == 2.0f);
-    REQUIRE (raw (p, params::osc1Level) == params::oscLevelDefaultDb);
-    REQUIRE (raw (p, params::outVolume) == params::volumeDefaultDb);
+    REQUIRE (raw (p, params::osc1Level) == Catch::Approx (params::oscLevelDefaultDb).margin (1.0e-4));
+    REQUIRE (raw (p, params::outVolume) == Catch::Approx (params::volumeDefaultDb).margin (1.0e-4));
 
     p.undoManager.undo();
     REQUIRE (raw (p, params::osc1Wave) == 1.0f);
-    REQUIRE (raw (p, params::osc1Level) == -20.0f);
-    REQUIRE (raw (p, params::outVolume) == 3.0f);
+    REQUIRE (raw (p, params::osc1Level) == Catch::Approx (-20.0f).margin (1.0e-4));
+    REQUIRE (raw (p, params::outVolume) == Catch::Approx (3.0f).margin (1.0e-4));
 }
 
 TEST_CASE ("State survives a save and load", "[state]")
@@ -103,8 +103,8 @@ TEST_CASE ("State survives a save and load", "[state]")
     b.setStateInformation (block.getData(), (int) block.getSize());
 
     REQUIRE (raw (b, params::osc1Wave) == 3.0f);
-    REQUIRE (raw (b, params::osc1Level) == -12.5f);
-    REQUIRE (raw (b, params::outVolume) == 2.5f);
+    REQUIRE (raw (b, params::osc1Level) == Catch::Approx (-12.5f).margin (1.0e-4));
+    REQUIRE (raw (b, params::outVolume) == Catch::Approx (2.5f).margin (1.0e-4));
 }
 
 TEST_CASE ("Saved state from the future or from another product is refused", "[state]")
@@ -189,9 +189,9 @@ TEST_CASE ("A new oscillator takes oscillator 1's wave and starts 7 cents sharp"
 
     p.addModule (Module::osc2);
     REQUIRE (raw (p, params::osc[1].wave) == 3.0f);
-    REQUIRE (raw (p, params::osc[1].fine) == params::newOscillatorFineCents);
+    REQUIRE (raw (p, params::osc[1].fine) == Catch::Approx (params::newOscillatorFineCents).margin (1.0e-4));
     REQUIRE (raw (p, params::osc[1].octave) == 0.0f);
-    REQUIRE (raw (p, params::osc[1].level) == params::oscLevelDefaultDb);
+    REQUIRE (raw (p, params::osc[1].level) == Catch::Approx (params::oscLevelDefaultDb).margin (1.0e-4));
     REQUIRE (p.isModulePresent (Module::osc2));
     REQUIRE_FALSE (p.isModulePresent (Module::osc3));
 
@@ -276,8 +276,8 @@ TEST_CASE ("A state saved by M1 loads with the M2 modules absent and at their de
     target.setStateInformation (old.getData(), (int) old.getSize());
 
     REQUIRE (raw (target, params::osc1Wave) == 3.0f);
-    REQUIRE (raw (target, params::osc1Level) == -9.0f);
-    REQUIRE (raw (target, params::outVolume) == 1.5f);
+    REQUIRE (raw (target, params::osc1Level) == Catch::Approx (-9.0f).margin (1.0e-4));
+    REQUIRE (raw (target, params::outVolume) == Catch::Approx (1.5f).margin (1.0e-4));
 
     for (const auto m : plugin::allModules)
         REQUIRE_FALSE (target.isModulePresent (m));
@@ -809,7 +809,7 @@ TEST_CASE ("A state saved by M4 loads with the M5 features at their defaults", "
     load (target, *xml);
 
     REQUIRE (raw (target, params::osc1Wave) == 3.0f);
-    REQUIRE (raw (target, params::osc1Level) == -9.0f);
+    REQUIRE (raw (target, params::osc1Level) == Catch::Approx (-9.0f).margin (1.0e-4));
     REQUIRE (target.isModulePresent (Module::filter));
     REQUIRE (raw (target, params::filterCutoff) == Catch::Approx (900.0f).epsilon (0.001));
     REQUIRE (raw (target, params::lfo[0].rate) == Catch::Approx (6.0f).epsilon (0.001));

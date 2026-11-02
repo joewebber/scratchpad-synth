@@ -38,8 +38,8 @@ Copy the `.vst3` bundle to `C:\Program Files\Common Files\VST3` on Windows, `~/L
 on macOS or `~/.vst3` on Linux to use it in a host.
 
 On Linux JUCE needs `libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev
-libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev`. CI builds and runs the tests on Windows,
-Linux and macOS; plugin validation (pluginval, the VST3 validator) runs on Windows only. Accessibility
+libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev`. CI builds and runs the tests on Windows and
+macOS (Linux is not built in CI); plugin validation (pluginval, the VST3 validator) runs on Windows only. Accessibility
 announcements reach screen readers on Windows and macOS, not Linux. The macOS build is unsigned, so
 Gatekeeper will ask you to allow it on first run.
 
